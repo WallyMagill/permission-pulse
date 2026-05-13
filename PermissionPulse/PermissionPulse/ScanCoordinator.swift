@@ -1,35 +1,51 @@
 import Foundation
+import OSLog
 import PermissionsCore
 import PermissionsScanners
 import PermissionsUI
 
 @MainActor
 final class ScanCoordinator {
+    private static let logger = Logger(
+        subsystem: "com.wallymagill.permissionpulse",
+        category: "scan-coordinator"
+    )
+
     private let viewModel: AppViewModel
     private let tccScanner: any TCCScanner
+    private let tccDataSource: AppViewModel.DataSource
     private let launchAgentScanner: any LaunchAgentScanner
+    private let launchAgentsDataSource: AppViewModel.DataSource
 
     init(
         viewModel: AppViewModel,
         tccScanner: any TCCScanner = MockTCCScanner(),
-        launchAgentScanner: any LaunchAgentScanner = MockLaunchAgentScanner()
+        tccDataSource: AppViewModel.DataSource = .mock,
+        launchAgentScanner: any LaunchAgentScanner = LaunchAgentScannerFS(),
+        launchAgentsDataSource: AppViewModel.DataSource = .live
     ) {
         self.viewModel = viewModel
         self.tccScanner = tccScanner
+        self.tccDataSource = tccDataSource
         self.launchAgentScanner = launchAgentScanner
+        self.launchAgentsDataSource = launchAgentsDataSource
     }
 
-    func runMockScan() async {
+    func runScan() async {
         do {
             let grants = try await tccScanner.scan()
-            let items = try await launchAgentScanner.scan()
             viewModel.grants = grants
-            viewModel.launchAgents = items
-            viewModel.dataSource = .mock
+            viewModel.tccDataSource = tccDataSource
         } catch {
-            // Scaffold path: scanners are mocks and don't throw. Real scanners
-            // surface errors into the UI via a follow-up slice.
-            assertionFailure("Mock scan threw, which should never happen: \(error)")
+            Self.logger.error("TCC scan failed: \(error.localizedDescription, privacy: .public)")
+        }
+
+        do {
+            let items = try await launchAgentScanner.scan()
+            viewModel.launchAgents = items
+            viewModel.launchAgentsDataSource = launchAgentsDataSource
+        } catch {
+            Self.logger.error("LaunchAgent scan failed: \(error.localizedDescription, privacy: .public)")
         }
     }
 }

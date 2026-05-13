@@ -29,7 +29,7 @@ struct PermissionPulseApp: App {
                     if coordinator == nil {
                         coordinator = ScanCoordinator(viewModel: viewModel)
                     }
-                    await coordinator?.runMockScan()
+                    await coordinator?.runScan()
                 }
         }
         .windowResizability(.contentSize)
