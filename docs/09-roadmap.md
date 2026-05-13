@@ -11,11 +11,11 @@ Honest, not aspirational. Each milestone is a single shipped binary on GitHub Re
 
 The `v0.1.0` git tag will be cut at the same time as the v0.2.0 release, since the scaffold milestone has no user-facing artifact worth distributing on its own.
 
-## v0.2.0 — First real scanner
+## v0.2.0 — First real scanner (✅ done 2026-05-13)
 
-- `LaunchAgentScannerFS` implemented and shipping real data into the UI.
-- Snapshot store writes a daily snapshot.
-- Mock badges removed from the LaunchAgents column; everything else still mock.
+- `LaunchAgentScannerFS` implemented and shipping real data into the UI. ✅
+- Snapshot store has a `launch_agents` table + diff API (not yet wired into the UI; What Changed view lands in v0.5.0). ✅
+- Per-section badges: Launch Agents shows "Live", Permissions still shows "Mock" pending v0.3.0. ✅
 
 See `docs/10-first-slice.md` for the spec.
 

@@ -38,9 +38,11 @@ Each scanner is documented as: **what it reads, which API, what permission is ne
 
 ---
 
-## LaunchAgents and LaunchDaemons
+## LaunchAgents and LaunchDaemons (implemented v0.2.0)
 
 **What:** Property-list-defined launch agents (per user) and daemons (system) that auto-run.
+
+**Implementation:** `LaunchAgentScannerFS` in `PermissionsScanners`.
 
 **Where:**
 - `~/Library/LaunchAgents/`
@@ -134,7 +136,7 @@ Each scanner is documented as: **what it reads, which API, what permission is ne
 | Source | Permission required | Fragility | If unavailable |
 |---|---|---|---|
 | TCC.db | FDA | High | Inbox shows "needs FDA" empty state |
-| LaunchAgents/Daemons (public) | None | Low | always works |
+| LaunchAgents/Daemons (public) | None | Low | always works (✅ implemented v0.2.0) |
 | BTM (direct .btm) | FDA | Very high | falls back to SFL or empty state |
 | BTM (sfltool) | Manual sudo | High | falls back to empty state |
 | Mic/Cam observation | None | Low-medium | menu-bar dot hidden |
