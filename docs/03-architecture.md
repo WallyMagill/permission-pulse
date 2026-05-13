@@ -5,20 +5,24 @@ Permission Pulse is a thin SwiftUI app wrapping four local SwiftPM packages.
 ## Layout
 
 ```
-permission-pulse/                       (Xcode project)
-├── App/                                (Xcode app target — SwiftUI lifecycle)
-│   ├── PermissionPulseApp.swift
-│   ├── MenuBar/
-│   ├── DetailWindow/
-│   ├── ScanCoordinator.swift
-│   ├── Info.plist
-│   └── PermissionPulse.entitlements
+permission-pulse/                       (repo root)
+├── PermissionPulse/                    (Xcode project folder)
+│   ├── PermissionPulse.xcodeproj/      (with shared scheme)
+│   ├── PermissionPulse/                (app target sources)
+│   │   ├── PermissionPulseApp.swift    (the @main App)
+│   │   ├── ScanCoordinator.swift       (composes scanners + store + viewmodel)
+│   │   ├── Assets.xcassets/
+│   │   └── Info.plist                  (mostly empty; keys live in build settings)
+│   ├── PermissionPulseTests/           (kept as no-op host for future app-level tests)
+│   └── PermissionPulseUITests/         (kept as no-op host for future UI tests)
 └── Packages/
     ├── PermissionsCore/                (types, protocols, errors — zero deps)
     ├── PermissionsScanners/            (TCC, LaunchAgents, BTM, Mic/Cam)
     ├── PermissionsStore/               (GRDB-backed snapshot store)
     └── PermissionsUI/                  (shared SwiftUI views, ViewModels)
 ```
+
+The app target uses Xcode 16's `PBXFileSystemSynchronizedRootGroup`, so any `.swift` file dropped into `PermissionPulse/PermissionPulse/` is automatically included in the build — no pbxproj edits needed to add or remove source files.
 
 ## Package responsibilities
 

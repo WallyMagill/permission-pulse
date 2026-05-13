@@ -7,7 +7,7 @@ struct PermissionPulseApp: App {
     @State private var coordinator: ScanCoordinator?
 
     var body: some Scene {
-        // Settings trampoline: works around the Tahoe MenuBarExtra/openSettings
+        // Settings trampoline — works around the Tahoe MenuBarExtra/openSettings
         // regression by routing through a regular window. Must be declared
         // before any Settings scene. See docs/03-architecture.md.
         WindowGroup(id: "settings-trampoline") {

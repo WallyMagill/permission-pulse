@@ -19,10 +19,8 @@ cd permission-pulse
 ## Open
 
 ```bash
-open PermissionPulse.xcodeproj
+open PermissionPulse/PermissionPulse.xcodeproj
 ```
-
-The Xcode project must already exist (created during initial bootstrap — see "Bootstrapping the Xcode project" below if cloning a pre-Xcode commit).
 
 ## Build (Debug)
 
@@ -32,28 +30,28 @@ From the CLI:
 
 ```bash
 xcodebuild \
-  -project PermissionPulse.xcodeproj \
+  -project PermissionPulse/PermissionPulse.xcodeproj \
   -scheme PermissionPulse \
   -configuration Debug \
-  -destination 'platform=macOS' \
+  -destination 'platform=macOS,arch=arm64' \
   build
 ```
 
 ## Run
 
-From Xcode: ⌘R. A menu-bar icon appears near the clock. Click it to open the detail window.
+From Xcode: ⌘R. A shield icon appears in the menu bar near the clock. Click it → "Open Permission Pulse" → the detail window opens with mock-data sections labeled with an orange `Mock` badge.
 
 From the CLI after a Debug build:
 
 ```
-~/Library/Developer/Xcode/DerivedData/PermissionPulse-*/Build/Products/Debug/Permission Pulse.app
+~/Library/Developer/Xcode/DerivedData/PermissionPulse-*/Build/Products/Debug/PermissionPulse.app
 ```
 
 You can `open` it directly.
 
 ## Test
 
-From Xcode: ⌘U runs all tests across the four packages.
+From Xcode: ⌘U runs the per-package smoke tests and the (currently empty) app-level test target.
 
 From the CLI:
 
@@ -64,11 +62,11 @@ swift test --package-path Packages/PermissionsScanners
 swift test --package-path Packages/PermissionsStore
 swift test --package-path Packages/PermissionsUI
 
-# Full app + packages test via xcodebuild
+# Full app build + (empty) test target via xcodebuild
 xcodebuild \
-  -project PermissionPulse.xcodeproj \
+  -project PermissionPulse/PermissionPulse.xcodeproj \
   -scheme PermissionPulse \
-  -destination 'platform=macOS' \
+  -destination 'platform=macOS,arch=arm64' \
   test
 ```
 
@@ -78,44 +76,24 @@ Tests use **Swift Testing** (`import Testing`) for new tests. The four packages 
 
 GitHub Actions runs on every PR and every push to `main`:
 
-- Build (Debug) of the Xcode project.
-- Test of all four packages and the app.
+- Build + test of all four SwiftPM packages with `swift test`.
+- Build + test of the Xcode app target with `xcodebuild`.
 
-Workflow file: `.github/workflows/ci.yml`. The CI runner uses macOS 26 Tahoe; the deployment target stays at macOS 14.
+Workflow file: `.github/workflows/ci.yml`. The CI runner uses macOS-latest; the deployment target stays at macOS 14.
 
-## Bootstrapping the Xcode project (one-time)
+## How this project was bootstrapped (historical)
 
-The first commit of this repo does **not** contain `PermissionPulse.xcodeproj` — Xcode project files are best created interactively in Xcode to avoid file-format drift. To create the project from a fresh clone:
+The Xcode project at `PermissionPulse/PermissionPulse.xcodeproj` is committed. A fresh clone does **not** need to recreate it.
 
-1. Open Xcode 26.5+.
-2. **File → New → Project → macOS → App**.
-3. Settings:
-   - **Product Name:** `PermissionPulse`
-   - **Team:** None (ad-hoc signing for now).
-   - **Organization Identifier:** `com.wallymagill`
-   - **Bundle Identifier:** `com.wallymagill.permissionpulse` (auto-derived).
-   - **Interface:** SwiftUI
-   - **Language:** Swift
-   - **Storage:** None
-   - **Include Tests:** Off (we use per-package tests).
-4. Save at the repo root (the folder containing this README). Xcode will create `PermissionPulse.xcodeproj` and a nested `PermissionPulse/` folder with `PermissionPulseApp.swift` and `ContentView.swift`.
-5. **Project settings → PermissionPulse target → General:**
-   - **Minimum Deployments → macOS:** 14.0
-   - **App Category:** Utilities
-6. **Signing & Capabilities:**
-   - **App Sandbox:** OFF
-   - **Hardened Runtime:** ON (default)
-7. **Info tab:** add `LSUIElement = YES` (Boolean). This hides the Dock icon and makes Permission Pulse a menu-bar-only app.
-8. Add the four local packages: **File → Add Package Dependencies → Add Local…** for each of:
-   - `Packages/PermissionsCore`
-   - `Packages/PermissionsScanners`
-   - `Packages/PermissionsStore`
-   - `Packages/PermissionsUI`
-   Link each into the `PermissionPulse` target.
-9. Replace the generated `ContentView.swift` and `PermissionPulseApp.swift` with the files in `App/` from this repo (a follow-up commit drops these in alongside the project file).
-10. Build (⌘B). Should be green.
+For reference, the original bootstrap (one-time, recorded for posterity in `git log`):
 
-This is the only manual step; once the project is committed, future clones use the committed `PermissionPulse.xcodeproj` directly.
+- File → New → Project → macOS → App
+- Product Name `PermissionPulse`, Bundle ID `com.wallymagill.permissionpulse`, Interface SwiftUI, Language Swift, Storage None, Team None, **Include Tests** can be either (the auto-generated test targets are kept as no-op hosts).
+- Min Deployments → macOS 14, App Category Utilities.
+- App Sandbox OFF; Hardened Runtime ON with no exception checkboxes ticked.
+- Add the four local packages via **File → Add Package Dependencies → Add Local…** and link each to the app target.
+- `INFOPLIST_KEY_LSUIElement = YES` (set in the target's build settings, not the Info.plist file directly — Xcode 16+ generates Info.plist from build settings).
+- Share the scheme: Product → Scheme → Manage Schemes → check the **Shared** column next to `PermissionPulse`.
 
 ## Troubleshooting
 

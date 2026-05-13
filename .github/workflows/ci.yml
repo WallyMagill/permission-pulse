@@ -35,26 +35,30 @@ jobs:
       - name: Test PermissionsUI
         run: swift test --package-path Packages/PermissionsUI
 
-  # When the Xcode project lands (see docs/07-build-and-test.md), this job
-  # gets uncommented and runs the full app build + xcodebuild test.
-  #
-  # app:
-  #   name: Build and test app
-  #   runs-on: macos-latest
-  #   steps:
-  #     - uses: actions/checkout@v4
-  #     - name: Build
-  #       run: |
-  #         xcodebuild \
-  #           -project PermissionPulse.xcodeproj \
-  #           -scheme PermissionPulse \
-  #           -configuration Debug \
-  #           -destination 'platform=macOS' \
-  #           build
-  #     - name: Test
-  #       run: |
-  #         xcodebuild \
-  #           -project PermissionPulse.xcodeproj \
-  #           -scheme PermissionPulse \
-  #           -destination 'platform=macOS' \
-  #           test
+  app:
+    name: Build and test app target
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Show toolchain
+        run: |
+          xcode-select -p
+          xcodebuild -version
+
+      - name: Build (Debug)
+        run: |
+          xcodebuild \
+            -project PermissionPulse/PermissionPulse.xcodeproj \
+            -scheme PermissionPulse \
+            -configuration Debug \
+            -destination 'platform=macOS,arch=arm64' \
+            build
+
+      - name: Test (app + empty test targets)
+        run: |
+          xcodebuild \
+            -project PermissionPulse/PermissionPulse.xcodeproj \
+            -scheme PermissionPulse \
+            -destination 'platform=macOS,arch=arm64' \
+            test
