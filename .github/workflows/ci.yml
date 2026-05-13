@@ -53,6 +53,9 @@ jobs:
             -scheme PermissionPulse \
             -configuration Debug \
             -destination 'platform=macOS,arch=arm64' \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY="" \
             build
 
       - name: Test (app + empty test targets)
@@ -61,4 +64,7 @@ jobs:
             -project PermissionPulse/PermissionPulse.xcodeproj \
             -scheme PermissionPulse \
             -destination 'platform=macOS,arch=arm64' \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY="" \
             test
