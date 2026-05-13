@@ -30,15 +30,15 @@
 
 ## Files that will change
 
-- `Packages/PermissionsCore/Sources/PermissionsCore/Models/LaunchAgentItem.swift` (new)
+- `Packages/PermissionsCore/Sources/PermissionsCore/LaunchAgentItem.swift` (already exists from v0.1.0 — verify fields suffice; add `id` if needed for storage)
 - `Packages/PermissionsScanners/Sources/PermissionsScanners/LaunchAgentScannerFS.swift` (new)
 - `Packages/PermissionsScanners/Tests/PermissionsScannersTests/LaunchAgentScannerFSTests.swift` (new)
-- `Packages/PermissionsStore/Sources/PermissionsStore/Schema/LaunchAgentsTable.swift` (new)
-- `Packages/PermissionsStore/Sources/PermissionsStore/SnapshotStore+LaunchAgents.swift` (new)
+- `Packages/PermissionsStore/Sources/PermissionsStore/SnapshotStore.swift` (extend the migrator with a `launch_agents` table; add write/diff API)
 - `Packages/PermissionsStore/Tests/PermissionsStoreTests/LaunchAgentsDiffTests.swift` (new)
-- `Packages/PermissionsUI/Sources/PermissionsUI/Views/LaunchAgentsSection.swift` (new)
-- `App/PermissionPulseApp.swift` (wire the real scanner into `ScanCoordinator`)
-- `docs/04-data-sources.md` (mark LaunchAgents row as "implemented v0.2.0")
+- `Packages/PermissionsUI/Sources/PermissionsUI/LaunchAgentsSection.swift` (new — extract from `DetailWindowView`; takes `Mock`/`Live` badge as input)
+- `Packages/PermissionsUI/Sources/PermissionsUI/DetailWindowView.swift` (use the extracted section)
+- `PermissionPulse/PermissionPulse/ScanCoordinator.swift` (swap `MockLaunchAgentScanner()` for `LaunchAgentScannerFS()`; ditto for the diff store)
+- `docs/04-data-sources.md` (mark the LaunchAgents row as "implemented v0.2.0")
 
 ## Test plan
 

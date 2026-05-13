@@ -21,7 +21,7 @@ Read-only. No cleaner-tier nonsense. No analytics. No phoning home. Free and ope
 
 ## Status
 
-Pre-alpha. Scaffolding in progress. No public release yet — see [`docs/09-roadmap.md`](docs/09-roadmap.md) for milestones.
+Pre-alpha. **v0.1.0 scaffold complete** — Xcode app builds, runs as a menu-bar app with mock data, CI green. **Currently working on v0.2.0** (first real scanner: LaunchAgents, spec in [`docs/10-first-slice.md`](docs/10-first-slice.md)). No public release yet — see [`docs/09-roadmap.md`](docs/09-roadmap.md) for the milestone list.
 
 ## Install (once released)
 

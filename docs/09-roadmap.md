@@ -2,12 +2,14 @@
 
 Honest, not aspirational. Each milestone is a single shipped binary on GitHub Releases.
 
-## v0.1.0 — Scaffold (target: this week)
+## v0.1.0 — Scaffold (✅ done 2026-05-13, not yet tagged)
 
-- Xcode project + four SwiftPM packages with smoke tests passing.
-- Menu-bar icon and detail window render mock data clearly labeled as mock.
-- CI green (build + test).
-- No real scanners wired yet.
+- Xcode project + four SwiftPM packages with smoke tests passing. ✅
+- Menu-bar icon and detail window render mock data clearly labeled as mock. ✅
+- CI green (build + test) on macOS-latest, both SwiftPM jobs and xcodebuild app job. ✅
+- No real scanners wired yet (deliberate). ✅
+
+The `v0.1.0` git tag will be cut at the same time as the v0.2.0 release, since the scaffold milestone has no user-facing artifact worth distributing on its own.
 
 ## v0.2.0 — First real scanner
 
