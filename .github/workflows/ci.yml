@@ -1,0 +1,60 @@
+name: CI
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  packages:
+    name: Test SwiftPM packages
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Show toolchain
+        run: |
+          xcode-select -p
+          swift --version
+          sw_vers
+
+      - name: Test PermissionsCore
+        run: swift test --package-path Packages/PermissionsCore
+
+      - name: Test PermissionsScanners
+        run: swift test --package-path Packages/PermissionsScanners
+
+      - name: Test PermissionsStore
+        run: swift test --package-path Packages/PermissionsStore
+
+      - name: Test PermissionsUI
+        run: swift test --package-path Packages/PermissionsUI
+
+  # When the Xcode project lands (see docs/07-build-and-test.md), this job
+  # gets uncommented and runs the full app build + xcodebuild test.
+  #
+  # app:
+  #   name: Build and test app
+  #   runs-on: macos-latest
+  #   steps:
+  #     - uses: actions/checkout@v4
+  #     - name: Build
+  #       run: |
+  #         xcodebuild \
+  #           -project PermissionPulse.xcodeproj \
+  #           -scheme PermissionPulse \
+  #           -configuration Debug \
+  #           -destination 'platform=macOS' \
+  #           build
+  #     - name: Test
+  #       run: |
+  #         xcodebuild \
+  #           -project PermissionPulse.xcodeproj \
+  #           -scheme PermissionPulse \
+  #           -destination 'platform=macOS' \
+  #           test
