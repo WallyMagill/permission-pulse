@@ -46,6 +46,13 @@ jobs:
           xcode-select -p
           xcodebuild -version
 
+      # The Xcode test targets (PermissionPulseTests, PermissionPulseUITests)
+      # are intentionally empty no-op hosts (see docs/03-architecture.md).
+      # Real test coverage lives in the SwiftPM packages, exercised by the
+      # `packages` job above. The app job only verifies the .xcodeproj
+      # still compiles. We don't invoke `test` here because the app target
+      # requires macOS 26 (Tahoe) and GitHub's macos-latest runner is on
+      # macOS 15.
       - name: Build (Debug)
         run: |
           xcodebuild \
@@ -57,14 +64,3 @@ jobs:
             CODE_SIGNING_REQUIRED=NO \
             CODE_SIGN_IDENTITY="" \
             build
-
-      - name: Test (app + empty test targets)
-        run: |
-          xcodebuild \
-            -project PermissionPulse/PermissionPulse.xcodeproj \
-            -scheme PermissionPulse \
-            -destination 'platform=macOS,arch=arm64' \
-            CODE_SIGNING_ALLOWED=NO \
-            CODE_SIGNING_REQUIRED=NO \
-            CODE_SIGN_IDENTITY="" \
-            test
