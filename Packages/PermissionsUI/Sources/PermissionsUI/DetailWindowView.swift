@@ -22,26 +22,17 @@ public struct DetailWindowView: View {
                     HStack {
                         Text("Permissions")
                         Spacer()
-                        if viewModel.dataSource == .mock { MockBadge() }
+                        switch viewModel.tccDataSource {
+                        case .mock: MockBadge()
+                        case .live: LiveBadge()
+                        }
                     }
                 }
 
-                Section {
-                    if viewModel.launchAgents.isEmpty {
-                        Text("No launch agents")
-                            .foregroundStyle(.secondary)
-                    } else {
-                        ForEach(viewModel.launchAgents, id: \.self) { item in
-                            LaunchAgentRow(item: item)
-                        }
-                    }
-                } header: {
-                    HStack {
-                        Text("Launch Agents")
-                        Spacer()
-                        if viewModel.dataSource == .mock { MockBadge() }
-                    }
-                }
+                LaunchAgentsSection(
+                    items: viewModel.launchAgents,
+                    dataSource: viewModel.launchAgentsDataSource
+                )
             }
             .navigationTitle("Permission Pulse")
         }
@@ -56,19 +47,6 @@ private struct GrantRow: View {
         VStack(alignment: .leading, spacing: 2) {
             Text(grant.app.displayName)
             Text("\(grant.service.displayName) · \(grant.app.bundleID)")
-                .font(.caption)
-                .foregroundStyle(.secondary)
-        }
-    }
-}
-
-private struct LaunchAgentRow: View {
-    let item: LaunchAgentItem
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 2) {
-            Text(item.label)
-            Text(item.sourceDirectory.path)
                 .font(.caption)
                 .foregroundStyle(.secondary)
         }

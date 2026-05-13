@@ -13,7 +13,7 @@ public struct MenuBarContentView: View {
                 Text("Permission Pulse")
                     .font(.headline)
                 Spacer()
-                if viewModel.dataSource == .mock {
+                if anySectionIsMock {
                     MockBadge()
                 }
             }
@@ -43,5 +43,9 @@ public struct MenuBarContentView: View {
         }
         .padding(12)
         .frame(width: 280)
+    }
+
+    private var anySectionIsMock: Bool {
+        viewModel.tccDataSource == .mock || viewModel.launchAgentsDataSource == .mock
     }
 }

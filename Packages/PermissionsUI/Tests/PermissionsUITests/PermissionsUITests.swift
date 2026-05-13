@@ -8,7 +8,8 @@ import PermissionsCore
         let vm = AppViewModel()
         #expect(vm.grants.isEmpty)
         #expect(vm.launchAgents.isEmpty)
-        #expect(vm.dataSource == .mock)
+        #expect(vm.tccDataSource == .mock)
+        #expect(vm.launchAgentsDataSource == .mock)
     }
 
     @Test func appViewModelAcceptsMockData() {
@@ -19,8 +20,18 @@ import PermissionsCore
                 lastModified: Date()
             )
         ]
-        let vm = AppViewModel(grants: grants, dataSource: .mock)
+        let vm = AppViewModel(grants: grants, tccDataSource: .mock)
         #expect(vm.grants.count == 1)
-        #expect(vm.dataSource == .mock)
+        #expect(vm.tccDataSource == .mock)
+        #expect(vm.launchAgentsDataSource == .mock)
+    }
+
+    @Test func appViewModelAcceptsMixedDataSources() {
+        let vm = AppViewModel(
+            tccDataSource: .mock,
+            launchAgentsDataSource: .live
+        )
+        #expect(vm.tccDataSource == .mock)
+        #expect(vm.launchAgentsDataSource == .live)
     }
 }

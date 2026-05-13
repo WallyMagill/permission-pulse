@@ -12,15 +12,18 @@ public final class AppViewModel {
 
     public var grants: [PermissionGrant]
     public var launchAgents: [LaunchAgentItem]
-    public var dataSource: DataSource
+    public var tccDataSource: DataSource
+    public var launchAgentsDataSource: DataSource
 
     public init(
         grants: [PermissionGrant] = [],
         launchAgents: [LaunchAgentItem] = [],
-        dataSource: DataSource = .mock
+        tccDataSource: DataSource = .mock,
+        launchAgentsDataSource: DataSource = .mock
     ) {
         self.grants = grants
         self.launchAgents = launchAgents
-        self.dataSource = dataSource
+        self.tccDataSource = tccDataSource
+        self.launchAgentsDataSource = launchAgentsDataSource
     }
 }
