@@ -2,9 +2,11 @@
 
 Each scanner is documented as: **what it reads, which API, what permission is needed, how fragile it is, what we do when it fails.**
 
-## TCC database
+## TCC database (implemented v0.3.0 — user + system DBs)
 
 **What:** Granted TCC permissions per app per service.
+
+**Implementation:** `TCCScannerSQLite` in `PermissionsScanners`. Reads both user and system DBs in parallel via a task group, unions results.
 
 **Where:**
 - User TCC: `~/Library/Application Support/com.apple.TCC/TCC.db`

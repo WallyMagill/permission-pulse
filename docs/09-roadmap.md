@@ -19,12 +19,15 @@ The `v0.1.0` git tag will be cut at the same time as the v0.2.0 release, since t
 
 See `docs/10-first-slice.md` for the spec.
 
-## v0.3.0 — TCC scanner
+## v0.3.0 — TCC scanner (✅ done 2026-05-14)
 
-- `TCCScannerSQLite` implemented.
-- FDA permission flow + Welcome screen.
-- Permission Inbox renders real TCC data.
-- Schema-mismatch banner.
+- `TCCScannerSQLite` implemented (reads user + system TCC.db). ✅
+- 16-case `PermissionService` enum with TCC-service-string mapping. ✅
+- Permission Inbox renders real TCC data when FDA is granted. ✅
+- FDA permission flow + Welcome screen → deferred to v0.3.1.
+- Schema-mismatch banner → deferred to v0.3.1.
+
+See `docs/11-tcc-slice.md` for the spec.
 
 ## v0.4.0 — BTM and mic/cam
 
