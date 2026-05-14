@@ -16,45 +16,117 @@ final class ScanCoordinator {
     private let tccDataSource: AppViewModel.DataSource
     private let launchAgentScanner: any LaunchAgentScanner
     private let launchAgentsDataSource: AppViewModel.DataSource
+    private let btmScanner: any BTMScanner
+    private let btmDataSource: AppViewModel.DataSource
 
     init(
         viewModel: AppViewModel,
         tccScanner: any TCCScanner = TCCScannerSQLite(),
         tccDataSource: AppViewModel.DataSource = .live,
         launchAgentScanner: any LaunchAgentScanner = LaunchAgentScannerFS(),
-        launchAgentsDataSource: AppViewModel.DataSource = .live
+        launchAgentsDataSource: AppViewModel.DataSource = .live,
+        btmScanner: any BTMScanner = BTMScannerDirect(),
+        btmDataSource: AppViewModel.DataSource = .live
     ) {
         self.viewModel = viewModel
         self.tccScanner = tccScanner
         self.tccDataSource = tccDataSource
         self.launchAgentScanner = launchAgentScanner
         self.launchAgentsDataSource = launchAgentsDataSource
+        self.btmScanner = btmScanner
+        self.btmDataSource = btmDataSource
     }
 
     func runScan() async {
-        do {
-            let grants = try await tccScanner.scan()
-            viewModel.grants = grants
-            viewModel.tccDataSource = tccDataSource
-            viewModel.tccScanError = nil
-        } catch let scannerError as ScannerError {
-            Self.logger.error("TCC scan failed: \(scannerError.localizedDescription, privacy: .public)")
-            viewModel.tccScanError = scannerError
-        } catch {
-            Self.logger.error("TCC scan failed with unexpected error: \(error.localizedDescription, privacy: .public)")
-            viewModel.tccScanError = .permissionDenied(reason: error.localizedDescription)
-        }
+        async let tccResultTask = runTCCScan()
+        async let launchAgentResultTask = runLaunchAgentScan()
+        async let btmResultTask = runBTMScan()
 
-        do {
-            let items = try await launchAgentScanner.scan()
-            viewModel.launchAgents = items
-            viewModel.launchAgentsDataSource = launchAgentsDataSource
-        } catch {
-            Self.logger.error("LaunchAgent scan failed: \(error.localizedDescription, privacy: .public)")
-        }
+        let tccResult = await tccResultTask
+        let launchAgentResult = await launchAgentResultTask
+        let btmResult = await btmResultTask
+
+        applyTCC(tccResult)
+        applyLaunchAgents(launchAgentResult)
+        applyBTM(btmResult)
     }
 
     func rescan() async {
         await runScan()
+    }
+
+    private struct TCCScanResult: Sendable {
+        let grants: [PermissionGrant]
+        let error: ScannerError?
+    }
+
+    private struct LaunchAgentScanResult: Sendable {
+        let items: [LaunchAgentItem]
+    }
+
+    private struct BTMScanResult: Sendable {
+        let items: [BTMItem]
+        let error: ScannerError?
+    }
+
+    private func runTCCScan() async -> TCCScanResult {
+        do {
+            let grants = try await tccScanner.scan()
+            return TCCScanResult(grants: grants, error: nil)
+        } catch let scannerError as ScannerError {
+            Self.logger.error("TCC scan failed: \(scannerError.localizedDescription, privacy: .public)")
+            return TCCScanResult(grants: [], error: scannerError)
+        } catch {
+            Self.logger.error("TCC scan failed with unexpected error: \(error.localizedDescription, privacy: .public)")
+            return TCCScanResult(grants: [], error: .permissionDenied(reason: error.localizedDescription))
+        }
+    }
+
+    private func runLaunchAgentScan() async -> LaunchAgentScanResult {
+        do {
+            let items = try await launchAgentScanner.scan()
+            return LaunchAgentScanResult(items: items)
+        } catch {
+            Self.logger.error("LaunchAgent scan failed: \(error.localizedDescription, privacy: .public)")
+            return LaunchAgentScanResult(items: [])
+        }
+    }
+
+    private func runBTMScan() async -> BTMScanResult {
+        do {
+            let items = try await btmScanner.scan()
+            return BTMScanResult(items: items, error: nil)
+        } catch let scannerError as ScannerError {
+            Self.logger.error("BTM scan failed: \(scannerError.localizedDescription, privacy: .public)")
+            return BTMScanResult(items: [], error: scannerError)
+        } catch {
+            Self.logger.error("BTM scan failed with unexpected error: \(error.localizedDescription, privacy: .public)")
+            return BTMScanResult(items: [], error: .permissionDenied(reason: error.localizedDescription))
+        }
+    }
+
+    private func applyTCC(_ result: TCCScanResult) {
+        if let error = result.error {
+            viewModel.tccScanError = error
+        } else {
+            viewModel.grants = result.grants
+            viewModel.tccDataSource = tccDataSource
+            viewModel.tccScanError = nil
+        }
+    }
+
+    private func applyLaunchAgents(_ result: LaunchAgentScanResult) {
+        viewModel.launchAgents = result.items
+        viewModel.launchAgentsDataSource = launchAgentsDataSource
+    }
+
+    private func applyBTM(_ result: BTMScanResult) {
+        if let error = result.error {
+            viewModel.btmScanError = error
+        } else {
+            viewModel.btmItems = result.items
+            viewModel.btmDataSource = btmDataSource
+            viewModel.btmScanError = nil
+        }
     }
 }
