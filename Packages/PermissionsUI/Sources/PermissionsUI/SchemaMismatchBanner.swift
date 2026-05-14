@@ -3,6 +3,12 @@ import PermissionsCore
 
 struct SchemaMismatchBanner: View {
     let error: ScannerError
+    let domain: ScannerDomain
+
+    init(error: ScannerError, domain: ScannerDomain = .tcc) {
+        self.error = error
+        self.domain = domain
+    }
 
     private static let reportURL = URL(
         string: "https://github.com/WallyMagill/permission-pulse/issues/new?labels=schema-mismatch"
@@ -14,7 +20,7 @@ struct SchemaMismatchBanner: View {
                 .font(.title3)
                 .foregroundStyle(.orange)
             VStack(alignment: .leading, spacing: 4) {
-                Text(String(localized: "Unrecognized TCC schema"))
+                Text(headline)
                     .font(.headline)
                 Text(bodyText)
                     .font(.footnote)
@@ -28,13 +34,21 @@ struct SchemaMismatchBanner: View {
         .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 8))
     }
 
+    private var headline: String {
+        switch domain {
+        case .tcc: String(localized: "Unrecognized TCC schema")
+        case .btm: String(localized: "Unrecognized BTM schema")
+        }
+    }
+
     private var bodyText: String {
         let version = ProcessInfo.processInfo.operatingSystemVersion
         let osString = "macOS \(version.majorVersion).\(version.minorVersion)"
+        let label = domain == .tcc ? "TCC" : "BTM"
         switch error {
         case .schemaMismatch(let detail):
             return String(
-                localized: "\(osString) reports a TCC schema this version of Permission Pulse doesn't recognize. \(detail)"
+                localized: "\(osString) reports a \(label) schema this version of Permission Pulse doesn't recognize. \(detail)"
             )
         case .unsupportedOnThisOS(let detail):
             return String(
