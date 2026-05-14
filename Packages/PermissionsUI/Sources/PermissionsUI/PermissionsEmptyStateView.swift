@@ -37,8 +37,11 @@ struct PermissionsEmptyStateView: View {
                 SystemSettingsLink.openFullDiskAccess()
             } label: {
                 Label(String(localized: "Grant Access in System Settings"), systemImage: "arrow.up.right.square")
+                    .frame(maxWidth: 300)
             }
             .buttonStyle(.borderedProminent)
+            .controlSize(.large)
+            .tint(.blue)
             Text(String(localized: "You'll need to relaunch Permission Pulse after granting."))
                 .font(.footnote)
                 .foregroundStyle(.tertiary)

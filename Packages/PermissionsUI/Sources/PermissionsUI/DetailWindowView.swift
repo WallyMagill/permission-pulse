@@ -40,9 +40,11 @@ public struct DetailWindowView: View {
                     HStack {
                         Text(String(localized: "Permissions"))
                         Spacer()
-                        switch viewModel.tccDataSource {
-                        case .mock: MockBadge()
-                        case .live: LiveBadge()
+                        if viewModel.tccScanError == nil {
+                            switch viewModel.tccDataSource {
+                            case .mock: MockBadge()
+                            case .live: LiveBadge()
+                            }
                         }
                     }
                 }

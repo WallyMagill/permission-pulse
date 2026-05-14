@@ -36,25 +36,31 @@ public struct MenuBarContentView: View {
             .keyboardShortcut("q", modifiers: [.command])
         }
         .padding(12)
-        .frame(width: 280)
+        .frame(width: 300)
     }
 
     @ViewBuilder
     private var statusArea: some View {
         switch attentionState {
         case .fdaDenied:
-            attentionButton(
+            AttentionRow(
                 text: String(localized: "Full Disk Access needed"),
+                systemImage: "exclamationmark.triangle.fill",
+                trailingSymbol: "arrow.up.right.square",
                 action: { SystemSettingsLink.openFullDiskAccess() }
             )
         case .btmOnlyFDADenied:
-            attentionButton(
-                text: String(localized: "Full Disk Access needed for background items"),
+            AttentionRow(
+                text: String(localized: "FDA needed for background items"),
+                systemImage: "exclamationmark.triangle.fill",
+                trailingSymbol: "arrow.up.right.square",
                 action: { SystemSettingsLink.openFullDiskAccess() }
             )
         case .schemaMismatch:
-            attentionButton(
-                text: String(localized: "Permission Pulse schema mismatch"),
+            AttentionRow(
+                text: String(localized: "Schema mismatch — open for details"),
+                systemImage: "exclamationmark.triangle.fill",
+                trailingSymbol: "chevron.right",
                 action: { openWindow(id: "detail") }
             )
         case .clean:
@@ -65,19 +71,6 @@ public struct MenuBarContentView: View {
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
         }
-    }
-
-    private func attentionButton(text: String, action: @escaping () -> Void) -> some View {
-        Button(action: action) {
-            HStack(spacing: 6) {
-                Image(systemName: "exclamationmark.triangle.fill")
-                    .foregroundStyle(.orange)
-                Text(text)
-                    .foregroundStyle(.primary)
-                Spacer()
-            }
-        }
-        .buttonStyle(.plain)
     }
 
     private enum AttentionState {
@@ -110,5 +103,42 @@ public struct MenuBarContentView: View {
         case .schemaMismatch, .unsupportedOnThisOS: true
         default: false
         }
+    }
+}
+
+private struct AttentionRow: View {
+    let text: String
+    let systemImage: String
+    let trailingSymbol: String
+    let action: () -> Void
+
+    @State private var isHovering = false
+
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: 8) {
+                Image(systemName: systemImage)
+                    .foregroundStyle(.orange)
+                Text(text)
+                    .foregroundStyle(.primary)
+                    .lineLimit(1)
+                Spacer()
+                Image(systemName: trailingSymbol)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+            .padding(.horizontal, 8)
+            .padding(.vertical, 6)
+            .background(
+                RoundedRectangle(cornerRadius: 6)
+                    .fill(isHovering ? Color.orange.opacity(0.15) : Color.orange.opacity(0.08))
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 6)
+                    .stroke(Color.orange.opacity(0.35), lineWidth: 1)
+            )
+        }
+        .buttonStyle(.plain)
+        .onHover { isHovering = $0 }
     }
 }

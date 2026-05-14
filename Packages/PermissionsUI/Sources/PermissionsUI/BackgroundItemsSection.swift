@@ -29,9 +29,11 @@ public struct BackgroundItemsSection: View {
             HStack {
                 Text(String(localized: "Background Items"))
                 Spacer()
-                switch dataSource {
-                case .mock: MockBadge()
-                case .live: LiveBadge()
+                if error == nil {
+                    switch dataSource {
+                    case .mock: MockBadge()
+                    case .live: LiveBadge()
+                    }
                 }
             }
         }
