@@ -36,8 +36,13 @@ final class ScanCoordinator {
             let grants = try await tccScanner.scan()
             viewModel.grants = grants
             viewModel.tccDataSource = tccDataSource
+            viewModel.tccScanError = nil
+        } catch let scannerError as ScannerError {
+            Self.logger.error("TCC scan failed: \(scannerError.localizedDescription, privacy: .public)")
+            viewModel.tccScanError = scannerError
         } catch {
-            Self.logger.error("TCC scan failed: \(error.localizedDescription, privacy: .public)")
+            Self.logger.error("TCC scan failed with unexpected error: \(error.localizedDescription, privacy: .public)")
+            viewModel.tccScanError = .permissionDenied(reason: error.localizedDescription)
         }
 
         do {
@@ -47,5 +52,9 @@ final class ScanCoordinator {
         } catch {
             Self.logger.error("LaunchAgent scan failed: \(error.localizedDescription, privacy: .public)")
         }
+    }
+
+    func rescan() async {
+        await runScan()
     }
 }
