@@ -23,3 +23,7 @@ public protocol TCCScanner: Sendable {
 public protocol LaunchAgentScanner: Sendable {
     func scan() async throws -> [LaunchAgentItem]
 }
+
+public protocol BTMScanner: Sendable {
+    func scan() async throws -> [BTMItem]
+}
