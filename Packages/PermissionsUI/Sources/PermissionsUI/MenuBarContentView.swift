@@ -9,14 +9,8 @@ public struct MenuBarContentView: View {
 
     public var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            HStack {
-                Text("Permission Pulse")
-                    .font(.headline)
-                Spacer()
-                if anySectionIsMock {
-                    MockBadge()
-                }
-            }
+            Text("Permission Pulse")
+                .font(.headline)
 
             Divider()
 
@@ -43,9 +37,5 @@ public struct MenuBarContentView: View {
         }
         .padding(12)
         .frame(width: 280)
-    }
-
-    private var anySectionIsMock: Bool {
-        viewModel.tccDataSource == .mock || viewModel.launchAgentsDataSource == .mock
     }
 }
