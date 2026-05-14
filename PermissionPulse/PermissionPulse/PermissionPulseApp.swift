@@ -5,8 +5,6 @@ import PermissionsUI
 @main
 struct PermissionPulseApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
-    @State private var viewModel = AppViewModel()
-    @State private var coordinator: ScanCoordinator?
 
     var body: some Scene {
         // Settings trampoline — works around the Tahoe MenuBarExtra/openSettings
@@ -20,21 +18,15 @@ struct PermissionPulseApp: App {
 
         MenuBarExtra("Permission Pulse", systemImage: "shield.lefthalf.filled") {
             MenuBarContentView()
-                .environment(viewModel)
+                .environment(appDelegate.viewModel)
         }
         .menuBarExtraStyle(.window)
 
         WindowGroup("Permission Pulse", id: "detail") {
-            DetailWindowView(onRefresh: { [coordinator] in
-                await coordinator?.rescan()
+            DetailWindowView(onRefresh: { [appDelegate] in
+                await appDelegate.rescan()
             })
-                .environment(viewModel)
-                .task {
-                    if coordinator == nil {
-                        coordinator = ScanCoordinator(viewModel: viewModel)
-                    }
-                    await coordinator?.runScan()
-                }
+                .environment(appDelegate.viewModel)
         }
         .windowResizability(.contentSize)
     }
@@ -43,12 +35,24 @@ struct PermissionPulseApp: App {
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate {
     static let hasSeenWelcomeKey = "com.wallymagill.permissionpulse.hasSeenWelcome"
+
+    let viewModel = AppViewModel()
+    private var coordinator: ScanCoordinator?
     private var welcomeWindow: NSWindow?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        coordinator = ScanCoordinator(viewModel: viewModel)
+        Task { @MainActor in
+            await coordinator?.runScan()
+        }
+
         if !UserDefaults.standard.bool(forKey: Self.hasSeenWelcomeKey) {
             showWelcomeWindow()
         }
+    }
+
+    func rescan() async {
+        await coordinator?.rescan()
     }
 
     private func showWelcomeWindow() {
