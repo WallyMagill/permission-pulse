@@ -66,25 +66,36 @@ Each scanner is documented as: **what it reads, which API, what permission is ne
 
 ---
 
-## BTM (Background Task Management)
+## BTM (Background Task Management) — implemented v0.4.0 (direct decode)
 
 **What:** Apps registered with macOS's Background Task Management — the modern unified location for login items, agent daemons, and helper tools.
 
+**Implementation:** `BTMScannerDirect` in `PermissionsScanners`. Reads the highest-versioned `.btm` file on disk via `NSKeyedUnarchiver` (not `PropertyListDecoder` — the file is NSKeyedArchiver-encoded, not a plain plist). The private `ItemRecord` class is registered to a Swift shim (`BTMItemRecordShim`). See `docs/_btm-schema-dump-tahoe-26.md` for the full schema and `docs/13-btm-slice.md` for the slice writeup.
+
 **Where:**
-- `/private/var/db/com.apple.backgroundtaskmanagement/BackgroundItems-v*.btm` (binary plist)
-- (alternative) `sudo sfltool dumpbtm` (text output)
+- `/private/var/db/com.apple.backgroundtaskmanagement/BackgroundItems-v*.btm`
+- Two versions coexist on Tahoe 26 (`v13`, `v16`). The scanner globs and picks the highest integer suffix.
 
-**API:** Two implementations, both feasible:
+**API:** Direct decode via `NSKeyedUnarchiver(forReadingFrom:)` with `requiresSecureCoding = false`.
 
-1. **`BTMScannerDirect`** — `PropertyListDecoder` over the `.btm` binary plist. Needs FDA. No sudo. Schema is private and Apple has bumped the version suffix (`v7`, `v8`, …) on macOS majors. Preferred when it works.
-2. **`BTMScannerSFL`** — `Process` shell-out to `sfltool dumpbtm` + text parse. Requires sudo prompt the user invokes manually (we do not invoke sudo automatically). Falls back when direct parsing fails.
+**Permission needed:** Full Disk Access. The directory is root-owned at 0755 but read-gated by TCC; FDA on the `.app` is sufficient — no `sudo` is invoked at runtime (hard rule).
 
-**Permission needed:** Either FDA (direct) or admin-via-Terminal (SFL fallback — user-driven).
+**Fragility:** Very high. No public API. The on-disk class name (`ItemRecord`) and the top-level key (`itemsByUserIdentifier`) are private. Apple bumps the file-version suffix without notice. The shim only reads known fields and ignores unknowns to survive non-breaking schema drift.
 
-**Fragility:** Very high. No public API. Filename version bumps unannounced. Output format of `sfltool` is undocumented and has changed before.
+**Sentinel user UUIDs:**
+
+| UUID | `BTMItem.Scope` |
+|---|---|
+| `FFFFEEEE-DDDD-CCCC-BBBB-AAAAFFFFFFFE` | `.user` (root / UID -2) |
+| `FFFFEEEE-DDDD-CCCC-BBBB-AAAA00000000` | `.system` (UID 0) |
+| any other UUID | `.perUser(uuid:)` |
 
 **Failure mode:**
-- Both scanners fail → show "BTM enumeration unavailable on this macOS — we'll add support as soon as we figure out the new format" empty state. The rest of the app continues to function. The user is told this is not their fault.
+- FDA denied → BTM section shows the FDA empty-state CTA (mirroring the TCC pattern). Menu bar rolls TCC + BTM denials into a single "Full Disk Access needed" attention row.
+- Schema not recognized → schema-mismatch banner at the top of the detail window with the running macOS version interpolated; section shows "Background items unavailable — see the banner above".
+
+**Deferred (later slices):**
+- `BTMScannerSFL` fallback (`sfltool dumpbtm` via user-invoked `sudo`) — deferred to a future v0.4.x slice if FDA-only proves insufficient. The shipping app must never invoke `sudo` automatically.
 
 ---
 
@@ -137,9 +148,9 @@ Each scanner is documented as: **what it reads, which API, what permission is ne
 
 | Source | Permission required | Fragility | If unavailable |
 |---|---|---|---|
-| TCC.db | FDA | High | Inbox shows "needs FDA" empty state |
+| TCC.db | FDA | High | Inbox shows "needs FDA" empty state (✅ implemented v0.3.0) |
 | LaunchAgents/Daemons (public) | None | Low | always works (✅ implemented v0.2.0) |
-| BTM (direct .btm) | FDA | Very high | falls back to SFL or empty state |
-| BTM (sfltool) | Manual sudo | High | falls back to empty state |
+| BTM (direct .btm) | FDA | Very high | section shows FDA empty state (✅ implemented v0.4.0) |
+| BTM (sfltool) | Manual sudo | High | deferred (would be a manual user step, not automation) |
 | Mic/Cam observation | None | Low-medium | menu-bar dot hidden |
 | Last-launch date | None | Medium | app omitted from Stale review |

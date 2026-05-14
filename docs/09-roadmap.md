@@ -37,10 +37,20 @@ See `docs/11-tcc-slice.md` for the spec.
 
 See `docs/12-fda-ux-slice.md` for the spec.
 
-## v0.4.0 — BTM and mic/cam
+## v0.4.0 — BTM scanner (✅ done 2026-05-14)
 
-- `BTMScannerDirect` + `BTMScannerSFL` fallback.
-- `MediaUseScannerAVFoundation` for the menu-bar dot.
+- `BTMScannerDirect` reads `BackgroundItems-v*.btm` via `NSKeyedUnarchiver`. ✅
+- `BackgroundItemsSection` renders enabled and disabled login items / helpers. ✅
+- Generalized `PermissionsEmptyStateView` + `SchemaMismatchBanner` across TCC and BTM domains. ✅
+- Menu-bar attention row rolls TCC + BTM FDA denials into one CTA. ✅
+- `BTMScannerSFL` fallback (sudo-required, manual user step) deferred.
+
+See `docs/13-btm-slice.md` for the spec.
+
+## v0.4.1 — Mic/cam current use + menu-bar icon
+
+- `MediaUseScannerAVFoundation` for live observation of mic/cam usage.
+- State-driven `MenuBarExtra` icon overhaul (orange dot for mic, green for camera, mixed when both).
 
 ## v0.5.0 — What Changed and Stale review
 
