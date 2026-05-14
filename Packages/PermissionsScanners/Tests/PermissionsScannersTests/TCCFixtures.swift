@@ -133,6 +133,15 @@ enum TCCFixtures {
         }
     }
 
+    static func makeNonexistentBundleFixture(url: URL) async throws {
+        try await makeFixture(url: url, schema: fullSchema) { db in
+            try db.execute(sql: insertSQL, arguments: [
+                "kTCCServiceCamera", "com.example.permissionpulse.nonexistent-test.bundle",
+                ClientType.bundleID, AuthValue.allowed, 1_715_000_000,
+            ])
+        }
+    }
+
     static func makeDeniedFixture(url: URL) async throws {
         try await makeFixture(url: url, schema: fullSchema) { db in
             try db.execute(sql: insertSQL, arguments: [

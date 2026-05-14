@@ -1,3 +1,4 @@
+import AppKit
 import Foundation
 import GRDB
 import OSLog
@@ -174,7 +175,7 @@ public struct TCCScannerSQLite: TCCScanner, Sendable {
         guard let client, !client.isEmpty, let clientType else { return nil }
         switch clientType {
         case 0:
-            return AppIdentity(bundleID: client, displayName: client)
+            return AppIdentity(bundleID: client, displayName: resolveDisplayName(bundleID: client))
         case 1:
             let url = URL(fileURLWithPath: client)
             let name = url.deletingPathExtension().lastPathComponent
@@ -182,6 +183,14 @@ public struct TCCScannerSQLite: TCCScanner, Sendable {
         default:
             return nil
         }
+    }
+
+    private static func resolveDisplayName(bundleID: String) -> String {
+        guard let url = NSWorkspace.shared.urlForApplication(withBundleIdentifier: bundleID) else {
+            return bundleID
+        }
+        let name = FileManager.default.displayName(atPath: url.path(percentEncoded: false))
+        return name.isEmpty ? bundleID : name
     }
 
     private static func sortGrants(_ a: PermissionGrant, _ b: PermissionGrant) -> Bool {

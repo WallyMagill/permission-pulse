@@ -196,6 +196,20 @@ import PermissionsCore
         #expect(cameraGrant?.automationTarget == nil)
     }
 
+    @Test func scanFallsBackToBundleIDWhenAppNotInstalled() async throws {
+        let dir = try TempDir()
+        let dbURL = dir.dbURL("nonexistent.db")
+        try await TCCFixtures.makeNonexistentBundleFixture(url: dbURL)
+
+        let scanner = TCCScannerSQLite(databaseURLs: [dbURL])
+        let grants = try await scanner.scan()
+
+        #expect(grants.count == 1)
+        let grant = try #require(grants.first)
+        #expect(grant.app.bundleID == "com.example.permissionpulse.nonexistent-test.bundle")
+        #expect(grant.app.displayName == "com.example.permissionpulse.nonexistent-test.bundle")
+    }
+
     @Test func scanDoesNotCreateSidecarFiles() async throws {
         let dir = try TempDir()
         let dbURL = dir.dbURL("sidecars.db")
