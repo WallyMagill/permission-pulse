@@ -49,6 +49,11 @@ private struct GrantRow: View {
             Text("\(grant.service.displayName) · \(grant.app.bundleID)")
                 .font(.caption)
                 .foregroundStyle(.secondary)
+            if grant.service == .automation, let target = grant.automationTarget {
+                Text("Controls → \(target)")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
         }
     }
 }

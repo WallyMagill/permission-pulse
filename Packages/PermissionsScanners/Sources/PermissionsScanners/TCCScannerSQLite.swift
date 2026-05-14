@@ -136,7 +136,7 @@ public struct TCCScannerSQLite: TCCScanner, Sendable {
 
     private static func fetchRows(from db: Database) throws -> [TCCRow] {
         let rows = try Row.fetchAll(db, sql: """
-            SELECT service, client, client_type, auth_value, last_modified
+            SELECT service, client, client_type, auth_value, last_modified, indirect_object_identifier
             FROM access
             """)
         return rows.compactMap(TCCRow.init(row:))
@@ -158,8 +158,16 @@ public struct TCCScannerSQLite: TCCScanner, Sendable {
             return nil
         }
 
+        let automationTarget: String? = (service == .automation && row.indirectObjectIdentifier != "UNUSED")
+            ? row.indirectObjectIdentifier
+            : nil
         let lastModified = Date(timeIntervalSince1970: TimeInterval(row.lastModified))
-        return PermissionGrant(service: service, app: identity, lastModified: lastModified)
+        return PermissionGrant(
+            service: service,
+            app: identity,
+            lastModified: lastModified,
+            automationTarget: automationTarget
+        )
     }
 
     private static func buildAppIdentity(client: String?, clientType: Int?) -> AppIdentity? {
@@ -202,6 +210,7 @@ public struct TCCScannerSQLite: TCCScanner, Sendable {
         let clientType: Int?
         let authValue: Int
         let lastModified: Int64
+        let indirectObjectIdentifier: String
 
         init?(row: Row) {
             guard let service: String = row["service"] else { return nil }
@@ -210,6 +219,7 @@ public struct TCCScannerSQLite: TCCScanner, Sendable {
             self.clientType = row["client_type"]
             self.authValue = row["auth_value"] ?? -1
             self.lastModified = row["last_modified"] ?? 0
+            self.indirectObjectIdentifier = row["indirect_object_identifier"] ?? "UNUSED"
         }
     }
 }

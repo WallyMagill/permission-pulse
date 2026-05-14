@@ -20,8 +20,14 @@ enum TCCFixtures {
             client TEXT NOT NULL,
             client_type INTEGER NOT NULL,
             auth_value INTEGER NOT NULL,
-            last_modified INTEGER NOT NULL
+            last_modified INTEGER NOT NULL,
+            indirect_object_identifier TEXT NOT NULL DEFAULT 'UNUSED'
         )
+        """
+
+    static let insertSQLWithTarget = """
+        INSERT INTO access (service, client, client_type, auth_value, last_modified, indirect_object_identifier)
+        VALUES (?, ?, ?, ?, ?, ?)
         """
 
     static let schemaMissingAuthValue = """
@@ -104,6 +110,25 @@ enum TCCFixtures {
             try db.execute(sql: insertSQL, arguments: [
                 "kTCCServiceMicrophone", "us.zoom.xos",
                 ClientType.bundleID, AuthValue.allowed, 1_714_000_000,
+            ])
+        }
+    }
+
+    static func makeAutomationFixture(url: URL) async throws {
+        try await makeFixture(url: url, schema: fullSchema) { db in
+            try db.execute(sql: insertSQLWithTarget, arguments: [
+                "kTCCServiceAppleEvents", "com.raycast.macos",
+                ClientType.bundleID, AuthValue.allowed, 1_715_000_000,
+                "com.apple.Safari",
+            ])
+            try db.execute(sql: insertSQLWithTarget, arguments: [
+                "kTCCServiceAppleEvents", "com.raycast.macos",
+                ClientType.bundleID, AuthValue.allowed, 1_714_000_000,
+                "com.googlecode.iterm2",
+            ])
+            try db.execute(sql: insertSQL, arguments: [
+                "kTCCServiceCamera", "com.example.app",
+                ClientType.bundleID, AuthValue.allowed, 1_715_000_000,
             ])
         }
     }

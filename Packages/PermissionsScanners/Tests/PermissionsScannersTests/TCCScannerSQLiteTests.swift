@@ -177,6 +177,25 @@ import PermissionsCore
         }
     }
 
+    @Test func scanPopulatesAutomationTarget() async throws {
+        let dir = try TempDir()
+        let dbURL = dir.dbURL("automation.db")
+        try await TCCFixtures.makeAutomationFixture(url: dbURL)
+
+        let scanner = TCCScannerSQLite(databaseURLs: [dbURL])
+        let grants = try await scanner.scan()
+
+        #expect(grants.count == 3)
+
+        let automationGrants = grants.filter { $0.service == .automation }
+        #expect(automationGrants.count == 2)
+        let targets = Set(automationGrants.compactMap(\.automationTarget))
+        #expect(targets == ["com.apple.Safari", "com.googlecode.iterm2"])
+
+        let cameraGrant = grants.first { $0.service == .camera }
+        #expect(cameraGrant?.automationTarget == nil)
+    }
+
     @Test func scanDoesNotCreateSidecarFiles() async throws {
         let dir = try TempDir()
         let dbURL = dir.dbURL("sidecars.db")
