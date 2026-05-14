@@ -6,6 +6,16 @@ public enum ScannerError: Error, Sendable {
     case unsupportedOnThisOS(detail: String)
 }
 
+extension ScannerError: LocalizedError {
+    public var errorDescription: String? {
+        switch self {
+        case .permissionDenied(let reason):    reason
+        case .schemaMismatch(let detail):      detail
+        case .unsupportedOnThisOS(let detail): detail
+        }
+    }
+}
+
 public protocol TCCScanner: Sendable {
     func scan() async throws -> [PermissionGrant]
 }

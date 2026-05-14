@@ -29,3 +29,20 @@ import Foundation
         #expect(Set(paths).count == paths.count)
     }
 }
+
+@Suite struct ScannerErrorLocalizationTests {
+    @Test func permissionDeniedExposesReason() {
+        let error = ScannerError.permissionDenied(reason: "Grant Full Disk Access")
+        #expect(error.localizedDescription == "Grant Full Disk Access")
+    }
+
+    @Test func schemaMismatchExposesDetail() {
+        let error = ScannerError.schemaMismatch(detail: "missing column auth_value")
+        #expect(error.localizedDescription == "missing column auth_value")
+    }
+
+    @Test func unsupportedOnThisOSExposesDetail() {
+        let error = ScannerError.unsupportedOnThisOS(detail: "access table not found")
+        #expect(error.localizedDescription == "access table not found")
+    }
+}
