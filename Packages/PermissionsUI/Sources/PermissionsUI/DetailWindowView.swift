@@ -3,16 +3,26 @@ import PermissionsCore
 
 public struct DetailWindowView: View {
     @Environment(AppViewModel.self) private var viewModel
+    private let onRefresh: (() async -> Void)?
 
-    public init() {}
+    public init(onRefresh: (() async -> Void)? = nil) {
+        self.onRefresh = onRefresh
+    }
 
     public var body: some View {
         NavigationStack {
             List {
+                if shouldShowSchemaBanner, let error = viewModel.tccScanError {
+                    Section {
+                        SchemaMismatchBanner(error: error)
+                            .listRowInsets(EdgeInsets())
+                            .listRowBackground(Color.clear)
+                    }
+                }
+
                 Section {
                     if viewModel.grants.isEmpty {
-                        Text("No permissions yet")
-                            .foregroundStyle(.secondary)
+                        PermissionsEmptyStateView(error: viewModel.tccScanError)
                     } else {
                         ForEach(viewModel.grants, id: \.self) { grant in
                             GrantRow(grant: grant)
@@ -20,7 +30,7 @@ public struct DetailWindowView: View {
                     }
                 } header: {
                     HStack {
-                        Text("Permissions")
+                        Text(String(localized: "Permissions"))
                         Spacer()
                         switch viewModel.tccDataSource {
                         case .mock: MockBadge()
@@ -34,9 +44,27 @@ public struct DetailWindowView: View {
                     dataSource: viewModel.launchAgentsDataSource
                 )
             }
-            .navigationTitle("Permission Pulse")
+            .navigationTitle(String(localized: "Permission Pulse"))
+            .toolbar {
+                if let onRefresh {
+                    ToolbarItem(placement: .primaryAction) {
+                        Button {
+                            Task { await onRefresh() }
+                        } label: {
+                            Label(String(localized: "Refresh"), systemImage: "arrow.clockwise")
+                        }
+                    }
+                }
+            }
         }
         .frame(minWidth: 520, minHeight: 360)
+    }
+
+    private var shouldShowSchemaBanner: Bool {
+        switch viewModel.tccScanError {
+        case .schemaMismatch, .unsupportedOnThisOS: true
+        default: false
+        }
     }
 }
 
