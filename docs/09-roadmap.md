@@ -24,10 +24,18 @@ See `docs/10-first-slice.md` for the spec.
 - `TCCScannerSQLite` implemented (reads user + system TCC.db). ✅
 - 16-case `PermissionService` enum with TCC-service-string mapping. ✅
 - Permission Inbox renders real TCC data when FDA is granted. ✅
-- FDA permission flow + Welcome screen → deferred to v0.3.1.
-- Schema-mismatch banner → deferred to v0.3.1.
 
 See `docs/11-tcc-slice.md` for the spec.
+
+## v0.3.1 — FDA UX closure (✅ done 2026-05-14)
+
+- Welcome window on first launch with deep-link into System Settings → Full Disk Access. ✅
+- Empty-state CTA in the Permissions section when FDA is denied. ✅
+- Schema-mismatch banner at top of detail window. ✅
+- Menu-bar attention row when FDA is denied or schema unrecognized. ✅
+- Refresh toolbar button on the detail window. ✅
+
+See `docs/12-fda-ux-slice.md` for the spec.
 
 ## v0.4.0 — BTM and mic/cam
 
