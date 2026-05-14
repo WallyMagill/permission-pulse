@@ -12,9 +12,17 @@ public struct DetailWindowView: View {
     public var body: some View {
         NavigationStack {
             List {
-                if shouldShowSchemaBanner, let error = viewModel.tccScanError {
+                if let tccError = viewModel.tccScanError, isSchemaIssue(tccError) {
                     Section {
-                        SchemaMismatchBanner(error: error)
+                        SchemaMismatchBanner(error: tccError, domain: .tcc)
+                            .listRowInsets(EdgeInsets())
+                            .listRowBackground(Color.clear)
+                    }
+                }
+
+                if let btmError = viewModel.btmScanError, isSchemaIssue(btmError) {
+                    Section {
+                        SchemaMismatchBanner(error: btmError, domain: .btm)
                             .listRowInsets(EdgeInsets())
                             .listRowBackground(Color.clear)
                     }
@@ -22,7 +30,7 @@ public struct DetailWindowView: View {
 
                 Section {
                     if viewModel.grants.isEmpty {
-                        PermissionsEmptyStateView(error: viewModel.tccScanError)
+                        PermissionsEmptyStateView(error: viewModel.tccScanError, domain: .tcc)
                     } else {
                         ForEach(viewModel.grants, id: \.self) { grant in
                             GrantRow(grant: grant)
@@ -43,6 +51,12 @@ public struct DetailWindowView: View {
                     items: viewModel.launchAgents,
                     dataSource: viewModel.launchAgentsDataSource
                 )
+
+                BackgroundItemsSection(
+                    items: viewModel.btmItems,
+                    dataSource: viewModel.btmDataSource,
+                    error: viewModel.btmScanError
+                )
             }
             .navigationTitle(String(localized: "Permission Pulse"))
             .toolbar {
@@ -60,8 +74,8 @@ public struct DetailWindowView: View {
         .frame(minWidth: 520, minHeight: 360)
     }
 
-    private var shouldShowSchemaBanner: Bool {
-        switch viewModel.tccScanError {
+    private func isSchemaIssue(_ error: ScannerError) -> Bool {
+        switch error {
         case .schemaMismatch, .unsupportedOnThisOS: true
         default: false
         }
