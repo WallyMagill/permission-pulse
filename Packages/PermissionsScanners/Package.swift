@@ -9,15 +9,23 @@ let package = Package(
     ],
     dependencies: [
         .package(path: "../PermissionsCore"),
+        .package(url: "https://github.com/groue/GRDB.swift", from: "7.10.0"),
     ],
     targets: [
         .target(
             name: "PermissionsScanners",
-            dependencies: ["PermissionsCore"]
+            dependencies: [
+                "PermissionsCore",
+                .product(name: "GRDB", package: "GRDB.swift"),
+            ]
         ),
         .testTarget(
             name: "PermissionsScannersTests",
-            dependencies: ["PermissionsScanners", "PermissionsCore"]
+            dependencies: [
+                "PermissionsScanners",
+                "PermissionsCore",
+                .product(name: "GRDB", package: "GRDB.swift"),
+            ]
         ),
     ]
 )
