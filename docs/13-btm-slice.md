@@ -22,11 +22,15 @@
    `/private/var/db/com.apple.backgroundtaskmanagement/BackgroundItems-v*.btm`
    via `NSKeyedUnarchiver` with `requiresSecureCoding = false`. Globs the
    directory and picks the highest version suffix on disk.
-2. **`BTMItemRecordShim`** is a `final class NSObject, NSCoding` that
-   matches the private `ItemRecord` class encoded inside the archive.
-   Registered with the unarchiver under the on-disk class name
-   `"ItemRecord"`. Reads only the fields v0.4.0 surfaces; ignores
-   unknowns.
+2. **`BTMItemRecordShim`** and **`BTMStorageShim`** are
+   `final class NSObject, NSCoding` Swift types that match Apple's two
+   private classes encoded inside the archive. The archive's `$top`
+   key is `"store"` (not the default `"root"`), and the store is an
+   instance of a private `Storage` class whose `itemsByUserIdentifier`
+   field holds the per-user dictionary. We register both shims with
+   the unarchiver so the archive's `$class` UIDs resolve to our Swift
+   types. Each shim reads only the fields v0.4.0 surfaces and ignores
+   unknown encoded keys.
 3. **`BackgroundItemsSection` SwiftUI view** renders enabled and disabled
    background items with name + developer name + scope + type metadata,
    plus a disposition badge. Developer-group parents are filtered out;

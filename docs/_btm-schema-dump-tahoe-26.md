@@ -31,38 +31,51 @@ plain `Terminal.app` without FDA.
 ## Top-level archive layout
 
 `.btm` is **NSKeyedArchiver**-encoded, not a plain binary plist. The
-file's first bytes are:
+archive's `$top` section keys are:
 
 ```
 "$archiver" => "NSKeyedArchiver"
 "$objects"  => [ ... UID-referenced object graph ... ]
-"$top"      => { "root" => UID -> $objects[1] }
+"$top"      => { "store" => UID -> $objects[1], "version" => 16 }
 "$version"  => 100000
 ```
 
-`PropertyListDecoder` does **not** work here — calling it returns the raw
-graph rather than the rewired root object. `NSKeyedUnarchiver` does the
-UID dereferencing for us:
+Two important deviations from the typical NSKeyedArchiver layout:
+
+1. The root object is stored under the key **`"store"`**, not the
+   standard `NSKeyedArchiveRootObjectKey` (which is `"root"`). Passing
+   `"root"` to `decodeObject(forKey:)` returns `nil`.
+2. Alongside the store, `$top` also carries an integer `"version"` that
+   matches the filename suffix (`16` for `BackgroundItems-v16.btm`).
+   v0.4.0 ignores this; future slices could use it for an extra
+   sanity-check.
+
+The object at `$objects[1]` is **not** a plain `NSDictionary`. It is an
+instance of a private Apple class called `Storage` (see object 827 in
+the dump — `"$classname" => "Storage"`). The `Storage` class has a
+single field of interest to us:
+
+| `Storage` field | Type | v0.4.0 use |
+|---|---|---|
+| `itemsByUserIdentifier` | `NSDictionary` (keyed by user UUID) | **read** |
+| `mdmPaloadsByIdentifier` | `NSDictionary` (sic: Apple's typo "Paloads") | not read |
+| `userSettingsByUserIdentifier` | `NSDictionary` (per-user settings → `BTMUserSettings` instances) | not read |
+
+`PropertyListDecoder` does **not** work here — calling it returns the
+raw graph rather than the rewired root object. `NSKeyedUnarchiver` does
+the UID dereferencing, but only if we register both private classes
+(`Storage` and `ItemRecord`) so the archive's `$class` UIDs resolve:
 
 ```swift
 let unarchiver = try NSKeyedUnarchiver(forReadingFrom: data)
 unarchiver.requiresSecureCoding = false
+unarchiver.setClass(BTMStorageShim.self,    forClassName: "Storage")
 unarchiver.setClass(BTMItemRecordShim.self, forClassName: "ItemRecord")
-let root = unarchiver.decodeObject(forKey: NSKeyedArchiveRootObjectKey)
+let storage = unarchiver.decodeObject(forKey: "store") as? BTMStorageShim
+let items   = storage?.itemsByUserIdentifier
 ```
 
-We register the shim under the on-disk Objective-C class name
-`"ItemRecord"` so the archive's `$class` UIDs resolve to our Swift type.
-
-## Root dictionary keys
-
-The root object (`$objects[1]`) is an `NSDictionary` with three keys:
-
-| Key | Type | v0.4.0 use |
-|---|---|---|
-| `itemsByUserIdentifier` | `[String: NSArray<ItemRecord>]` | **read** — primary source |
-| `mdmPaloadsByIdentifier` | dictionary of MDM payloads (sic: Apple's typo "Paloads") | not read |
-| `userSettingsByUserIdentifier` | per-user settings dict | not read |
+## Storage root object
 
 `mdmPaloadsByIdentifier` is misspelled in Apple's own data (it's been
 shipped that way for years). Preserve the typo if you ever read it — do
@@ -208,8 +221,8 @@ comparison with the direct decode:
 - **Discovery:** glob `BackgroundItems-v*.btm`, parse the integer suffix,
   pick the highest. On Tahoe today: v13 + v16 — v16 wins.
 - **Schema validation:** mirror `TCCScannerSQLite.validateSchema`. Throw
-  `.schemaMismatch` if the root isn't a dictionary or if
-  `itemsByUserIdentifier` is missing.
+  `.schemaMismatch` if the archive's `"store"` key is missing, if its
+  class isn't `Storage`, or if `Storage.itemsByUserIdentifier` is nil.
 - **Failure semantics:**
   - I/O failure on `Data(contentsOf:)` → `.permissionDenied` (FDA is the
     typical cause).
