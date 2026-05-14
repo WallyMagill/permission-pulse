@@ -4,7 +4,7 @@ import Foundation
 
 @Suite struct PermissionsCoreSmokeTests {
     @Test func permissionServiceHasAllExpectedCases() {
-        #expect(PermissionService.allCases.count == 7)
+        #expect(PermissionService.allCases.count == 16)
     }
 
     @Test func permissionServiceDisplayNamesAreNonEmpty() {
