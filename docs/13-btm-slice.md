@@ -155,6 +155,27 @@ are tracked in `docs/_btm-schema-dump-tahoe-26.md` as known unknowns.
 - **Disposition bits 1 / 3** (allowed-by-policy, notified) → revisit if
   users report state-mismatch.
 
+## Known visual polish deferred to v0.4.x / v0.5.0
+
+Functionality in v0.4.0 is correct (scanner, schema validation, FDA
+rollup, attention-row priority, deep-linking, scan-on-launch). Some
+SwiftUI rendering on Tahoe 26 does not match the intent and is deferred
+to a follow-up UX slice:
+
+- **Mock badge visibility on FDA-denied sections.** Logic to hide the
+  badge when `*ScanError` is non-nil is in `DetailWindowView` and
+  `BackgroundItemsSection`, but the badge still renders on Tahoe 26 in
+  practice. Likely a SwiftUI `Section` re-evaluation issue.
+- **Grant Access in System Settings button rendering.** The button is
+  in the empty-state view with `.borderedProminent` + `.controlSize(.large)`
+  + `.tint(.blue)` + explicit HStack content, but is not visible on Tahoe
+  26 inside a `List` section. The menu-bar attention row deep-links
+  correctly as a workaround.
+- **No native FDA grant modal.** macOS does not expose a public API to
+  present a "Grant FDA?" prompt. Apps that appear to do this are
+  showing a custom `NSAlert`-style dialog and then deep-linking. A
+  guided custom dialog could be added in a v0.5.0 UX polish slice.
+
 ## Tahoe-specific risks (documented)
 
 - **v13 vs v16 file-version divergence.** Only v16 verified on this
