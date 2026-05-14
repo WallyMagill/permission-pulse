@@ -19,8 +19,8 @@ final class ScanCoordinator {
 
     init(
         viewModel: AppViewModel,
-        tccScanner: any TCCScanner = MockTCCScanner(),
-        tccDataSource: AppViewModel.DataSource = .mock,
+        tccScanner: any TCCScanner = TCCScannerSQLite(),
+        tccDataSource: AppViewModel.DataSource = .live,
         launchAgentScanner: any LaunchAgentScanner = LaunchAgentScannerFS(),
         launchAgentsDataSource: AppViewModel.DataSource = .live
     ) {
