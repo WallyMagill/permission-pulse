@@ -11,10 +11,13 @@ import Testing
         let data = try Data(contentsOf: fileURL)
         let unarchiver = try NSKeyedUnarchiver(forReadingFrom: data)
         unarchiver.requiresSecureCoding = false
-        unarchiver.setClass(BTMItemRecordShim.self, forClassName: "ItemRecord")
-        let root = try #require(unarchiver.decodeObject(forKey: NSKeyedArchiveRootObjectKey) as? NSDictionary)
+        unarchiver.setClass(BTMStorageShim.self, forClassName: BTMScannerDirect.storageClassName)
+        unarchiver.setClass(BTMItemRecordShim.self, forClassName: BTMScannerDirect.itemRecordClassName)
 
-        let items = try #require(root["itemsByUserIdentifier"] as? NSDictionary)
+        let storage = try #require(
+            unarchiver.decodeObject(forKey: BTMScannerDirect.topLevelStoreKey) as? BTMStorageShim
+        )
+        let items = try #require(storage.itemsByUserIdentifier)
         let rootBucket = try #require(items[BTMFixtures.rootUserUUID] as? [BTMItemRecordShim])
         #expect(rootBucket.count == 2)
 

@@ -57,12 +57,12 @@ enum BTMFixtures {
     )
 
     static func makeValidFixture(at directory: URL, fileName: String = defaultFileName) throws {
-        let dict = NSMutableDictionary()
-        dict["itemsByUserIdentifier"] = NSDictionary(dictionary: [
+        let items: NSDictionary = [
             rootUserUUID: NSArray(array: [zoomApp, dockerGroup]),
             perUserUUID: NSArray(array: [zoomDaemon]),
-        ])
-        try writeArchive(root: dict, to: directory.appendingPathComponent(fileName))
+        ]
+        let storage = BTMStorageShim(itemsByUserIdentifier: items)
+        try writeArchive(storage: storage, to: directory.appendingPathComponent(fileName))
     }
 
     static func makeSingleItemFixture(
@@ -82,29 +82,29 @@ enum BTMFixtures {
             disposition: disposition,
             modificationDate: 782_917_666.0
         )
-        let dict = NSMutableDictionary()
-        dict["itemsByUserIdentifier"] = NSDictionary(dictionary: [
+        let items: NSDictionary = [
             rootUserUUID: NSArray(array: [item]),
-        ])
-        try writeArchive(root: dict, to: directory.appendingPathComponent(fileName))
+        ]
+        let storage = BTMStorageShim(itemsByUserIdentifier: items)
+        try writeArchive(storage: storage, to: directory.appendingPathComponent(fileName))
     }
 
     static func makeEmptyItemsDictFixture(
         at directory: URL,
         fileName: String = defaultFileName
     ) throws {
-        let dict = NSMutableDictionary()
-        dict["itemsByUserIdentifier"] = NSDictionary()
-        try writeArchive(root: dict, to: directory.appendingPathComponent(fileName))
+        let storage = BTMStorageShim(itemsByUserIdentifier: NSDictionary())
+        try writeArchive(storage: storage, to: directory.appendingPathComponent(fileName))
     }
 
+    /// Writes an archive whose `Storage` object has no `itemsByUserIdentifier`
+    /// field — simulates a future macOS release that renames the property.
     static func makeMissingTopLevelKeyFixture(
         at directory: URL,
         fileName: String = defaultFileName
     ) throws {
-        let dict = NSMutableDictionary()
-        dict["someOtherKey"] = NSArray()
-        try writeArchive(root: dict, to: directory.appendingPathComponent(fileName))
+        let storage = BTMStorageShim(itemsByUserIdentifier: nil)
+        try writeArchive(storage: storage, to: directory.appendingPathComponent(fileName))
     }
 
     static func makeMalformedFixture(
@@ -136,20 +136,21 @@ enum BTMFixtures {
             disposition: DispositionRaw.enabledAllowedNotified,
             modificationDate: 782_917_666.0
         )
-        let dict = NSMutableDictionary()
-        dict["itemsByUserIdentifier"] = NSDictionary(dictionary: [
+        let items: NSDictionary = [
             systemUserUUID: NSArray(array: [systemItem]),
             rootUserUUID: NSArray(array: [rootItem]),
             perUserUUID: NSArray(array: [userItem]),
-        ])
-        try writeArchive(root: dict, to: directory.appendingPathComponent(fileName))
+        ]
+        let storage = BTMStorageShim(itemsByUserIdentifier: items)
+        try writeArchive(storage: storage, to: directory.appendingPathComponent(fileName))
     }
 
-    private static func writeArchive(root: Any, to url: URL) throws {
+    private static func writeArchive(storage: BTMStorageShim, to url: URL) throws {
         let archiver = NSKeyedArchiver(requiringSecureCoding: false)
         archiver.outputFormat = .binary
-        archiver.setClassName("ItemRecord", for: BTMItemRecordShim.self)
-        archiver.encode(root, forKey: NSKeyedArchiveRootObjectKey)
+        archiver.setClassName(BTMScannerDirect.storageClassName, for: BTMStorageShim.self)
+        archiver.setClassName(BTMScannerDirect.itemRecordClassName, for: BTMItemRecordShim.self)
+        archiver.encode(storage, forKey: BTMScannerDirect.topLevelStoreKey)
         archiver.finishEncoding()
         try archiver.encodedData.write(to: url)
     }

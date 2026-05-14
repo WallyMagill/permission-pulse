@@ -8,7 +8,9 @@ public struct BTMScannerDirect: BTMScanner, Sendable {
         category: "scanners.btm"
     )
 
-    static let topLevelItemsKey = "itemsByUserIdentifier"
+    static let topLevelStoreKey = "store"
+    static let storageClassName = "Storage"
+    static let itemRecordClassName = "ItemRecord"
     static let rootUserUUIDSentinel = "FFFFEEEE-DDDD-CCCC-BBBB-AAAAFFFFFFFE"
     static let systemUserUUIDSentinel = "FFFFEEEE-DDDD-CCCC-BBBB-AAAA00000000"
 
@@ -103,18 +105,21 @@ public struct BTMScannerDirect: BTMScanner, Sendable {
             )
         }
         unarchiver.requiresSecureCoding = false
-        unarchiver.setClass(BTMItemRecordShim.self, forClassName: "ItemRecord")
+        unarchiver.setClass(BTMStorageShim.self, forClassName: storageClassName)
+        unarchiver.setClass(BTMItemRecordShim.self, forClassName: itemRecordClassName)
 
-        guard let root = unarchiver.decodeObject(forKey: NSKeyedArchiveRootObjectKey) as? NSDictionary else {
+        guard let storage = unarchiver.decodeObject(forKey: topLevelStoreKey) as? BTMStorageShim else {
             throw ScannerError.schemaMismatch(
-                detail: String(localized: "Root of \(fileName) is not a dictionary.")
+                detail: String(
+                    localized: "\(fileName) is missing the '\(topLevelStoreKey)' object, or its class is not '\(storageClassName)'."
+                )
             )
         }
 
-        guard let items = root[topLevelItemsKey] as? NSDictionary else {
+        guard let items = storage.itemsByUserIdentifier else {
             throw ScannerError.schemaMismatch(
                 detail: String(
-                    localized: "\(fileName) is missing the '\(topLevelItemsKey)' key."
+                    localized: "\(fileName) Storage object has no 'itemsByUserIdentifier' field."
                 )
             )
         }
