@@ -43,6 +43,39 @@ public struct SnapshotStore: Sendable {
             try db.execute(sql: "UPDATE schema_version SET version = 2")
         }
 
+        migrator.registerMigration("v3") { db in
+            try db.create(table: "tcc_grants") { t in
+                t.autoIncrementedPrimaryKey("id")
+                t.column("snapshot_id", .integer).notNull()
+                    .references("snapshots", onDelete: .cascade)
+                t.column("service", .text).notNull()
+                t.column("bundle_id", .text).notNull()
+                t.column("display_name", .text).notNull()
+                t.column("bundle_path", .text)
+                t.column("last_modified", .double).notNull()
+                t.column("automation_target", .text)
+            }
+            try db.create(table: "btm_items") { t in
+                t.autoIncrementedPrimaryKey("id")
+                t.column("snapshot_id", .integer).notNull()
+                    .references("snapshots", onDelete: .cascade)
+                t.column("identifier", .text).notNull()
+                t.column("name", .text).notNull()
+                t.column("developer_name", .text)
+                t.column("bundle_identifier", .text)
+                t.column("team_identifier", .text)
+                t.column("type_kind", .text).notNull()
+                t.column("type_raw", .integer)
+                t.column("disposition_kind", .text).notNull()
+                t.column("disposition_raw", .integer)
+                t.column("scope_kind", .text).notNull()
+                t.column("scope_per_user_uuid", .text)
+                t.column("modification_date", .double).notNull()
+                t.column("parent_identifier", .text)
+            }
+            try db.execute(sql: "UPDATE schema_version SET version = 3")
+        }
+
         try migrator.migrate(queue)
     }
 

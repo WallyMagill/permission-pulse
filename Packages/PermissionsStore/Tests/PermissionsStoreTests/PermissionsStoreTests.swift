@@ -5,14 +5,14 @@ import Testing
     @Test func inMemoryStoreOpensAndMigratesToLatestSchema() throws {
         let store = try SnapshotStore.inMemory()
         let version = try store.schemaVersion()
-        #expect(version == 2)
+        #expect(version == 3)
     }
 
     @Test func inMemoryStoreIsIdempotentOnReopen() throws {
         // Each in-memory store is independent; re-opening returns a fresh schema.
         let a = try SnapshotStore.inMemory()
         let b = try SnapshotStore.inMemory()
-        #expect(try a.schemaVersion() == 2)
-        #expect(try b.schemaVersion() == 2)
+        #expect(try a.schemaVersion() == 3)
+        #expect(try b.schemaVersion() == 3)
     }
 }

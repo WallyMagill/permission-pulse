@@ -4,9 +4,9 @@ import PermissionsCore
 @testable import PermissionsStore
 
 @Suite struct LaunchAgentsDiffTests {
-    @Test func migrationV2CreatesLaunchAgentsTable() async throws {
+    @Test func migrationCreatesLaunchAgentsTable() async throws {
         let store = try SnapshotStore.inMemory()
-        #expect(try store.schemaVersion() == 2)
+        #expect(try store.schemaVersion() == 3)
         // If the table is missing, an empty read still throws on schema. Issue a
         // benign write/read round-trip instead — proves the table is queryable.
         let id = try await store.writeLaunchAgentsSnapshot([])
