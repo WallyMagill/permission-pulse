@@ -1,5 +1,7 @@
 import AppKit
+import OSLog
 import SwiftUI
+import PermissionsStore
 import PermissionsUI
 
 @main
@@ -9,7 +11,8 @@ struct PermissionPulseApp: App {
     var body: some Scene {
         // Settings trampoline — works around the Tahoe MenuBarExtra/openSettings
         // regression by routing through a regular window. Must be declared
-        // before any Settings scene. See docs/03-architecture.md.
+        // FIRST (before any Settings scene or other WindowGroup). See
+        // docs/03-architecture.md.
         WindowGroup(id: "settings-trampoline") {
             EmptyView().frame(width: 0, height: 0)
         }
@@ -36,17 +39,37 @@ struct PermissionPulseApp: App {
 
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate {
+    private static let logger = Logger(
+        subsystem: "com.wallymagill.permissionpulse",
+        category: "app-delegate"
+    )
+
     static let hasSeenWelcomeKey = "com.wallymagill.permissionpulse.hasSeenWelcome"
 
     let viewModel = AppViewModel()
     private var coordinator: ScanCoordinator?
     private var mediaCoordinator: MediaUseCoordinator?
+    private var snapshotStore: SnapshotStore?
+    private var snapshotCoordinator: SnapshotCoordinator?
     private var welcomeWindow: NSWindow?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        do {
+            let url = try SnapshotPath.canonicalURL()
+            snapshotStore = try SnapshotStore(path: url.path(percentEncoded: false))
+        } catch {
+            Self.logger.error(
+                "SnapshotStore init failed: \(error.localizedDescription, privacy: .public)"
+            )
+        }
+        if let snapshotStore {
+            snapshotCoordinator = SnapshotCoordinator(viewModel: viewModel, store: snapshotStore)
+        }
+
         coordinator = ScanCoordinator(viewModel: viewModel)
         Task { @MainActor in
             await coordinator?.runScan()
+            await snapshotCoordinator?.onScanCompleted()
         }
 
         mediaCoordinator = MediaUseCoordinator(viewModel: viewModel)
@@ -59,6 +82,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func rescan() async {
         await coordinator?.rescan()
+        await snapshotCoordinator?.onScanCompleted()
+    }
+
+    func markCurrentSnapshotReviewed() {
+        snapshotCoordinator?.markCurrentSnapshotReviewed()
     }
 
     private func showWelcomeWindow() {
