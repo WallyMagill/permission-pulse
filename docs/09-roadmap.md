@@ -68,10 +68,14 @@ See `docs/14-mic-cam-icon-slice.md` for the spec.
 
 See `docs/15-what-changed-and-stale-slice.md` for the spec.
 
-## v0.6.0 — One-click fixes and risk explanations
+## v0.6.0 — One-click fixes and risk explanations (✅ done 2026-05-15)
 
-- Per-permission deep links into System Settings (verified on Sonoma + Sequoia + Tahoe).
-- Risk Explanations content (static, ships with the app).
+- `PermissionService.riskDescription` — plain-English paragraph per TCC service explaining what the grant lets the app do. ✅
+- `SystemSettingsLink.open(for: PermissionService)` — per-service deep links for all 16 services, verified on macOS Tahoe (26). Fallback to top-level Privacy pane if an anchor is no longer recognized. ✅
+- `PermissionDetailSheet` — tap any Permissions row to open a sheet with the app icon, service, risk paragraph, meta details, and an "Open in Settings" deep-link button. ✅
+- Sonoma + Sequoia cross-version anchor verification deferred to v0.6.x.
+
+See `docs/16-one-click-fixes-and-risk-slice.md` for the spec.
 
 ## v0.7.0 — Polish, weekly digest, preferences
 
