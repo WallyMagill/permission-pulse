@@ -49,3 +49,7 @@ public protocol MediaUseObserver: Sendable {
     func events() -> AsyncStream<MediaUseEvent>
     func stop() async
 }
+
+public protocol LastUsedProbe: Sendable {
+    func lastUsedDate(for bundlePath: URL) async -> (date: Date, source: StaleApp.DateSource)?
+}
