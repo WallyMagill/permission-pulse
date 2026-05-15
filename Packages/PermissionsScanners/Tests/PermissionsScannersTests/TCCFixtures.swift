@@ -142,6 +142,18 @@ enum TCCFixtures {
         }
     }
 
+    // Identical grant (same service + client + client_type) at a specific
+    // last_modified. Used by the dedupe test to seed two databases that
+    // collide except for the timestamp.
+    static func makeTimestampedFixture(url: URL, lastModified: Int) async throws {
+        try await makeFixture(url: url, schema: fullSchema) { db in
+            try db.execute(sql: insertSQL, arguments: [
+                "kTCCServiceCamera", "com.example.dup",
+                ClientType.bundleID, AuthValue.allowed, lastModified,
+            ])
+        }
+    }
+
     static func makeDeniedFixture(url: URL) async throws {
         try await makeFixture(url: url, schema: fullSchema) { db in
             try db.execute(sql: insertSQL, arguments: [

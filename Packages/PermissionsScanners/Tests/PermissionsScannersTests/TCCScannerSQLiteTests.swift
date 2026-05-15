@@ -29,7 +29,13 @@ import PermissionsCore
         let scanner = TCCScannerSQLite(databaseURLs: [userDB, systemDB])
         let grants = try await scanner.scan()
 
-        #expect(grants.count == 5)
+        // multi fixture: Zoom screenRecording + Zoom microphone (2)
+        // valid fixture: Zoom screenRecording + Raycast accessibility + Terminal FDA (3)
+        // Zoom screenRecording appears in both — dedupe collapses to one.
+        // Net unique grants: 4.
+        #expect(grants.count == 4)
+        let identities = Set(grants.map { "\($0.service.rawValue)|\($0.app.bundleID)" })
+        #expect(identities.count == 4)
     }
 
     @Test func scanThrowsSchemaMismatchWhenColumnMissing() async throws {
@@ -208,6 +214,28 @@ import PermissionsCore
         let grant = try #require(grants.first)
         #expect(grant.app.bundleID == "com.example.permissionpulse.nonexistent-test.bundle")
         #expect(grant.app.displayName == "com.example.permissionpulse.nonexistent-test.bundle")
+    }
+
+    @Test func scanDedupesIdenticalGrantsKeepingMostRecentLastModified() async throws {
+        let dir = try TempDir()
+        let olderDB = dir.dbURL("older.db")
+        let newerDB = dir.dbURL("newer.db")
+        try await TCCFixtures.makeTimestampedFixture(
+            url: olderDB,
+            lastModified: 1_700_000_000  // older
+        )
+        try await TCCFixtures.makeTimestampedFixture(
+            url: newerDB,
+            lastModified: 1_800_000_000  // newer
+        )
+
+        let scanner = TCCScannerSQLite(databaseURLs: [olderDB, newerDB])
+        let grants = try await scanner.scan()
+
+        #expect(grants.count == 1)
+        let grant = try #require(grants.first)
+        // The dedupe pass keeps the newer entry.
+        #expect(grant.lastModified.timeIntervalSince1970 == 1_800_000_000)
     }
 
     @Test func scanDoesNotCreateSidecarFiles() async throws {

@@ -55,7 +55,44 @@ public struct TCCScannerSQLite: TCCScanner, Sendable {
             Self.logger.error("TCC read failed for \(url.path, privacy: .public): \(error.localizedDescription, privacy: .public)")
         }
 
-        return successes.flatMap { $0 }.sorted(by: Self.sortGrants)
+        let combined = successes.flatMap { $0 }
+        return Self.dedupe(combined).sorted(by: Self.sortGrants)
+    }
+
+    // TCC.db produces duplicates in two common situations:
+    //   1. The same (service, app, automationTarget) tuple appears in both
+    //      the user TCC and system TCC databases.
+    //   2. PermissionService.filesAndFolders maps from FIVE distinct TCC
+    //      strings (Desktop, Documents, Downloads, NetworkVolumes,
+    //      RemovableVolumes), so an app granted access to multiple folders
+    //      emits multiple PermissionGrant rows that look identical in the
+    //      UI (same service, same app, no automation target).
+    //
+    // Dedupe by (service, app-key, automationTarget). When duplicates
+    // collide, keep the entry with the most recent lastModified — that is
+    // the most useful timestamp for "when did the user last touch this."
+    //
+    // Future v0.7.0+ work could preserve the specific folder grants for
+    // .filesAndFolders by adding a sub-service tag to PermissionGrant.
+    private static func dedupe(_ grants: [PermissionGrant]) -> [PermissionGrant] {
+        var byKey: [String: PermissionGrant] = [:]
+        for grant in grants {
+            let key = identityKey(grant)
+            if let existing = byKey[key], existing.lastModified >= grant.lastModified {
+                continue
+            }
+            byKey[key] = grant
+        }
+        return Array(byKey.values)
+    }
+
+    private static func identityKey(_ grant: PermissionGrant) -> String {
+        // Path-only grants (client_type = 1) leave bundleID empty; fall
+        // back to the path so two distinct path-only apps don't collapse.
+        let appKey = grant.app.bundleID.isEmpty
+            ? (grant.app.bundlePath?.path ?? grant.app.displayName)
+            : grant.app.bundleID
+        return "\(grant.service.rawValue)|\(appKey)|\(grant.automationTarget ?? "")"
     }
 
     private func readAllDatabases() async -> [(URL, Result<[PermissionGrant], any Error>)] {
