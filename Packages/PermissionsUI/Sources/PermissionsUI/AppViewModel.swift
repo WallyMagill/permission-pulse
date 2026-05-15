@@ -85,9 +85,27 @@ public final class AppViewModel {
         if tccScanError != nil || btmScanError != nil {
             return "exclamationmark.shield.fill"
         }
+        if hasUnreviewedChanges {
+            return Self.unreviewedSymbolName
+        }
         if micInUse && cameraInUse { return "video.badge.waveform" }
         if cameraInUse { return "video.fill" }
         if micInUse { return "mic.fill" }
         return "shield.lefthalf.filled"
     }
+
+    // Verify the preferred symbol exists on this OS. `bell.badge.fill` has
+    // shipped since Big Sur, but a one-time guard is cheap and survives
+    // future SF Symbol renames.
+    private static let unreviewedSymbolName: String = {
+        #if canImport(AppKit)
+        let preferred = "bell.badge.fill"
+        if NSImage(systemSymbolName: preferred, accessibilityDescription: nil) != nil {
+            return preferred
+        }
+        return "exclamationmark.bubble.fill"
+        #else
+        return "bell.badge.fill"
+        #endif
+    }()
 }

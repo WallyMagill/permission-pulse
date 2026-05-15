@@ -1,6 +1,7 @@
 import Foundation
 import Testing
 import PermissionsCore
+import PermissionsStore
 @testable import PermissionsUI
 
 @Suite @MainActor struct MenuBarSymbolNameTests {
@@ -49,5 +50,56 @@ import PermissionsCore
             btmScanError: .permissionDenied(reason: "FDA")
         )
         #expect(vm.menuBarSymbolName == "exclamationmark.shield.fill")
+    }
+
+    @Test func unreviewedChangesBeatsMicAndCamera() {
+        let vm = unreviewedViewModel(micInUse: true, cameraInUse: true)
+        #expect(vm.menuBarSymbolName == "bell.badge.fill")
+    }
+
+    @Test func errorBeatsUnreviewedChanges() {
+        let vm = unreviewedViewModel()
+        vm.tccScanError = .permissionDenied(reason: "FDA")
+        #expect(vm.menuBarSymbolName == "exclamationmark.shield.fill")
+    }
+
+    @Test func reviewedStateReturnsToIdleWhenLatestEqualsReviewed() {
+        let vm = unreviewedViewModel()
+        #expect(vm.menuBarSymbolName == "bell.badge.fill")
+        vm.lastReviewedSnapshotID = vm.latestSnapshotID
+        #expect(vm.menuBarSymbolName == "shield.lefthalf.filled")
+    }
+
+    private func unreviewedViewModel(
+        micInUse: Bool = false,
+        cameraInUse: Bool = false
+    ) -> AppViewModel {
+        let latest = SnapshotID(rawValue: 99)
+        let diff = SnapshotDiffs(
+            fromID: SnapshotID(rawValue: 98),
+            toID: latest,
+            tcc: TCCGrantsDiff(added: [], removed: []),
+            btm: BTMItemsDiff(added: [], removed: []),
+            launchAgents: LaunchAgentsDiff(
+                added: [
+                    LaunchAgentItem(
+                        label: "com.example.new",
+                        sourceDirectory: .userLaunchAgents,
+                        programPath: "/bin/new",
+                        programArguments: [],
+                        runAtLoad: true,
+                        keepAlive: false
+                    ),
+                ],
+                removed: []
+            )
+        )
+        return AppViewModel(
+            micInUse: micInUse,
+            cameraInUse: cameraInUse,
+            latestSnapshotID: latest,
+            lastReviewedSnapshotID: nil,
+            latestDiffYesterday: diff
+        )
     }
 }
