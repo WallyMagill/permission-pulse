@@ -44,18 +44,8 @@ public struct PermissionDetailSheet: View {
         }
     }
 
-    @ViewBuilder
     private var appIcon: some View {
-        if let path = grant.app.bundlePath {
-            Image(nsImage: NSWorkspace.shared.icon(forFile: path.path(percentEncoded: false)))
-                .resizable()
-                .frame(width: 40, height: 40)
-        } else {
-            Image(systemName: "app.dashed")
-                .font(.system(size: 32))
-                .foregroundStyle(.secondary)
-                .frame(width: 40, height: 40)
-        }
+        AppIconResolver.iconView(for: grant.app, size: 44)
     }
 
     private var riskBlock: some View {

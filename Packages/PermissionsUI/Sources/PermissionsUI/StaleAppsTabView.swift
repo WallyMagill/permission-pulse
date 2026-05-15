@@ -59,18 +59,8 @@ private struct StaleAppRow: View {
         }
     }
 
-    @ViewBuilder
     private var icon: some View {
-        if let path = app.app.bundlePath {
-            Image(nsImage: NSWorkspace.shared.icon(forFile: path.path(percentEncoded: false)))
-                .resizable()
-                .frame(width: 36, height: 36)
-        } else {
-            Image(systemName: "app.dashed")
-                .font(.system(size: 28))
-                .foregroundStyle(.secondary)
-                .frame(width: 36, height: 36)
-        }
+        AppIconResolver.iconView(for: app.app, size: 36)
     }
 
     private var servicesLine: String {
