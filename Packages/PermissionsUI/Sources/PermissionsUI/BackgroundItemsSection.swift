@@ -6,6 +6,8 @@ public struct BackgroundItemsSection: View {
     private let dataSource: AppViewModel.DataSource
     private let error: ScannerError?
 
+    @State private var selectedItem: BTMItem?
+
     public init(
         items: [BTMItem],
         dataSource: AppViewModel.DataSource,
@@ -29,16 +31,22 @@ public struct BackgroundItemsSection: View {
             } else {
                 VStack(spacing: 0) {
                     ForEach(Array(items.enumerated()), id: \.element) { index, item in
-                        BTMItemRow(item: item)
-                            .padding(.vertical, 8)
-                            .padding(.horizontal, 12)
+                        TappableRow(action: { selectedItem = item }) {
+                            BTMItemRow(item: item)
+                        } trailing: {
+                            DispositionBadge(disposition: item.disposition)
+                        }
                         if index < items.count - 1 {
                             Divider().padding(.leading, 12)
                         }
                     }
                 }
                 .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 8))
+                .clipShape(RoundedRectangle(cornerRadius: 8))
             }
+        }
+        .sheet(item: $selectedItem) { item in
+            BackgroundItemDetailSheet(item: item)
         }
     }
 }
@@ -47,20 +55,16 @@ private struct BTMItemRow: View {
     let item: BTMItem
 
     var body: some View {
-        HStack(alignment: .firstTextBaseline) {
-            VStack(alignment: .leading, spacing: 2) {
-                Text(item.name)
-                Text(secondaryLine)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                if let parent = item.parentIdentifier, !parent.isEmpty {
-                    Text(String(localized: "under \(parent)"))
-                        .font(.caption2)
-                        .foregroundStyle(.tertiary)
-                }
+        VStack(alignment: .leading, spacing: 2) {
+            Text(item.name)
+            Text(secondaryLine)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            if let parent = item.parentIdentifier, !parent.isEmpty {
+                Text(String(localized: "under \(parent)"))
+                    .font(.caption2)
+                    .foregroundStyle(.tertiary)
             }
-            Spacer()
-            DispositionBadge(disposition: item.disposition)
         }
     }
 

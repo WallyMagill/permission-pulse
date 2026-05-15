@@ -1,6 +1,6 @@
 import Foundation
 
-public struct BTMItem: Sendable, Hashable {
+public struct BTMItem: Sendable, Hashable, Identifiable {
     public enum ItemType: Sendable, Hashable {
         case app
         case legacyDaemon
@@ -54,4 +54,7 @@ public struct BTMItem: Sendable, Hashable {
         self.modificationDate = modificationDate
         self.parentIdentifier = parentIdentifier
     }
+
+    // BTM's natural primary key. Used by SwiftUI sheet(item:) bindings.
+    public var id: String { identifier }
 }

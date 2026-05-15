@@ -24,6 +24,14 @@ enum SystemSettingsLink {
         NSWorkspace.shared.open(privacyPaneURL)
     }
 
+    static let loginItemsURL = URL(
+        string: "x-apple.systempreferences:com.apple.LoginItems-Settings.extension"
+    )!
+
+    static func openLoginItems() {
+        NSWorkspace.shared.open(loginItemsURL)
+    }
+
     static func url(for service: PermissionService) -> URL {
         URL(string: urlString(for: service))!
     }
