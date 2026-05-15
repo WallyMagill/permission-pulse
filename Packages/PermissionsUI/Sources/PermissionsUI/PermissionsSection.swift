@@ -7,6 +7,7 @@ public struct PermissionsSection: View {
     private let error: ScannerError?
 
     @State private var selectedGrant: PermissionGrant?
+    @State private var selectedAutomationGroup: AutomationGroup?
 
     public init(
         grants: [PermissionGrant],
@@ -19,6 +20,8 @@ public struct PermissionsSection: View {
     }
 
     public var body: some View {
+        let displayItems = PermissionsDisplayItem.make(from: grants)
+
         VStack(alignment: .leading, spacing: 8) {
             SectionHeader(
                 title: String(localized: "Permissions"),
@@ -30,11 +33,9 @@ public struct PermissionsSection: View {
                 PermissionsEmptyStateView(error: error, domain: .tcc)
             } else {
                 VStack(spacing: 0) {
-                    ForEach(Array(grants.enumerated()), id: \.element) { index, grant in
-                        TappableRow(action: { selectedGrant = grant }) {
-                            GrantRow(grant: grant)
-                        }
-                        if index < grants.count - 1 {
+                    ForEach(Array(displayItems.enumerated()), id: \.element.id) { index, item in
+                        rowView(for: item)
+                        if index < displayItems.count - 1 {
                             Divider().padding(.leading, 12)
                         }
                     }
@@ -45,6 +46,23 @@ public struct PermissionsSection: View {
         }
         .sheet(item: $selectedGrant) { grant in
             PermissionDetailSheet(grant: grant)
+        }
+        .sheet(item: $selectedAutomationGroup) { group in
+            AutomationDetailSheet(group: group)
+        }
+    }
+
+    @ViewBuilder
+    private func rowView(for item: PermissionsDisplayItem) -> some View {
+        switch item {
+        case .single(let grant):
+            TappableRow(action: { selectedGrant = grant }) {
+                GrantRow(grant: grant)
+            }
+        case .automationGroup(let group):
+            TappableRow(action: { selectedAutomationGroup = group }) {
+                AutomationGroupRow(group: group)
+            }
         }
     }
 }
@@ -63,6 +81,22 @@ private struct GrantRow: View {
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
+        }
+    }
+}
+
+private struct AutomationGroupRow: View {
+    let group: AutomationGroup
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text(group.app.displayName)
+            Text("\(PermissionService.automation.displayName) · \(group.app.bundleID)")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            Text(String(localized: "Controls \(group.targets.count) targets"))
+                .font(.caption)
+                .foregroundStyle(.secondary)
         }
     }
 }
