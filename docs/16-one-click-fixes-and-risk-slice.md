@@ -24,6 +24,11 @@
    - **Footer**: Close + "Open in Settings" buttons. The Settings button deep-links to the right pane via `SystemSettingsLink.open(for:)` and dismisses the sheet.
 4. **Tappable `PermissionsSection` rows.** Each row becomes a `Button(style: .plain)` with a `Rectangle().contentShape` so the entire row registers taps. A small `info.circle` glyph on the trailing edge of each row signals interactivity without crowding the data. The sheet is driven by local `@State` rather than view-model state — the trigger lives in-view and doesn't need to be exposed across modules.
 5. **`PermissionGrant: Identifiable`** in `PermissionsCore`. Identity = `"<service>|<bundleID>|<automationTarget>"` — same key the diff engine uses. Enables the `.sheet(item:)` binding to re-fire correctly when a different row of the same service is selected.
+6. **`AppIconResolver`** in `PermissionsUI`. TCC's `client_type = 0` rows store only a bundle ID, so the scanner often leaves `AppIdentity.bundlePath` nil — without a path the UI defaulted to the dashed-app placeholder even for installed apps. The resolver tries `bundlePath` (if the file exists), then `NSWorkspace.urlForApplication(withBundleIdentifier:)`, then falls back to `app.dashed`. Used by `PermissionDetailSheet` and `StaleAppsTabView`.
+7. **`TappableRow`** in `PermissionsUI`. Reusable row wrapper with hover-state cursor (`NSCursor.pointingHand` push/pop), a faint `Color.primary.opacity(0.06)` background highlight on hover and press, and a trailing `chevron.right` glyph indicating "tap for detail." Parent containers gain `.clipShape(RoundedRectangle(...))` so the hover bg doesn't bleed past the rounded card corners. Replaces the ambiguous `info.circle` glyph that the previous draft used.
+8. **`LaunchAgentDetailSheet`** in `PermissionsUI`. Launch Agents are property-list-defined background helpers, not apps — the sheet shows the launchd properties (program, arguments, `runAtLoad`, `keepAlive`) plus the source-directory path with a "Reveal in Finder" button that selects `<sourceDirectory>/<label>.plist` if present, else the parent folder. No System Settings deep-link is appropriate; launch agents aren't surfaced there.
+9. **`BackgroundItemDetailSheet`** in `PermissionsUI`. Header icon is resolved through `NSWorkspace.urlForApplication(withBundleIdentifier:)` when a `bundleIdentifier` is available, falling back to a per-type SF Symbol (`app.fill` / `gearshape.2.fill` / `folder.fill` / `questionmark.circle.fill`). Properties card shows type / scope / identifier / bundle ID / team ID / modification date / parent. Footer "Open Login Items" deep-links into System Settings → General → Login Items via `SystemSettingsLink.openLoginItems()`.
+10. **All three sections use `TappableRow`** — Permissions, Launch Agents, Background Items. Consistent hover behavior, consistent chevron affordance.
 
 ## Data flow
 
@@ -49,13 +54,22 @@ selectedGrant: PermissionGrant?    ← local @State
   - `Packages/PermissionsCore/Sources/PermissionsCore/PermissionRiskDescription.swift`
   - `Packages/PermissionsCore/Tests/PermissionsCoreTests/PermissionRiskDescriptionTests.swift`
   - `Packages/PermissionsUI/Sources/PermissionsUI/PermissionDetailSheet.swift`
+  - `Packages/PermissionsUI/Sources/PermissionsUI/AppIconResolver.swift`
+  - `Packages/PermissionsUI/Sources/PermissionsUI/TappableRow.swift`
+  - `Packages/PermissionsUI/Sources/PermissionsUI/LaunchAgentDetailSheet.swift`
+  - `Packages/PermissionsUI/Sources/PermissionsUI/BackgroundItemDetailSheet.swift`
   - `Packages/PermissionsUI/Tests/PermissionsUITests/SystemSettingsLinkTests.swift`
   - `docs/16-one-click-fixes-and-risk-slice.md` (this file)
 
 - **Modified:**
   - `Packages/PermissionsCore/Sources/PermissionsCore/PermissionGrant.swift` — added `Identifiable` conformance with `id` = identity key.
-  - `Packages/PermissionsUI/Sources/PermissionsUI/SystemSettingsLink.swift` — per-service deep links + top-level Privacy pane fallback.
-  - `Packages/PermissionsUI/Sources/PermissionsUI/PermissionsSection.swift` — rows wrapped in `Button` + `info.circle` hint glyph + `.sheet(item:)` binding.
+  - `Packages/PermissionsCore/Sources/PermissionsCore/LaunchAgentItem.swift` — added `Identifiable` (id = `"<source>|<label>"`).
+  - `Packages/PermissionsCore/Sources/PermissionsCore/BTMItem.swift` — added `Identifiable` (id = `identifier`).
+  - `Packages/PermissionsUI/Sources/PermissionsUI/SystemSettingsLink.swift` — per-service deep links + top-level Privacy pane fallback + Login Items deep link.
+  - `Packages/PermissionsUI/Sources/PermissionsUI/PermissionsSection.swift` — rows wrapped in `TappableRow` with chevron + hover; `.sheet(item:)` binding.
+  - `Packages/PermissionsUI/Sources/PermissionsUI/LaunchAgentsSection.swift` — rows wrapped in `TappableRow`; `.sheet(item:)` to `LaunchAgentDetailSheet`.
+  - `Packages/PermissionsUI/Sources/PermissionsUI/BackgroundItemsSection.swift` — rows wrapped in `TappableRow` with the existing `DispositionBadge` in the trailing slot; `.sheet(item:)` to `BackgroundItemDetailSheet`.
+  - `Packages/PermissionsUI/Sources/PermissionsUI/StaleAppsTabView.swift` — switched to `AppIconResolver` so installed apps with no `bundlePath` still show their real icon.
   - `docs/09-roadmap.md` — mark v0.6.0 done.
 
 ## Test coverage
