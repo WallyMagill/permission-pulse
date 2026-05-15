@@ -9,15 +9,16 @@ let package = Package(
     ],
     dependencies: [
         .package(path: "../PermissionsCore"),
+        .package(path: "../PermissionsStore"),
     ],
     targets: [
         .target(
             name: "PermissionsUI",
-            dependencies: ["PermissionsCore"]
+            dependencies: ["PermissionsCore", "PermissionsStore"]
         ),
         .testTarget(
             name: "PermissionsUITests",
-            dependencies: ["PermissionsUI", "PermissionsCore"]
+            dependencies: ["PermissionsUI", "PermissionsCore", "PermissionsStore"]
         ),
     ]
 )

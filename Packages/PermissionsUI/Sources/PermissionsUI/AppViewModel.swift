@@ -1,6 +1,11 @@
 import Foundation
 import Observation
 import PermissionsCore
+import PermissionsStore
+
+#if canImport(AppKit)
+import AppKit
+#endif
 
 @Observable
 @MainActor
@@ -23,6 +28,13 @@ public final class AppViewModel {
     public var mediaDataSource: DataSource
     public var showFDASheetOnDetail: Bool
 
+    // v0.5.0 snapshot/diff/stale state.
+    public var latestSnapshotID: SnapshotID?
+    public var lastReviewedSnapshotID: SnapshotID?
+    public var latestDiffYesterday: SnapshotDiffs?
+    public var latestDiffWeek: SnapshotDiffs?
+    public var staleApps: [StaleApp]
+
     public init(
         grants: [PermissionGrant] = [],
         launchAgents: [LaunchAgentItem] = [],
@@ -35,7 +47,12 @@ public final class AppViewModel {
         micInUse: Bool = false,
         cameraInUse: Bool = false,
         mediaDataSource: DataSource = .mock,
-        showFDASheetOnDetail: Bool = false
+        showFDASheetOnDetail: Bool = false,
+        latestSnapshotID: SnapshotID? = nil,
+        lastReviewedSnapshotID: SnapshotID? = nil,
+        latestDiffYesterday: SnapshotDiffs? = nil,
+        latestDiffWeek: SnapshotDiffs? = nil,
+        staleApps: [StaleApp] = []
     ) {
         self.grants = grants
         self.launchAgents = launchAgents
@@ -49,6 +66,19 @@ public final class AppViewModel {
         self.cameraInUse = cameraInUse
         self.mediaDataSource = mediaDataSource
         self.showFDASheetOnDetail = showFDASheetOnDetail
+        self.latestSnapshotID = latestSnapshotID
+        self.lastReviewedSnapshotID = lastReviewedSnapshotID
+        self.latestDiffYesterday = latestDiffYesterday
+        self.latestDiffWeek = latestDiffWeek
+        self.staleApps = staleApps
+    }
+
+    public var hasUnreviewedChanges: Bool {
+        guard let latest = latestSnapshotID else { return false }
+        let unreviewed = lastReviewedSnapshotID != latest
+        let anyContent = (latestDiffYesterday?.hasContent ?? false)
+            || (latestDiffWeek?.hasContent ?? false)
+        return unreviewed && anyContent
     }
 
     public var menuBarSymbolName: String {
