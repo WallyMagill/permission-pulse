@@ -55,6 +55,8 @@ These are the spots where AI codegen most often invents APIs or assumes behavior
 | LaunchAgents enumeration | Mostly stable | `PropertyListDecoder` over `~/Library/LaunchAgents/`, `/Library/LaunchAgents/`, `/Library/LaunchDaemons/`. No FDA needed. |
 | `sfltool` / `tccutil` output parsing | Output format undocumented | Golden-output test fixtures. Re-record on each macOS major. |
 | Mic/cam current use | Public APIs | AVFoundation usage detection. Drives the menu-bar dot. |
+| `LastUsedProbeHybrid` (Spotlight via `mdls`) | Spotlight metadata returns `(null)` on many apps even when they've been used recently. Sandbox-on path will need replacement. | Hybrid fallback to `URL.contentModificationDateKey`. Skip the app if both miss (under-flag, never over-flag). Future-tag: replace `Process(/usr/bin/mdls)` with `MDItemCreate` in-process when sandboxing turns on. |
+| Snapshot store schema v3 | GRDB migration drift if Apple changes underlying TCC/BTM enum bits | Per-domain `*_kind` TEXT + nullable `*_raw` INTEGER captures `unknown(rawValue:)` losslessly. Migration is purely additive — v2 tables untouched. |
 
 ## Known macOS Tahoe (26) quirks
 

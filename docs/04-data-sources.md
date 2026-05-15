@@ -119,19 +119,48 @@ Each scanner is documented as: **what it reads, which API, what permission is ne
 
 ---
 
-## Last-launch date (for Stale App Review)
+## Last-launch date (for Stale App Review — implemented v0.5.0, hybrid)
 
-**What:** When the user last launched a given app.
+**What:** When the user last launched a given app. Drives the Stale apps tab in the What Changed window.
 
-**API:** No public macOS API for last-launch date per app. Proxies:
-- `URL.contentModificationDateKey` on the `.app` bundle — close-enough for most apps.
-- `mdls -name kMDItemLastUsedDate` (Spotlight metadata) — accurate, but requires shelling out.
+**Implementation:** `LastUsedProbeHybrid` in `PermissionsScanners`. Tried in order:
+1. `Process(/usr/bin/mdls -name kMDItemLastUsedDate -raw <path>)` — Spotlight metadata. Parsed as `yyyy-MM-dd HH:mm:ss Z` or ISO8601. Wrapped in a 2-second timeout race via `Task.sleep` to bound any pathological hang.
+2. `URL.resourceValues(forKeys: [.contentModificationDateKey])` — file-system modification date on the `.app` bundle.
+3. nil — `SnapshotCoordinator` skips this app from Stale review.
 
-**Permission needed:** None for the file proxy. None for `mdls` (unprivileged).
+**Permission needed:** None. `mdls` is unprivileged. `resourceValues` reads via the user's normal filesystem permissions.
 
-**Fragility:** Medium. Spotlight metadata can be stale or unindexed.
+**Fragility:** Medium. Spotlight metadata can be stale or unindexed; precondition probing on this machine showed `(null)` for 3 of 4 sample apps. The hybrid handles it.
 
-**Failure mode:** App is omitted from Stale review if no usable date is found. Better to under-flag than over-flag.
+**Failure mode:** App is omitted from Stale review if neither proxy returns a date. Under-flag, never over-flag.
+
+**Future-tag for sandboxed builds:** v0.5.0 is unsandboxed per `CLAUDE.md`, so `Process(/usr/bin/mdls)` runs unrestricted. If sandboxing is enabled in v0.6.0+, replace the `Process` call with in-process `MDItemCreate` / `MDItemCopyAttribute` from CoreServices. Tagged in `LastUsedProbeHybrid.swift`.
+
+---
+
+## Snapshot store (implemented v0.2.0 LA, v0.5.0 TCC + BTM)
+
+**What:** Local persistence of daily snapshots of TCC grants, BTM items, and LaunchAgents. Powers the What Changed diff queries and Stale App Review.
+
+**Implementation:** `SnapshotStore` in `PermissionsStore` — GRDB v7.x over a single `DatabaseQueue`. Schema:
+
+| Table | Cols | Notes |
+|---|---|---|
+| `schema_version` | `version: INTEGER` | Single row, currently `3`. |
+| `snapshots` | `id: INTEGER PK AUTO`, `created_at: DOUBLE` | One row per write. |
+| `launch_agents` | snapshot_id FK CASCADE + label / source_directory / program_path / program_arguments_json / run_at_load / keep_alive | v2 migration. |
+| `tcc_grants` | snapshot_id FK CASCADE + service / bundle_id / display_name / bundle_path / last_modified / automation_target | v3 migration. |
+| `btm_items` | snapshot_id FK CASCADE + identifier / name / developer_name / bundle_identifier / team_identifier / type_kind + type_raw / disposition_kind + disposition_raw / scope_kind + scope_per_user_uuid / modification_date / parent_identifier | v3 migration. The `*_kind` TEXT + nullable `*_raw` INTEGER split round-trips associated-value enum cases. |
+
+**Where:** `~/Library/Application Support/com.wallymagill.permissionpulse/snapshots.db` via the `SnapshotPath` helper in the app target.
+
+**Write cadence:** Once per calendar day, gated by `UserDefaults` key `com.wallymagill.permissionpulse.lastSnapshotDate` (ISO string). Driven by `SnapshotCoordinator.onScanCompleted()` after a successful scan. If any scanner errored, the write is skipped — diff signal stays clean.
+
+**Retention:** 90 days. `SnapshotStore.pruneSnapshots(olderThan:)` runs at each write; FK CASCADE drops child rows.
+
+**Fragility:** Low. GRDB v7.x is locked; migrations are additive.
+
+**Failure mode:** If `SnapshotStore` fails to open (disk full, permissions denied at `~/Library/Application Support`), `AppDelegate` logs and continues. `SnapshotCoordinator` is nil; the rest of the app functions normally. No diffs or Stale apps surface until a future launch resolves the store.
 
 ---
 
@@ -158,4 +187,5 @@ Each scanner is documented as: **what it reads, which API, what permission is ne
 | BTM (direct .btm) | FDA | Very high | section shows FDA empty state (✅ implemented v0.4.0) |
 | BTM (sfltool) | Manual sudo | High | deferred (would be a manual user step, not automation) |
 | Mic/Cam observation | None | Low | menu-bar icon stays at idle/error (✅ implemented v0.4.1) |
-| Last-launch date | None | Medium | app omitted from Stale review |
+| Last-launch date (hybrid) | None | Medium | app omitted from Stale review (✅ implemented v0.5.0) |
+| Snapshot store (GRDB) | None | Low | What Changed window shows no-prior-snapshot state (✅ implemented v0.5.0) |

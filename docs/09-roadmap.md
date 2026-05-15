@@ -56,11 +56,17 @@ See `docs/13-btm-slice.md` for the spec.
 
 See `docs/14-mic-cam-icon-slice.md` for the spec.
 
-## v0.5.0 — What Changed and Stale review
+## v0.5.0 — What Changed and Stale review (✅ done 2026-05-15)
 
-- Diff queries against the snapshot store.
-- "What Changed" view with yesterday and last-week tabs.
-- Stale App Review.
+- Migration v3: `tcc_grants` + `btm_items` tables under existing `snapshots` parent. `writeFullSnapshot` is the production entry. ✅
+- `LaunchAgentsDiff` / `TCCGrantsDiff` / `BTMItemsDiff` carry added/removed/changed via `DomainChange<T>`. ✅
+- `latestSnapshotID(atOrBefore:)` + `pruneSnapshots(olderThan:)` discovery + retention API. ✅
+- `SnapshotCoordinator` sibling to `ScanCoordinator` / `MediaUseCoordinator`. Once-per-calendar-day write, 90-day retention. ✅
+- `LastUsedProbe` protocol + `LastUsedProbeHybrid` (mdls → file mtime → skip). ✅
+- What Changed window with Yesterday / Last week / Stale apps tabs, reached from a new menu-bar button. ✅
+- 6th menu-bar icon state: `bell.badge.fill` for unreviewed changes. ✅
+
+See `docs/15-what-changed-and-stale-slice.md` for the spec.
 
 ## v0.6.0 — One-click fixes and risk explanations
 
