@@ -15,6 +15,11 @@ public final class AppViewModel {
         case live
     }
 
+    public enum DetailMode: Sendable, Hashable {
+        case current
+        case whatChanged
+    }
+
     public var grants: [PermissionGrant]
     public var launchAgents: [LaunchAgentItem]
     public var btmItems: [BTMItem]
@@ -35,6 +40,11 @@ public final class AppViewModel {
     public var latestDiffWeek: SnapshotDiffs?
     public var staleApps: [StaleApp]
 
+    // Set by the menu-bar buttons before opening the detail window. The
+    // window observes this and applies it on appear or via onChange, then
+    // clears it back to nil.
+    public var pendingDetailMode: DetailMode?
+
     public init(
         grants: [PermissionGrant] = [],
         launchAgents: [LaunchAgentItem] = [],
@@ -52,7 +62,8 @@ public final class AppViewModel {
         lastReviewedSnapshotID: SnapshotID? = nil,
         latestDiffYesterday: SnapshotDiffs? = nil,
         latestDiffWeek: SnapshotDiffs? = nil,
-        staleApps: [StaleApp] = []
+        staleApps: [StaleApp] = [],
+        pendingDetailMode: DetailMode? = nil
     ) {
         self.grants = grants
         self.launchAgents = launchAgents
@@ -71,6 +82,7 @@ public final class AppViewModel {
         self.latestDiffYesterday = latestDiffYesterday
         self.latestDiffWeek = latestDiffWeek
         self.staleApps = staleApps
+        self.pendingDetailMode = pendingDetailMode
     }
 
     public var hasUnreviewedChanges: Bool {

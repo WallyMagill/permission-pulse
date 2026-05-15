@@ -24,7 +24,8 @@ public struct MenuBarContentView: View {
             Divider()
 
             Button {
-                openWindow(id: "what-changed")
+                viewModel.pendingDetailMode = .whatChanged
+                openWindow(id: "detail")
             } label: {
                 HStack(spacing: 6) {
                     Image(systemName: "clock.arrow.circlepath")
@@ -40,6 +41,7 @@ public struct MenuBarContentView: View {
             .keyboardShortcut("w", modifiers: [.command])
 
             Button {
+                viewModel.pendingDetailMode = .current
                 openWindow(id: "detail")
             } label: {
                 Label(String(localized: "Open Permission Pulse"), systemImage: "shield.lefthalf.filled")

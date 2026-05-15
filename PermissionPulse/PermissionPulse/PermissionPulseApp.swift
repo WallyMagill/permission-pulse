@@ -28,18 +28,15 @@ struct PermissionPulseApp: App {
         .menuBarExtraStyle(.window)
 
         WindowGroup("Permission Pulse", id: "detail") {
-            DetailWindowView(onRefresh: { [appDelegate] in
-                await appDelegate.rescan()
-            })
-                .environment(appDelegate.viewModel)
-        }
-        .windowResizability(.contentSize)
-
-        WindowGroup("What Changed", id: "what-changed") {
-            WhatChangedWindowView(onAppeared: { [appDelegate] in
-                appDelegate.markCurrentSnapshotReviewed()
-            })
-                .environment(appDelegate.viewModel)
+            DetailWindowView(
+                onRefresh: { [appDelegate] in
+                    await appDelegate.rescan()
+                },
+                onWhatChangedSelected: { [appDelegate] in
+                    appDelegate.markCurrentSnapshotReviewed()
+                }
+            )
+            .environment(appDelegate.viewModel)
         }
         .windowResizability(.contentSize)
     }

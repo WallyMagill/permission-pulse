@@ -32,7 +32,7 @@ Decision: **proceed.** All defaults (snapshot cadence = once per calendar day, r
 7. **`SnapshotPath`** helper in the app target computes `~/Library/Application Support/com.wallymagill.permissionpulse/snapshots.db` and creates the parent directory if missing. `SnapshotStore.init(path:)` stays unchanged — caller hands in the resolved string.
 8. **`AppViewModel` extensions**: `latestSnapshotID`, `lastReviewedSnapshotID`, `latestDiffYesterday`, `latestDiffWeek`, `staleApps`. Computed `hasUnreviewedChanges` = `(latestSnapshotID != lastReviewedSnapshotID) && (latestDiffYesterday?.hasContent ?? false || latestDiffWeek?.hasContent ?? false)`.
 9. **6th menu-bar icon state.** New priority chain: `error > unreviewedChanges > cam+mic > cam > mic > idle`. The unreviewed symbol resolves once at first access — `bell.badge.fill` if available, `exclamationmark.bubble.fill` as documented fallback.
-10. **What Changed window.** New `WindowGroup(id: "what-changed")` in `PermissionPulseApp`, reached from a new "What Changed" button in `MenuBarContentView` between the status area and "Open Permission Pulse". The button shows an orange dot when `hasUnreviewedChanges` is true. Window structure: `NavigationStack { VStack { segmentedPicker; Divider; ScrollView { tabContent } } }`. Three tabs: Yesterday, Last week, Stale apps. Per-domain change rows use colored indicators (`plus.circle.fill` green / `minus.circle.fill` red / `arrow.triangle.2.circlepath.circle.fill` orange) and localized one-line descriptions.
+10. **Unified detail window.** `DetailWindowView` gains a top-level segmented Picker — `Current` | `What Changed` — driving an internal mode state. Both the existing "Open Permission Pulse" menu-bar button and the new "What Changed" button route through the same `WindowGroup(id: "detail")`; each sets `viewModel.pendingDetailMode` before calling `openWindow`, and the window applies the pending mode on `onAppear` and on `onChange(of: viewModel.pendingDetailMode)` (the latter handles the case where the window is already open when the user clicks the second button). The "What Changed" button shows an orange dot when `hasUnreviewedChanges` is true. Sub-tabs for the What Changed mode (Yesterday / Last week / Stale apps) live in a new `WhatChangedSection` view used by the unified window. Reviewed-state advances via `onChange(of: mode)` whenever mode flips to `.whatChanged` — independent of which button got the user there. Per-domain change rows use colored indicators (`plus.circle.fill` green / `minus.circle.fill` red / `arrow.triangle.2.circlepath.circle.fill` orange) and localized one-line descriptions inside `.regularMaterial` cards matching the v0.4.1 section style.
 
 ## Data flow
 
@@ -60,8 +60,15 @@ AppDelegate.onScanCompleted → SnapshotCoordinator.onScanCompleted()
         └─→ AppViewModel.latestSnapshotID = id ; recompute hasUnreviewedChanges
                 → menuBarSymbolName flips to bell.badge.fill if true
 
-MenuBarContentView "What Changed" button → openWindow(id: "what-changed")
-        → WhatChangedWindowView.onAppear → markCurrentSnapshotReviewed()
+MenuBarContentView buttons:
+  "Open Permission Pulse" → viewModel.pendingDetailMode = .current ; openWindow(id: "detail")
+  "What Changed"          → viewModel.pendingDetailMode = .whatChanged ; openWindow(id: "detail")
+        │
+        ▼
+DetailWindowView applies pendingDetailMode (onAppear or onChange)
+        │
+        ▼
+on mode flipping to .whatChanged: markCurrentSnapshotReviewed()
         → lastReviewedSnapshotID = latestSnapshotID ; icon returns to base
 ```
 
@@ -80,7 +87,7 @@ MenuBarContentView "What Changed" button → openWindow(id: "what-changed")
   - `Packages/PermissionsStore/Tests/PermissionsStoreTests/SnapshotDiscoveryTests.swift`
   - `Packages/PermissionsStore/Tests/PermissionsStoreTests/SnapshotRetentionTests.swift`
   - `Packages/PermissionsUI/Sources/PermissionsUI/SnapshotDiffs.swift`
-  - `Packages/PermissionsUI/Sources/PermissionsUI/WhatChangedWindowView.swift`
+  - `Packages/PermissionsUI/Sources/PermissionsUI/WhatChangedSection.swift`
   - `Packages/PermissionsUI/Sources/PermissionsUI/DiffTabView.swift`
   - `Packages/PermissionsUI/Sources/PermissionsUI/StaleAppsTabView.swift`
   - `Packages/PermissionsUI/Sources/PermissionsUI/ChangeRow.swift`
@@ -97,10 +104,11 @@ MenuBarContentView "What Changed" button → openWindow(id: "what-changed")
   - `Packages/PermissionsStore/Tests/PermissionsStoreTests/PermissionsStoreTests.swift` — bumped schemaVersion assertion to 3.
   - `Packages/PermissionsStore/Tests/PermissionsStoreTests/LaunchAgentsDiffTests.swift` — bumped schemaVersion assertion; added `runAtLoadFlipAppearsInChangedArm`.
   - `Packages/PermissionsUI/Package.swift` — added `PermissionsStore` dependency.
-  - `Packages/PermissionsUI/Sources/PermissionsUI/AppViewModel.swift` — new stored properties; computed `hasUnreviewedChanges`; updated `menuBarSymbolName` priority chain; `unreviewedSymbolName` with SF Symbol resolution.
-  - `Packages/PermissionsUI/Sources/PermissionsUI/MenuBarContentView.swift` — "What Changed" button with conditional dot indicator.
+  - `Packages/PermissionsUI/Sources/PermissionsUI/AppViewModel.swift` — new stored properties; computed `hasUnreviewedChanges`; updated `menuBarSymbolName` priority chain; `unreviewedSymbolName` with SF Symbol resolution; new `DetailMode` enum and `pendingDetailMode` routing channel.
+  - `Packages/PermissionsUI/Sources/PermissionsUI/DetailWindowView.swift` — top-level Current / What Changed segmented Picker; switches between existing sections and the new `WhatChangedSection`; consumes `pendingDetailMode`; fires `onWhatChangedSelected` callback on mode flip to advance reviewed state.
+  - `Packages/PermissionsUI/Sources/PermissionsUI/MenuBarContentView.swift` — both buttons set `viewModel.pendingDetailMode` before calling `openWindow(id: "detail")`. The "What Changed" button keeps its conditional dot indicator.
   - `Packages/PermissionsUI/Tests/PermissionsUITests/MenuBarSymbolNameTests.swift` — +3 cases for the unreviewed-changes priority.
-  - `PermissionPulse/PermissionPulse/PermissionPulseApp.swift` — `WindowGroup(id: "what-changed")` scene; `AppDelegate` owns `snapshotStore` + `snapshotCoordinator`; wires `onScanCompleted()` after `runScan()` and `rescan()`; `markCurrentSnapshotReviewed()` forwarder.
+  - `PermissionPulse/PermissionPulse/PermissionPulseApp.swift` — `AppDelegate` owns `snapshotStore` + `snapshotCoordinator`; wires `onScanCompleted()` after `runScan()` and `rescan()`; `markCurrentSnapshotReviewed()` forwarder; passes `onWhatChangedSelected:` callback into the unified `DetailWindowView`. (Earlier iteration had a separate `WindowGroup(id: "what-changed")`; consolidated into the unified detail window.)
   - `docs/09-roadmap.md` — mark v0.5.0 done.
   - `docs/04-data-sources.md` — update the Last-launch date section with the hybrid implementation + sandboxing future-tag; add a Snapshot store section for v3 schema.
   - `CLAUDE.md` — row in "Known fragile surfaces" for `LastUsedProbeHybrid` (Spotlight unreliability).
@@ -166,8 +174,8 @@ Error beats review-state — the user needs to know FDA is not granted before th
   - `sqlite3 snapshots.db ".schema"` shows `snapshots`, `launch_agents`, `tcc_grants`, `btm_items`.
   - `SELECT version FROM schema_version` returns 3.
   - Menu-bar icon is `shield.lefthalf.filled` (no error, no diff content yet).
-  - "What Changed" button visible in the dropdown.
-  - Click it → window opens. Yesterday/Last week tabs show "Permission Pulse needs at least one prior snapshot — come back tomorrow." Stale apps tab shows "No stale apps".
-- Second-day diff (advance system clock + Refresh, or wait): a second `snapshots` row is written, Yesterday tab shows added/removed/changed rows if anything moved, icon flips to `bell.badge.fill`. Click "What Changed" → reviewed-state advances, icon returns to `shield.lefthalf.filled`.
+  - Both "Open Permission Pulse" and "What Changed" buttons visible in the dropdown.
+  - Click either → same detail window opens with the top-level Picker pre-selected to the matching mode. Yesterday/Last week sub-tabs show "Permission Pulse needs at least one prior snapshot — come back tomorrow." Stale apps sub-tab shows "No stale apps".
+- Second-day diff (advance system clock + Refresh, or wait): a second `snapshots` row is written, Yesterday sub-tab shows added/removed/changed rows if anything moved, icon flips to `bell.badge.fill`. Click "What Changed" → the detail window opens (or comes forward) with the What Changed mode selected, the mode-change callback advances reviewed-state, icon returns to `shield.lefthalf.filled`.
 - Stale apps: on a machine with a TCC-granted app whose `kMDItemLastUsedDate` or `contentModificationDate` is >90 days ago, the Stale apps tab lists it with the date and source label ("via Spotlight" or "via file modified").
 - All v0.4.1 surfaces unchanged: mic/cam icon, FDA empty state, schema-mismatch banner.
