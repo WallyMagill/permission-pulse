@@ -183,6 +183,49 @@ public struct SnapshotStore: Sendable {
         }
     }
 
+    // MARK: - Discovery + retention
+
+    public func latestSnapshotID() async throws -> SnapshotID? {
+        try await dbQueue.read { db in
+            try Int64.fetchOne(db, sql: "SELECT id FROM snapshots ORDER BY id DESC LIMIT 1")
+                .map(SnapshotID.init(rawValue:))
+        }
+    }
+
+    public func latestSnapshotID(atOrBefore cutoff: Date) async throws -> SnapshotID? {
+        try await dbQueue.read { db in
+            try Int64.fetchOne(db, sql: """
+                SELECT id FROM snapshots
+                WHERE created_at <= ?
+                ORDER BY id DESC
+                LIMIT 1
+                """, arguments: [cutoff])
+                .map(SnapshotID.init(rawValue:))
+        }
+    }
+
+    @discardableResult
+    public func pruneSnapshots(olderThan cutoff: Date) async throws -> Int {
+        try await dbQueue.write { db in
+            try db.execute(
+                sql: "DELETE FROM snapshots WHERE created_at < ?",
+                arguments: [cutoff]
+            )
+            return db.changesCount
+        }
+    }
+
+    // Test-only helper: count rows in each child table directly. Lets retention
+    // tests verify FK CASCADE behavior without trusting the public read methods.
+    internal func unsafeChildRowCounts() async throws -> (tcc: Int, btm: Int, la: Int) {
+        try await dbQueue.read { db in
+            let tcc = try Int.fetchOne(db, sql: "SELECT COUNT(*) FROM tcc_grants") ?? 0
+            let btm = try Int.fetchOne(db, sql: "SELECT COUNT(*) FROM btm_items") ?? 0
+            let la  = try Int.fetchOne(db, sql: "SELECT COUNT(*) FROM launch_agents") ?? 0
+            return (tcc, btm, la)
+        }
+    }
+
     // MARK: - Diffs
 
     public func diffLaunchAgents(
