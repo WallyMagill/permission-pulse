@@ -1,6 +1,6 @@
 import Foundation
 
-public struct LaunchAgentItem: Sendable, Hashable {
+public struct LaunchAgentItem: Sendable, Hashable, Identifiable {
     public enum SourceDirectory: String, Sendable, CaseIterable {
         case userLaunchAgents
         case libraryLaunchAgents
@@ -37,4 +37,7 @@ public struct LaunchAgentItem: Sendable, Hashable {
         self.runAtLoad = runAtLoad
         self.keepAlive = keepAlive
     }
+
+    // Mirror of the diff identity key. Used by SwiftUI sheet(item:) bindings.
+    public var id: String { "\(sourceDirectory.rawValue)|\(label)" }
 }

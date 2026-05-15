@@ -5,6 +5,8 @@ public struct LaunchAgentsSection: View {
     private let items: [LaunchAgentItem]
     private let dataSource: AppViewModel.DataSource
 
+    @State private var selectedItem: LaunchAgentItem?
+
     public init(items: [LaunchAgentItem], dataSource: AppViewModel.DataSource) {
         self.items = items
         self.dataSource = dataSource
@@ -27,16 +29,20 @@ public struct LaunchAgentsSection: View {
             } else {
                 VStack(spacing: 0) {
                     ForEach(Array(items.enumerated()), id: \.element) { index, item in
-                        LaunchAgentRow(item: item)
-                            .padding(.vertical, 8)
-                            .padding(.horizontal, 12)
+                        TappableRow(action: { selectedItem = item }) {
+                            LaunchAgentRow(item: item)
+                        }
                         if index < items.count - 1 {
                             Divider().padding(.leading, 12)
                         }
                     }
                 }
                 .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 8))
+                .clipShape(RoundedRectangle(cornerRadius: 8))
             }
+        }
+        .sheet(item: $selectedItem) { item in
+            LaunchAgentDetailSheet(item: item)
         }
     }
 }
