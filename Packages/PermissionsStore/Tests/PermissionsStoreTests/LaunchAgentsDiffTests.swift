@@ -64,8 +64,34 @@ import PermissionsCore
         let secondID = try await store.writeLaunchAgentsSnapshot(items)
         let diff = try await store.diffLaunchAgents(from: firstID, to: secondID)
 
+        #expect(!diff.hasContent)
+    }
+
+    @Test func runAtLoadFlipAppearsInChangedArm() async throws {
+        let store = try SnapshotStore.inMemory()
+        let before = LaunchAgentItem(
+            label: "com.example.foo",
+            sourceDirectory: .userLaunchAgents,
+            programPath: "/bin/foo",
+            programArguments: [],
+            runAtLoad: true,
+            keepAlive: false
+        )
+        let after = LaunchAgentItem(
+            label: "com.example.foo",
+            sourceDirectory: .userLaunchAgents,
+            programPath: "/bin/foo",
+            programArguments: [],
+            runAtLoad: false,
+            keepAlive: false
+        )
+        let firstID = try await store.writeLaunchAgentsSnapshot([before])
+        let secondID = try await store.writeLaunchAgentsSnapshot([after])
+        let diff = try await store.diffLaunchAgents(from: firstID, to: secondID)
+
         #expect(diff.added.isEmpty)
         #expect(diff.removed.isEmpty)
+        #expect(diff.changed == [DomainChange(before: before, after: after)])
     }
 
     private func item(_ label: String) -> LaunchAgentItem {

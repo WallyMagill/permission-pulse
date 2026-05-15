@@ -85,38 +85,62 @@ public struct SnapshotStore: Sendable {
         }
     }
 
+    // MARK: - Writes
+
+    // Production entry point. Writes one snapshots row plus all three child
+    // tables in a single transaction.
+    public func writeFullSnapshot(
+        grants: [PermissionGrant],
+        launchAgents: [LaunchAgentItem],
+        btmItems: [BTMItem],
+        at date: Date = Date()
+    ) async throws -> SnapshotID {
+        try await dbQueue.write { db in
+            let snapshotRowID = try Self.insertSnapshot(db: db, date: date)
+            try Self.insertLaunchAgents(db: db, snapshotID: snapshotRowID, items: launchAgents)
+            try Self.insertTCCGrants(db: db, snapshotID: snapshotRowID, grants: grants)
+            try Self.insertBTMItems(db: db, snapshotID: snapshotRowID, items: btmItems)
+            return SnapshotID(rawValue: snapshotRowID)
+        }
+    }
+
+    // Test helper — production path is writeFullSnapshot.
     public func writeLaunchAgentsSnapshot(
         _ items: [LaunchAgentItem],
         at date: Date = Date()
     ) async throws -> SnapshotID {
         try await dbQueue.write { db in
-            try db.execute(
-                sql: "INSERT INTO snapshots (created_at) VALUES (?)",
-                arguments: [date]
-            )
-            let snapshotRowID = db.lastInsertedRowID
-
-            for item in items {
-                let argsJSON = try Self.encodeArguments(item.programArguments)
-                try db.execute(sql: """
-                    INSERT INTO launch_agents
-                    (snapshot_id, label, source_directory, program_path,
-                     program_arguments_json, run_at_load, keep_alive)
-                    VALUES (?, ?, ?, ?, ?, ?, ?)
-                    """, arguments: [
-                        snapshotRowID,
-                        item.label,
-                        item.sourceDirectory.rawValue,
-                        item.programPath,
-                        argsJSON,
-                        item.runAtLoad,
-                        item.keepAlive,
-                    ])
-            }
-
+            let snapshotRowID = try Self.insertSnapshot(db: db, date: date)
+            try Self.insertLaunchAgents(db: db, snapshotID: snapshotRowID, items: items)
             return SnapshotID(rawValue: snapshotRowID)
         }
     }
+
+    // Test helper — production path is writeFullSnapshot.
+    public func writeTCCGrantsSnapshot(
+        _ grants: [PermissionGrant],
+        at date: Date = Date()
+    ) async throws -> SnapshotID {
+        try await dbQueue.write { db in
+            let snapshotRowID = try Self.insertSnapshot(db: db, date: date)
+            try Self.insertTCCGrants(db: db, snapshotID: snapshotRowID, grants: grants)
+            return SnapshotID(rawValue: snapshotRowID)
+        }
+    }
+
+    // Test helper — production path is writeFullSnapshot.
+    public func writeBTMItemsSnapshot(
+        _ items: [BTMItem],
+        at date: Date = Date()
+    ) async throws -> SnapshotID {
+        try await dbQueue.write { db in
+            let snapshotRowID = try Self.insertSnapshot(db: db, date: date)
+            try Self.insertBTMItems(db: db, snapshotID: snapshotRowID, items: items)
+            return SnapshotID(rawValue: snapshotRowID)
+        }
+    }
+
+    // MARK: - Reads
 
     public func readLaunchAgents(snapshotID: SnapshotID) async throws -> [LaunchAgentItem] {
         try await dbQueue.read { db in
@@ -127,9 +151,39 @@ public struct SnapshotStore: Sendable {
                 WHERE snapshot_id = ?
                 ORDER BY source_directory, label
                 """, arguments: [snapshotID.rawValue])
-            return try rows.map(Self.itemFromRow)
+            return try rows.map(Self.launchAgentFromRow)
         }
     }
+
+    public func readTCCGrants(snapshotID: SnapshotID) async throws -> [PermissionGrant] {
+        try await dbQueue.read { db in
+            let rows = try Row.fetchAll(db, sql: """
+                SELECT service, bundle_id, display_name, bundle_path,
+                       last_modified, automation_target
+                FROM tcc_grants
+                WHERE snapshot_id = ?
+                ORDER BY service, bundle_id, automation_target
+                """, arguments: [snapshotID.rawValue])
+            return try rows.map(Self.tccGrantFromRow)
+        }
+    }
+
+    public func readBTMItems(snapshotID: SnapshotID) async throws -> [BTMItem] {
+        try await dbQueue.read { db in
+            let rows = try Row.fetchAll(db, sql: """
+                SELECT identifier, name, developer_name, bundle_identifier,
+                       team_identifier, type_kind, type_raw, disposition_kind,
+                       disposition_raw, scope_kind, scope_per_user_uuid,
+                       modification_date, parent_identifier
+                FROM btm_items
+                WHERE snapshot_id = ?
+                ORDER BY identifier
+                """, arguments: [snapshotID.rawValue])
+            return try rows.map(Self.btmItemFromRow)
+        }
+    }
+
+    // MARK: - Diffs
 
     public func diffLaunchAgents(
         from: SnapshotID,
@@ -137,28 +191,136 @@ public struct SnapshotStore: Sendable {
     ) async throws -> LaunchAgentsDiff {
         let before = try await readLaunchAgents(snapshotID: from)
         let after = try await readLaunchAgents(snapshotID: to)
-        let beforeKeys = Set(before.map(Self.identityKey))
-        let afterKeys = Set(after.map(Self.identityKey))
-        let added = after.filter { !beforeKeys.contains(Self.identityKey($0)) }
-        let removed = before.filter { !afterKeys.contains(Self.identityKey($0)) }
-        return LaunchAgentsDiff(added: added, removed: removed)
+        return Self.computeDiff(
+            before: before,
+            after: after,
+            identity: Self.launchAgentIdentityKey,
+            wrap: { LaunchAgentsDiff(added: $0, removed: $1, changed: $2) }
+        )
     }
 
-    private static func identityKey(_ item: LaunchAgentItem) -> String {
-        "\(item.sourceDirectory.rawValue)|\(item.label)"
+    public func diffTCCGrants(
+        from: SnapshotID,
+        to: SnapshotID
+    ) async throws -> TCCGrantsDiff {
+        let before = try await readTCCGrants(snapshotID: from)
+        let after = try await readTCCGrants(snapshotID: to)
+        return Self.computeDiff(
+            before: before,
+            after: after,
+            identity: Self.tccGrantIdentityKey,
+            wrap: { TCCGrantsDiff(added: $0, removed: $1, changed: $2) }
+        )
     }
 
-    private static func encodeArguments(_ args: [String]) throws -> String {
-        let data = try JSONEncoder().encode(args)
-        return String(decoding: data, as: UTF8.self)
+    public func diffBTMItems(
+        from: SnapshotID,
+        to: SnapshotID
+    ) async throws -> BTMItemsDiff {
+        let before = try await readBTMItems(snapshotID: from)
+        let after = try await readBTMItems(snapshotID: to)
+        return Self.computeDiff(
+            before: before,
+            after: after,
+            identity: Self.btmItemIdentityKey,
+            wrap: { BTMItemsDiff(added: $0, removed: $1, changed: $2) }
+        )
     }
 
-    private static func decodeArguments(_ json: String) throws -> [String] {
-        let data = Data(json.utf8)
-        return try JSONDecoder().decode([String].self, from: data)
+    // MARK: - Private write helpers
+
+    private static func insertSnapshot(db: Database, date: Date) throws -> Int64 {
+        try db.execute(
+            sql: "INSERT INTO snapshots (created_at) VALUES (?)",
+            arguments: [date]
+        )
+        return db.lastInsertedRowID
     }
 
-    private static func itemFromRow(_ row: Row) throws -> LaunchAgentItem {
+    private static func insertLaunchAgents(
+        db: Database,
+        snapshotID: Int64,
+        items: [LaunchAgentItem]
+    ) throws {
+        for item in items {
+            let argsJSON = try encodeArguments(item.programArguments)
+            try db.execute(sql: """
+                INSERT INTO launch_agents
+                (snapshot_id, label, source_directory, program_path,
+                 program_arguments_json, run_at_load, keep_alive)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+                """, arguments: [
+                    snapshotID,
+                    item.label,
+                    item.sourceDirectory.rawValue,
+                    item.programPath,
+                    argsJSON,
+                    item.runAtLoad,
+                    item.keepAlive,
+                ])
+        }
+    }
+
+    private static func insertTCCGrants(
+        db: Database,
+        snapshotID: Int64,
+        grants: [PermissionGrant]
+    ) throws {
+        for grant in grants {
+            try db.execute(sql: """
+                INSERT INTO tcc_grants
+                (snapshot_id, service, bundle_id, display_name, bundle_path,
+                 last_modified, automation_target)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+                """, arguments: [
+                    snapshotID,
+                    grant.service.rawValue,
+                    grant.app.bundleID,
+                    grant.app.displayName,
+                    grant.app.bundlePath?.path(percentEncoded: false),
+                    grant.lastModified,
+                    grant.automationTarget,
+                ])
+        }
+    }
+
+    private static func insertBTMItems(
+        db: Database,
+        snapshotID: Int64,
+        items: [BTMItem]
+    ) throws {
+        for item in items {
+            let typeEncoded = encodeItemType(item.type)
+            let dispositionEncoded = encodeDisposition(item.disposition)
+            let scopeEncoded = encodeScope(item.scope)
+            try db.execute(sql: """
+                INSERT INTO btm_items
+                (snapshot_id, identifier, name, developer_name, bundle_identifier,
+                 team_identifier, type_kind, type_raw, disposition_kind, disposition_raw,
+                 scope_kind, scope_per_user_uuid, modification_date, parent_identifier)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """, arguments: [
+                    snapshotID,
+                    item.identifier,
+                    item.name,
+                    item.developerName,
+                    item.bundleIdentifier,
+                    item.teamIdentifier,
+                    typeEncoded.kind,
+                    typeEncoded.raw,
+                    dispositionEncoded.kind,
+                    dispositionEncoded.raw,
+                    scopeEncoded.kind,
+                    scopeEncoded.uuid,
+                    item.modificationDate,
+                    item.parentIdentifier,
+                ])
+        }
+    }
+
+    // MARK: - Private read helpers
+
+    private static func launchAgentFromRow(_ row: Row) throws -> LaunchAgentItem {
         let label: String = row["label"]
         let sourceRaw: String = row["source_directory"]
         guard let source = LaunchAgentItem.SourceDirectory(rawValue: sourceRaw) else {
@@ -175,8 +337,164 @@ public struct SnapshotStore: Sendable {
             keepAlive: row["keep_alive"]
         )
     }
+
+    private static func tccGrantFromRow(_ row: Row) throws -> PermissionGrant {
+        let serviceRaw: String = row["service"]
+        guard let service = PermissionService(rawValue: serviceRaw) else {
+            throw StoreError.unknownPermissionService(serviceRaw)
+        }
+        let bundleID: String = row["bundle_id"]
+        let displayName: String = row["display_name"]
+        let bundlePathString: String? = row["bundle_path"]
+        let bundlePath = bundlePathString.map { URL(fileURLWithPath: $0) }
+        let lastModified: Date = row["last_modified"]
+        let automationTarget: String? = row["automation_target"]
+        return PermissionGrant(
+            service: service,
+            app: AppIdentity(bundleID: bundleID, displayName: displayName, bundlePath: bundlePath),
+            lastModified: lastModified,
+            automationTarget: automationTarget
+        )
+    }
+
+    private static func btmItemFromRow(_ row: Row) throws -> BTMItem {
+        let identifier: String = row["identifier"]
+        let name: String = row["name"]
+        let typeKind: String = row["type_kind"]
+        let typeRaw: Int? = row["type_raw"]
+        let dispositionKind: String = row["disposition_kind"]
+        let dispositionRaw: Int? = row["disposition_raw"]
+        let scopeKind: String = row["scope_kind"]
+        let scopeUUID: String? = row["scope_per_user_uuid"]
+        let modificationDate: Date = row["modification_date"]
+        return BTMItem(
+            identifier: identifier,
+            name: name,
+            developerName: row["developer_name"],
+            bundleIdentifier: row["bundle_identifier"],
+            teamIdentifier: row["team_identifier"],
+            type: try decodeItemType(kind: typeKind, raw: typeRaw),
+            disposition: try decodeDisposition(kind: dispositionKind, raw: dispositionRaw),
+            scope: try decodeScope(kind: scopeKind, uuid: scopeUUID),
+            modificationDate: modificationDate,
+            parentIdentifier: row["parent_identifier"]
+        )
+    }
+
+    // MARK: - Diff engine
+
+    private static func computeDiff<Item, Diff>(
+        before: [Item],
+        after: [Item],
+        identity: (Item) -> String,
+        wrap: ([Item], [Item], [DomainChange<Item>]) -> Diff
+    ) -> Diff where Item: Sendable & Hashable {
+        let beforeByKey = Dictionary(uniqueKeysWithValues: before.map { (identity($0), $0) })
+        let afterByKey = Dictionary(uniqueKeysWithValues: after.map { (identity($0), $0) })
+        let beforeKeys = Set(beforeByKey.keys)
+        let afterKeys = Set(afterByKey.keys)
+
+        let added = after.filter { !beforeKeys.contains(identity($0)) }
+        let removed = before.filter { !afterKeys.contains(identity($0)) }
+
+        let shared = beforeKeys.intersection(afterKeys).sorted()
+        let changed: [DomainChange<Item>] = shared.compactMap { key in
+            let b = beforeByKey[key]!
+            let a = afterByKey[key]!
+            return b == a ? nil : DomainChange(before: b, after: a)
+        }
+        return wrap(added, removed, changed)
+    }
+
+    // MARK: - Identity keys
+
+    private static func launchAgentIdentityKey(_ item: LaunchAgentItem) -> String {
+        "\(item.sourceDirectory.rawValue)|\(item.label)"
+    }
+
+    private static func tccGrantIdentityKey(_ grant: PermissionGrant) -> String {
+        "\(grant.service.rawValue)|\(grant.app.bundleID)|\(grant.automationTarget ?? "")"
+    }
+
+    private static func btmItemIdentityKey(_ item: BTMItem) -> String {
+        item.identifier
+    }
+
+    // MARK: - JSON helpers (LaunchAgent programArguments)
+
+    private static func encodeArguments(_ args: [String]) throws -> String {
+        let data = try JSONEncoder().encode(args)
+        return String(decoding: data, as: UTF8.self)
+    }
+
+    private static func decodeArguments(_ json: String) throws -> [String] {
+        let data = Data(json.utf8)
+        return try JSONDecoder().decode([String].self, from: data)
+    }
+
+    // MARK: - BTM enum encoding
+
+    private static func encodeItemType(_ type: BTMItem.ItemType) -> (kind: String, raw: Int?) {
+        switch type {
+        case .app:            ("app", nil)
+        case .legacyDaemon:   ("legacyDaemon", nil)
+        case .developerGroup: ("developerGroup", nil)
+        case .unknown(let r): ("unknown", r)
+        }
+    }
+
+    private static func decodeItemType(kind: String, raw: Int?) throws -> BTMItem.ItemType {
+        switch kind {
+        case "app":            return .app
+        case "legacyDaemon":   return .legacyDaemon
+        case "developerGroup": return .developerGroup
+        case "unknown":        return .unknown(rawValue: raw ?? 0)
+        default:               throw StoreError.unknownBTMItemTypeKind(kind)
+        }
+    }
+
+    private static func encodeDisposition(_ d: BTMItem.Disposition) -> (kind: String, raw: Int?) {
+        switch d {
+        case .enabled:        ("enabled", nil)
+        case .disabled:       ("disabled", nil)
+        case .unknown(let r): ("unknown", r)
+        }
+    }
+
+    private static func decodeDisposition(kind: String, raw: Int?) throws -> BTMItem.Disposition {
+        switch kind {
+        case "enabled":  return .enabled
+        case "disabled": return .disabled
+        case "unknown":  return .unknown(rawValue: raw ?? 0)
+        default:         throw StoreError.unknownBTMDispositionKind(kind)
+        }
+    }
+
+    private static func encodeScope(_ s: BTMItem.Scope) -> (kind: String, uuid: String?) {
+        switch s {
+        case .system:            ("system", nil)
+        case .user:              ("user", nil)
+        case .perUser(let uuid): ("perUser", uuid)
+        }
+    }
+
+    private static func decodeScope(kind: String, uuid: String?) throws -> BTMItem.Scope {
+        switch kind {
+        case "system":  return .system
+        case "user":    return .user
+        case "perUser":
+            guard let uuid else { throw StoreError.missingPerUserScopeUUID }
+            return .perUser(uuid: uuid)
+        default:        throw StoreError.unknownBTMScopeKind(kind)
+        }
+    }
 }
 
 public enum StoreError: Error, Sendable {
     case unknownSourceDirectory(String)
+    case unknownPermissionService(String)
+    case unknownBTMItemTypeKind(String)
+    case unknownBTMDispositionKind(String)
+    case unknownBTMScopeKind(String)
+    case missingPerUserScopeUUID
 }
