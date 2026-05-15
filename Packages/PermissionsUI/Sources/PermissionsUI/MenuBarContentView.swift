@@ -47,14 +47,14 @@ public struct MenuBarContentView: View {
                 text: String(localized: "Full Disk Access needed"),
                 systemImage: "exclamationmark.triangle.fill",
                 trailingSymbol: "arrow.up.right.square",
-                action: { SystemSettingsLink.openFullDiskAccess() }
+                action: presentFDASheet
             )
         case .btmOnlyFDADenied:
             AttentionRow(
                 text: String(localized: "FDA needed for background items"),
                 systemImage: "exclamationmark.triangle.fill",
                 trailingSymbol: "arrow.up.right.square",
-                action: { SystemSettingsLink.openFullDiskAccess() }
+                action: presentFDASheet
             )
         case .schemaMismatch:
             AttentionRow(
@@ -71,6 +71,11 @@ public struct MenuBarContentView: View {
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
         }
+    }
+
+    private func presentFDASheet() {
+        viewModel.showFDASheetOnDetail = true
+        openWindow(id: "detail")
     }
 
     private enum AttentionState {

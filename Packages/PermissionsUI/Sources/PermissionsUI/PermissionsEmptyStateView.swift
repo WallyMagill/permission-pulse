@@ -2,6 +2,8 @@ import SwiftUI
 import PermissionsCore
 
 struct PermissionsEmptyStateView: View {
+    @Environment(AppViewModel.self) private var viewModel
+
     let error: ScannerError?
     let domain: ScannerDomain
 
@@ -34,7 +36,7 @@ struct PermissionsEmptyStateView: View {
                 .multilineTextAlignment(.center)
                 .fixedSize(horizontal: false, vertical: true)
             Button {
-                SystemSettingsLink.openFullDiskAccess()
+                viewModel.showFDASheetOnDetail = true
             } label: {
                 HStack(spacing: 6) {
                     Image(systemName: "arrow.up.right.square")
@@ -79,6 +81,7 @@ struct PermissionsEmptyStateView: View {
     private var emptyView: some View {
         Text(emptyHeadline)
             .foregroundStyle(.secondary)
+            .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     private var permissionDeniedBody: String {

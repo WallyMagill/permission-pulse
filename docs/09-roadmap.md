@@ -47,10 +47,14 @@ See `docs/12-fda-ux-slice.md` for the spec.
 
 See `docs/13-btm-slice.md` for the spec.
 
-## v0.4.1 — Mic/cam current use + menu-bar icon
+## v0.4.1 — Mic/cam current use + menu-bar icon (✅ done 2026-05-14)
 
-- `MediaUseScannerAVFoundation` for live observation of mic/cam usage.
-- State-driven `MenuBarExtra` icon overhaul (orange dot for mic, green for camera, mixed when both).
+- `MediaUseObserverCMIO` (CoreMediaIO + CoreAudio, no entitlements) for live observation of mic/cam usage. ✅
+- State-driven `MenuBarExtra` icon: error > both > camera > mic > idle. ✅
+- `DetailWindowView` full ScrollView rewrite — fixes the v0.4.0 `List`-section badge + button rendering bugs. ✅
+- `FDAGrantSheet` guided dialog before the System Settings deep-link. ✅
+
+See `docs/14-mic-cam-icon-slice.md` for the spec.
 
 ## v0.5.0 — What Changed and Stale review
 

@@ -27,3 +27,25 @@ public protocol LaunchAgentScanner: Sendable {
 public protocol BTMScanner: Sendable {
     func scan() async throws -> [BTMItem]
 }
+
+public struct MediaUseEvent: Sendable, Equatable {
+    public enum Device: Sendable, Equatable {
+        case microphone
+        case camera
+    }
+
+    public let device: Device
+    public let inUse: Bool
+    public let timestamp: Date
+
+    public init(device: Device, inUse: Bool, timestamp: Date) {
+        self.device = device
+        self.inUse = inUse
+        self.timestamp = timestamp
+    }
+}
+
+public protocol MediaUseObserver: Sendable {
+    func events() -> AsyncStream<MediaUseEvent>
+    func stop() async
+}

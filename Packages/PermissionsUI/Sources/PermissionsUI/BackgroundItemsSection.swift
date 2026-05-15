@@ -17,24 +17,27 @@ public struct BackgroundItemsSection: View {
     }
 
     public var body: some View {
-        Section {
+        VStack(alignment: .leading, spacing: 8) {
+            SectionHeader(
+                title: String(localized: "Background Items"),
+                showsBadge: error == nil,
+                dataSource: dataSource
+            )
+
             if items.isEmpty {
                 PermissionsEmptyStateView(error: error, domain: .btm)
             } else {
-                ForEach(items, id: \.self) { item in
-                    BTMItemRow(item: item)
-                }
-            }
-        } header: {
-            HStack {
-                Text(String(localized: "Background Items"))
-                Spacer()
-                if error == nil {
-                    switch dataSource {
-                    case .mock: MockBadge()
-                    case .live: LiveBadge()
+                VStack(spacing: 0) {
+                    ForEach(Array(items.enumerated()), id: \.element) { index, item in
+                        BTMItemRow(item: item)
+                            .padding(.vertical, 8)
+                            .padding(.horizontal, 12)
+                        if index < items.count - 1 {
+                            Divider().padding(.leading, 12)
+                        }
                     }
                 }
+                .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 8))
             }
         }
     }
@@ -118,51 +121,63 @@ private struct DispositionBadge: View {
 }
 
 #Preview("Empty — Live") {
-    List {
-        BackgroundItemsSection(items: [], dataSource: .live)
+    ScrollView {
+        VStack(alignment: .leading, spacing: 16) {
+            BackgroundItemsSection(items: [], dataSource: .live)
+        }
+        .padding(16)
     }
     .frame(width: 520, height: 240)
+    .environment(AppViewModel())
 }
 
 #Preview("Empty — FDA denied") {
-    List {
-        BackgroundItemsSection(
-            items: [],
-            dataSource: .live,
-            error: .permissionDenied(reason: "FDA needed")
-        )
+    ScrollView {
+        VStack(alignment: .leading, spacing: 16) {
+            BackgroundItemsSection(
+                items: [],
+                dataSource: .live,
+                error: .permissionDenied(reason: "FDA needed")
+            )
+        }
+        .padding(16)
     }
-    .frame(width: 520, height: 420)
+    .frame(width: 520, height: 480)
+    .environment(AppViewModel())
 }
 
 #Preview("Populated — Mock") {
-    List {
-        BackgroundItemsSection(
-            items: [
-                BTMItem(
-                    identifier: "2.us.zoom.xos",
-                    name: "zoom.us",
-                    bundleIdentifier: "us.zoom.xos",
-                    teamIdentifier: "BJ4HAAB9B3",
-                    type: .app,
-                    disposition: .enabled,
-                    scope: .user,
-                    modificationDate: Date()
-                ),
-                BTMItem(
-                    identifier: "16.com.docker.vmnetd",
-                    name: "com.docker.vmnetd",
-                    developerName: "Docker",
-                    teamIdentifier: "9BNSXJN65R",
-                    type: .legacyDaemon,
-                    disposition: .enabled,
-                    scope: .system,
-                    modificationDate: Date(),
-                    parentIdentifier: "Docker"
-                ),
-            ],
-            dataSource: .mock
-        )
+    ScrollView {
+        VStack(alignment: .leading, spacing: 16) {
+            BackgroundItemsSection(
+                items: [
+                    BTMItem(
+                        identifier: "2.us.zoom.xos",
+                        name: "zoom.us",
+                        bundleIdentifier: "us.zoom.xos",
+                        teamIdentifier: "BJ4HAAB9B3",
+                        type: .app,
+                        disposition: .enabled,
+                        scope: .user,
+                        modificationDate: Date()
+                    ),
+                    BTMItem(
+                        identifier: "16.com.docker.vmnetd",
+                        name: "com.docker.vmnetd",
+                        developerName: "Docker",
+                        teamIdentifier: "9BNSXJN65R",
+                        type: .legacyDaemon,
+                        disposition: .enabled,
+                        scope: .system,
+                        modificationDate: Date(),
+                        parentIdentifier: "Docker"
+                    ),
+                ],
+                dataSource: .mock
+            )
+        }
+        .padding(16)
     }
     .frame(width: 520, height: 240)
+    .environment(AppViewModel())
 }

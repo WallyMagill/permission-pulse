@@ -99,18 +99,23 @@ Each scanner is documented as: **what it reads, which API, what permission is ne
 
 ---
 
-## Microphone / Camera current use
+## Microphone / Camera current use (implemented v0.4.1)
 
-**What:** Which app is *currently* using the mic or camera, used to drive a menu-bar dot indicator (orange = mic, green = camera).
+**What:** Whether *any* app is currently using a microphone or camera. Drives the menu-bar icon (`mic.fill`, `video.fill`, or `video.badge.waveform`). Per-app attribution is deferred — see `docs/14-mic-cam-icon-slice.md`.
 
-**API:** `AVCaptureDevice` observation. We never open the device ourselves.
+**Implementation:** `MediaUseObserverCMIO` in `PermissionsScanners` plus `MediaUseCoordinator` in the app target. Pushes `MediaUseEvent`s through an `AsyncStream` into `AppViewModel.micInUse` / `AppViewModel.cameraInUse`.
 
-**Permission needed:** None to *observe* (we don't open the device). We never request mic/cam access ourselves.
+**API:**
+- **Cameras:** `CoreMediaIO` — enumerate `kCMIOHardwarePropertyDevices`, register `CMIOObjectAddPropertyListenerBlock` on `kCMIODevicePropertyDeviceIsRunningSomewhere`. We never open the device.
+- **Microphones:** `CoreAudio` — enumerate `kAudioHardwarePropertyDevices`, filter to devices with input streams (`kAudioDevicePropertyStreamConfiguration` on `kAudioDevicePropertyScopeInput`, channels > 0), register `AudioObjectAddPropertyListenerBlock` on `kAudioDevicePropertyDeviceIsRunningSomewhere`.
 
-**Fragility:** Low-medium. Apple has changed the observation APIs once or twice but the current ones are stable.
+**Permission needed:** None. No `Info.plist` usage strings, no entitlements, no permission popup. Verified on Tahoe 26 with the diagnostic script. The earlier `AVCaptureDevice.isInUseByAnotherApplication` path is deprecated and returns stale data outside an active capture session — we don't use it.
+
+**Fragility:** Low. CoreMediaIO and CoreAudio property listeners have been stable across many macOS releases and are used by countless camera-indicator utilities.
 
 **Failure mode:**
-- API returns nothing → no dot shown; not an error.
+- Listener registration fails → device is silently skipped (logged via `OSLog`). Other devices continue to fire.
+- All listener registrations fail → `micInUse` / `cameraInUse` stay `false`; menu-bar icon stays at idle/error. No crash.
 
 ---
 
@@ -152,5 +157,5 @@ Each scanner is documented as: **what it reads, which API, what permission is ne
 | LaunchAgents/Daemons (public) | None | Low | always works (✅ implemented v0.2.0) |
 | BTM (direct .btm) | FDA | Very high | section shows FDA empty state (✅ implemented v0.4.0) |
 | BTM (sfltool) | Manual sudo | High | deferred (would be a manual user step, not automation) |
-| Mic/Cam observation | None | Low-medium | menu-bar dot hidden |
+| Mic/Cam observation | None | Low | menu-bar icon stays at idle/error (✅ implemented v0.4.1) |
 | Last-launch date | None | Medium | app omitted from Stale review |

@@ -10,55 +10,37 @@ public struct DetailWindowView: View {
     }
 
     public var body: some View {
+        @Bindable var bindableViewModel = viewModel
+
         NavigationStack {
-            List {
-                if let tccError = viewModel.tccScanError, isSchemaIssue(tccError) {
-                    Section {
+            ScrollView {
+                VStack(alignment: .leading, spacing: 16) {
+                    if let tccError = viewModel.tccScanError, isSchemaIssue(tccError) {
                         SchemaMismatchBanner(error: tccError, domain: .tcc)
-                            .listRowInsets(EdgeInsets())
-                            .listRowBackground(Color.clear)
                     }
-                }
-
-                if let btmError = viewModel.btmScanError, isSchemaIssue(btmError) {
-                    Section {
+                    if let btmError = viewModel.btmScanError, isSchemaIssue(btmError) {
                         SchemaMismatchBanner(error: btmError, domain: .btm)
-                            .listRowInsets(EdgeInsets())
-                            .listRowBackground(Color.clear)
                     }
+
+                    PermissionsSection(
+                        grants: viewModel.grants,
+                        dataSource: viewModel.tccDataSource,
+                        error: viewModel.tccScanError
+                    )
+
+                    LaunchAgentsSection(
+                        items: viewModel.launchAgents,
+                        dataSource: viewModel.launchAgentsDataSource
+                    )
+
+                    BackgroundItemsSection(
+                        items: viewModel.btmItems,
+                        dataSource: viewModel.btmDataSource,
+                        error: viewModel.btmScanError
+                    )
                 }
-
-                Section {
-                    if viewModel.grants.isEmpty {
-                        PermissionsEmptyStateView(error: viewModel.tccScanError, domain: .tcc)
-                    } else {
-                        ForEach(viewModel.grants, id: \.self) { grant in
-                            GrantRow(grant: grant)
-                        }
-                    }
-                } header: {
-                    HStack {
-                        Text(String(localized: "Permissions"))
-                        Spacer()
-                        if viewModel.tccScanError == nil {
-                            switch viewModel.tccDataSource {
-                            case .mock: MockBadge()
-                            case .live: LiveBadge()
-                            }
-                        }
-                    }
-                }
-
-                LaunchAgentsSection(
-                    items: viewModel.launchAgents,
-                    dataSource: viewModel.launchAgentsDataSource
-                )
-
-                BackgroundItemsSection(
-                    items: viewModel.btmItems,
-                    dataSource: viewModel.btmDataSource,
-                    error: viewModel.btmScanError
-                )
+                .padding(16)
+                .frame(maxWidth: .infinity, alignment: .leading)
             }
             .navigationTitle(String(localized: "Permission Pulse"))
             .toolbar {
@@ -73,6 +55,9 @@ public struct DetailWindowView: View {
                 }
             }
         }
+        .sheet(isPresented: $bindableViewModel.showFDASheetOnDetail) {
+            FDAGrantSheet()
+        }
         .frame(minWidth: 520, minHeight: 360)
     }
 
@@ -80,24 +65,6 @@ public struct DetailWindowView: View {
         switch error {
         case .schemaMismatch, .unsupportedOnThisOS: true
         default: false
-        }
-    }
-}
-
-private struct GrantRow: View {
-    let grant: PermissionGrant
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 2) {
-            Text(grant.app.displayName)
-            Text("\(grant.service.displayName) · \(grant.app.bundleID)")
-                .font(.caption)
-                .foregroundStyle(.secondary)
-            if grant.service == .automation, let target = grant.automationTarget {
-                Text("Controls → \(target)")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
         }
     }
 }

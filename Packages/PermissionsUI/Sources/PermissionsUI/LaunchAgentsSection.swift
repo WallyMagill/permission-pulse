@@ -11,23 +11,31 @@ public struct LaunchAgentsSection: View {
     }
 
     public var body: some View {
-        Section {
+        VStack(alignment: .leading, spacing: 8) {
+            SectionHeader(
+                title: String(localized: "Launch Agents"),
+                showsBadge: true,
+                dataSource: dataSource
+            )
+
             if items.isEmpty {
-                Text("No launch agents")
+                Text(String(localized: "No launch agents"))
                     .foregroundStyle(.secondary)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(12)
+                    .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 8))
             } else {
-                ForEach(items, id: \.self) { item in
-                    LaunchAgentRow(item: item)
+                VStack(spacing: 0) {
+                    ForEach(Array(items.enumerated()), id: \.element) { index, item in
+                        LaunchAgentRow(item: item)
+                            .padding(.vertical, 8)
+                            .padding(.horizontal, 12)
+                        if index < items.count - 1 {
+                            Divider().padding(.leading, 12)
+                        }
+                    }
                 }
-            }
-        } header: {
-            HStack {
-                Text("Launch Agents")
-                Spacer()
-                switch dataSource {
-                case .mock: MockBadge()
-                case .live: LiveBadge()
-                }
+                .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 8))
             }
         }
     }
@@ -43,58 +51,68 @@ private struct LaunchAgentRow: View {
                 .font(.caption)
                 .foregroundStyle(.secondary)
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 }
 
 #Preview("Empty — Live") {
-    List {
-        LaunchAgentsSection(items: [], dataSource: .live)
+    ScrollView {
+        VStack(alignment: .leading, spacing: 16) {
+            LaunchAgentsSection(items: [], dataSource: .live)
+        }
+        .padding(16)
     }
     .frame(width: 480, height: 240)
 }
 
 #Preview("Populated — Live") {
-    List {
-        LaunchAgentsSection(
-            items: [
-                LaunchAgentItem(
-                    label: "com.example.helper",
-                    sourceDirectory: .userLaunchAgents,
-                    programPath: "/usr/local/bin/helper",
-                    programArguments: [],
-                    runAtLoad: true,
-                    keepAlive: false
-                ),
-                LaunchAgentItem(
-                    label: "com.example.daemon",
-                    sourceDirectory: .libraryLaunchDaemons,
-                    programPath: "/usr/local/sbin/daemon",
-                    programArguments: ["--background"],
-                    runAtLoad: true,
-                    keepAlive: true
-                ),
-            ],
-            dataSource: .live
-        )
+    ScrollView {
+        VStack(alignment: .leading, spacing: 16) {
+            LaunchAgentsSection(
+                items: [
+                    LaunchAgentItem(
+                        label: "com.example.helper",
+                        sourceDirectory: .userLaunchAgents,
+                        programPath: "/usr/local/bin/helper",
+                        programArguments: [],
+                        runAtLoad: true,
+                        keepAlive: false
+                    ),
+                    LaunchAgentItem(
+                        label: "com.example.daemon",
+                        sourceDirectory: .libraryLaunchDaemons,
+                        programPath: "/usr/local/sbin/daemon",
+                        programArguments: ["--background"],
+                        runAtLoad: true,
+                        keepAlive: true
+                    ),
+                ],
+                dataSource: .live
+            )
+        }
+        .padding(16)
     }
     .frame(width: 480, height: 240)
 }
 
 #Preview("Populated — Mock") {
-    List {
-        LaunchAgentsSection(
-            items: [
-                LaunchAgentItem(
-                    label: "com.example.mock",
-                    sourceDirectory: .userLaunchAgents,
-                    programPath: "/tmp/mock",
-                    programArguments: [],
-                    runAtLoad: false,
-                    keepAlive: false
-                ),
-            ],
-            dataSource: .mock
-        )
+    ScrollView {
+        VStack(alignment: .leading, spacing: 16) {
+            LaunchAgentsSection(
+                items: [
+                    LaunchAgentItem(
+                        label: "com.example.mock",
+                        sourceDirectory: .userLaunchAgents,
+                        programPath: "/tmp/mock",
+                        programArguments: [],
+                        runAtLoad: false,
+                        keepAlive: false
+                    ),
+                ],
+                dataSource: .mock
+            )
+        }
+        .padding(16)
     }
     .frame(width: 480, height: 240)
 }

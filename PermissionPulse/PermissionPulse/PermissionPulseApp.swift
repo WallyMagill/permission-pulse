@@ -16,9 +16,11 @@ struct PermissionPulseApp: App {
         .windowResizability(.contentSize)
         .defaultSize(width: 0, height: 0)
 
-        MenuBarExtra("Permission Pulse", systemImage: "shield.lefthalf.filled") {
+        MenuBarExtra {
             MenuBarContentView()
                 .environment(appDelegate.viewModel)
+        } label: {
+            Image(systemName: appDelegate.viewModel.menuBarSymbolName)
         }
         .menuBarExtraStyle(.window)
 
@@ -38,6 +40,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     let viewModel = AppViewModel()
     private var coordinator: ScanCoordinator?
+    private var mediaCoordinator: MediaUseCoordinator?
     private var welcomeWindow: NSWindow?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
@@ -45,6 +48,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         Task { @MainActor in
             await coordinator?.runScan()
         }
+
+        mediaCoordinator = MediaUseCoordinator(viewModel: viewModel)
+        mediaCoordinator?.start()
 
         if !UserDefaults.standard.bool(forKey: Self.hasSeenWelcomeKey) {
             showWelcomeWindow()
