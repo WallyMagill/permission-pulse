@@ -1,0 +1,87 @@
+import SwiftUI
+import PermissionsCore
+import PermissionsStore
+
+// One row in a diff sub-section. The kind enum tells the row what to render
+// (indicator color + description string); the actual layout is uniform.
+struct ChangeRow: View {
+    enum Kind {
+        case granted(PermissionGrant)
+        case revoked(PermissionGrant)
+        case btmAdded(BTMItem)
+        case btmRemoved(BTMItem)
+        case btmDispositionFlipped(DomainChange<BTMItem>)
+        case launchAgentAdded(LaunchAgentItem)
+        case launchAgentRemoved(LaunchAgentItem)
+        case launchAgentFlipped(DomainChange<LaunchAgentItem>)
+    }
+
+    let kind: Kind
+
+    var body: some View {
+        HStack(spacing: 10) {
+            indicator
+            Text(description)
+                .lineLimit(2)
+                .frame(maxWidth: .infinity, alignment: .leading)
+        }
+    }
+
+    @ViewBuilder
+    private var indicator: some View {
+        switch kind {
+        case .granted, .btmAdded, .launchAgentAdded:
+            Image(systemName: "plus.circle.fill").foregroundStyle(.green)
+        case .revoked, .btmRemoved, .launchAgentRemoved:
+            Image(systemName: "minus.circle.fill").foregroundStyle(.red)
+        case .btmDispositionFlipped, .launchAgentFlipped:
+            Image(systemName: "arrow.triangle.2.circlepath.circle.fill")
+                .foregroundStyle(.orange)
+        }
+    }
+
+    private var description: String {
+        switch kind {
+        case .granted(let g):
+            return String(localized: "Granted \(g.service.displayName) to \(g.app.displayName)")
+        case .revoked(let g):
+            return String(localized: "Revoked \(g.service.displayName) from \(g.app.displayName)")
+        case .btmAdded(let i):
+            return String(localized: "New background item: \(i.name)")
+        case .btmRemoved(let i):
+            return String(localized: "Removed background item: \(i.name)")
+        case .btmDispositionFlipped(let change):
+            let from = Self.dispositionLabel(change.before.disposition)
+            let to = Self.dispositionLabel(change.after.disposition)
+            return String(localized: "Disposition changed: \(change.after.name) (\(from) → \(to))")
+        case .launchAgentAdded(let i):
+            return String(localized: "New launch agent: \(i.label)")
+        case .launchAgentRemoved(let i):
+            return String(localized: "Removed launch agent: \(i.label)")
+        case .launchAgentFlipped(let change):
+            return Self.launchAgentFlipDescription(change)
+        }
+    }
+
+    private static func launchAgentFlipDescription(_ change: DomainChange<LaunchAgentItem>) -> String {
+        if change.before.runAtLoad != change.after.runAtLoad {
+            let from = change.before.runAtLoad ? "on" : "off"
+            let to = change.after.runAtLoad ? "on" : "off"
+            return String(localized: "runAtLoad flipped: \(change.after.label) (\(from) → \(to))")
+        }
+        if change.before.keepAlive != change.after.keepAlive {
+            let from = change.before.keepAlive ? "on" : "off"
+            let to = change.after.keepAlive ? "on" : "off"
+            return String(localized: "keepAlive flipped: \(change.after.label) (\(from) → \(to))")
+        }
+        return String(localized: "Modified: \(change.after.label)")
+    }
+
+    private static func dispositionLabel(_ d: BTMItem.Disposition) -> String {
+        switch d {
+        case .enabled:  return String(localized: "enabled")
+        case .disabled: return String(localized: "disabled")
+        case .unknown:  return String(localized: "unknown")
+        }
+    }
+}

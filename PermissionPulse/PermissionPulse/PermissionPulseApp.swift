@@ -34,6 +34,14 @@ struct PermissionPulseApp: App {
                 .environment(appDelegate.viewModel)
         }
         .windowResizability(.contentSize)
+
+        WindowGroup("What Changed", id: "what-changed") {
+            WhatChangedWindowView(onAppeared: { [appDelegate] in
+                appDelegate.markCurrentSnapshotReviewed()
+            })
+                .environment(appDelegate.viewModel)
+        }
+        .windowResizability(.contentSize)
     }
 }
 

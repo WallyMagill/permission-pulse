@@ -24,6 +24,22 @@ public struct MenuBarContentView: View {
             Divider()
 
             Button {
+                openWindow(id: "what-changed")
+            } label: {
+                HStack(spacing: 6) {
+                    Image(systemName: "clock.arrow.circlepath")
+                    Text(String(localized: "What Changed"))
+                    if viewModel.hasUnreviewedChanges {
+                        Spacer(minLength: 4)
+                        Circle()
+                            .fill(.orange)
+                            .frame(width: 8, height: 8)
+                    }
+                }
+            }
+            .keyboardShortcut("w", modifiers: [.command])
+
+            Button {
                 openWindow(id: "detail")
             } label: {
                 Label(String(localized: "Open Permission Pulse"), systemImage: "shield.lefthalf.filled")
