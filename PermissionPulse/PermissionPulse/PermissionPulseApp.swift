@@ -44,6 +44,7 @@ struct PermissionPulseApp: App {
             )
             .environment(appDelegate.viewModel)
             .environment(appDelegate.dismissedDiffEntries)
+            .environment(appDelegate.dismissedStaleApps)
         }
         .windowResizability(.contentSize)
     }
@@ -61,6 +62,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     let viewModel = AppViewModel()
     let preferencesStore = PreferencesStore()
     let dismissedDiffEntries = DismissedDiffEntryStore()
+    let dismissedStaleApps = DismissedStaleAppStore()
     lazy var preferencesViewModel = PreferencesViewModel(store: preferencesStore)
     private var coordinator: ScanCoordinator?
     private var mediaCoordinator: MediaUseCoordinator?
@@ -82,7 +84,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 viewModel: viewModel,
                 store: snapshotStore,
                 snapshotRetentionDays: preferencesStore.snapshotRetentionDays,
-                staleThresholdDays: preferencesStore.staleThresholdDays
+                staleThresholdDays: preferencesStore.staleThresholdDays,
+                dismissedStaleApps: dismissedStaleApps
             )
         }
 

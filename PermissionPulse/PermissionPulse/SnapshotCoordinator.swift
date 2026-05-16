@@ -26,6 +26,7 @@ final class SnapshotCoordinator {
     private let defaults: UserDefaults
     private let calendar: Calendar
     private let now: @Sendable () -> Date
+    private let dismissedStaleApps: DismissedStaleAppStore?
 
     // Injected so Preferences can change them at runtime. New values take
     // effect on the next scan cycle — we do not re-prune mid-session to
@@ -41,7 +42,8 @@ final class SnapshotCoordinator {
         calendar: Calendar = .current,
         now: @Sendable @escaping () -> Date = Date.init,
         snapshotRetentionDays: Int = SnapshotCoordinator.defaultSnapshotRetentionDays,
-        staleThresholdDays: Int = SnapshotCoordinator.defaultStaleThresholdDays
+        staleThresholdDays: Int = SnapshotCoordinator.defaultStaleThresholdDays,
+        dismissedStaleApps: DismissedStaleAppStore? = nil
     ) {
         self.viewModel = viewModel
         self.store = store
@@ -51,6 +53,7 @@ final class SnapshotCoordinator {
         self.now = now
         self.snapshotRetentionDays = snapshotRetentionDays
         self.staleThresholdDays = staleThresholdDays
+        self.dismissedStaleApps = dismissedStaleApps
     }
 
     func onScanCompleted() async {
@@ -165,7 +168,11 @@ final class SnapshotCoordinator {
 
     private func computeStaleApps(nowDate: Date) async -> [StaleApp] {
         // Dedupe grants by bundleID, keep only those with a bundlePath.
+        // Drop anything the user has chosen to skip in Preferences so the
+        // sidebar badge count stays honest end-to-end.
+        let skipped = dismissedStaleApps?.allBundleIDs() ?? []
         let grouped = Dictionary(grouping: viewModel.grants, by: \.app.bundleID)
+            .filter { bundleID, _ in !skipped.contains(bundleID) }
         let candidates: [StaleCandidate] = grouped.compactMap { _, grants in
             guard let representative = grants.first,
                   let path = representative.app.bundlePath else { return nil }

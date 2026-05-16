@@ -103,6 +103,34 @@ import PermissionsUI
         #expect(env.viewModel.staleApps.contains { $0.app.bundleID == "com.example.sixtyDay" })
     }
 
+    @Test func staleAppsFilteredByDismissedStaleAppsStore() async throws {
+        // Two stale candidates. One is in the dismissed set → must not appear.
+        let keptPath = URL(fileURLWithPath: "/Applications/Kept.app")
+        let skippedPath = URL(fileURLWithPath: "/Applications/Skipped.app")
+        let old = Date(
+            timeIntervalSince1970: fixedNow().timeIntervalSince1970 - 200 * 86_400
+        )
+        let probe = MockLastUsedProbe(fixed: [
+            keptPath: (old, .spotlight),
+            skippedPath: (old, .spotlight),
+        ])
+        let dismissed = DismissedStaleAppStore(
+            defaults: UserDefaults(suiteName: "dismissed-stale-\(UUID().uuidString)")!
+        )
+        dismissed.skipForever(bundleID: "com.example.skipped")
+        let env = try await Environment(now: fixedNow, probe: probe, dismissedStaleApps: dismissed)
+
+        env.viewModel.grants = [
+            demoGrant(bundleID: "com.example.kept", bundlePath: keptPath),
+            demoGrant(bundleID: "com.example.skipped", bundlePath: skippedPath),
+        ]
+        await env.coordinator.onScanCompleted()
+
+        let stale = env.viewModel.staleApps
+        #expect(stale.contains { $0.app.bundleID == "com.example.kept" })
+        #expect(!stale.contains { $0.app.bundleID == "com.example.skipped" })
+    }
+
     @Test func customRetentionHonored() async throws {
         // Seed a snapshot 20 days ago. With a 10-day retention, it must be
         // pruned after the next write. We verify by asking the store for the
@@ -163,7 +191,8 @@ import PermissionsUI
             now: @Sendable @escaping () -> Date,
             probe: any LastUsedProbe = MockLastUsedProbe(),
             snapshotRetentionDays: Int = SnapshotCoordinator.defaultSnapshotRetentionDays,
-            staleThresholdDays: Int = SnapshotCoordinator.defaultStaleThresholdDays
+            staleThresholdDays: Int = SnapshotCoordinator.defaultStaleThresholdDays,
+            dismissedStaleApps: DismissedStaleAppStore? = nil
         ) async throws {
             self.store = try SnapshotStore.inMemory()
             self.viewModel = AppViewModel()
@@ -176,7 +205,8 @@ import PermissionsUI
                 calendar: Calendar(identifier: .gregorian),
                 now: now,
                 snapshotRetentionDays: snapshotRetentionDays,
-                staleThresholdDays: staleThresholdDays
+                staleThresholdDays: staleThresholdDays,
+                dismissedStaleApps: dismissedStaleApps
             )
         }
 

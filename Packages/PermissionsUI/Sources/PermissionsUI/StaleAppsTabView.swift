@@ -4,9 +4,17 @@ import PermissionsCore
 
 struct StaleAppsTabView: View {
     let staleApps: [StaleApp]
+    @Environment(DismissedStaleAppStore.self) private var dismissedStore
+
+    @State private var pendingSkipCandidate: StaleApp?
 
     var body: some View {
-        if staleApps.isEmpty {
+        // Defensive view-side filter for immediate post-click feedback. The
+        // SnapshotCoordinator already filters on the next scan; this catches
+        // the gap between click and re-render.
+        let visible = staleApps.filter { !dismissedStore.contains(bundleID: $0.app.bundleID) }
+
+        if visible.isEmpty {
             empty
         } else {
             VStack(alignment: .leading, spacing: 8) {
@@ -14,16 +22,37 @@ struct StaleAppsTabView: View {
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
                 VStack(spacing: 0) {
-                    ForEach(Array(staleApps.enumerated()), id: \.offset) { index, app in
-                        StaleAppRow(app: app)
-                            .padding(.vertical, 8)
-                            .padding(.horizontal, 12)
-                        if index < staleApps.count - 1 {
+                    ForEach(Array(visible.enumerated()), id: \.offset) { index, app in
+                        StaleAppRow(
+                            app: app,
+                            onSkipForever: { pendingSkipCandidate = app }
+                        )
+                        .padding(.vertical, 8)
+                        .padding(.horizontal, 12)
+                        if index < visible.count - 1 {
                             Divider().padding(.leading, 56)
                         }
                     }
                 }
                 .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 8))
+            }
+            .alert(
+                String(localized: "Skip this app forever?"),
+                isPresented: Binding(
+                    get: { pendingSkipCandidate != nil },
+                    set: { if !$0 { pendingSkipCandidate = nil } }
+                ),
+                presenting: pendingSkipCandidate
+            ) { candidate in
+                Button(String(localized: "Skip"), role: .destructive) {
+                    dismissedStore.skipForever(bundleID: candidate.app.bundleID)
+                    pendingSkipCandidate = nil
+                }
+                Button(String(localized: "Cancel"), role: .cancel) {
+                    pendingSkipCandidate = nil
+                }
+            } message: { candidate in
+                Text(String(localized: "Permission Pulse will stop flagging \(candidate.app.displayName) in Stale Apps. Use Reset All Data in Preferences to un-skip."))
             }
         }
     }
@@ -45,6 +74,7 @@ struct StaleAppsTabView: View {
 
 private struct StaleAppRow: View {
     let app: StaleApp
+    var onSkipForever: (() -> Void)? = nil
 
     var body: some View {
         HStack(alignment: .top, spacing: 12) {
@@ -56,6 +86,17 @@ private struct StaleAppRow: View {
                 Text(lastUsedLine).font(.caption2).foregroundStyle(.secondary)
             }
             Spacer(minLength: 0)
+            if let onSkipForever {
+                Menu {
+                    Button(String(localized: "Skip forever")) { onSkipForever() }
+                } label: {
+                    Image(systemName: "ellipsis.circle")
+                        .foregroundStyle(.tertiary)
+                }
+                .menuStyle(.borderlessButton)
+                .menuIndicator(.hidden)
+                .fixedSize()
+            }
         }
     }
 
