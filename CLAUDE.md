@@ -57,6 +57,22 @@ These are the spots where AI codegen most often invents APIs or assumes behavior
 | Mic/cam current use | Public APIs | AVFoundation usage detection. Drives the menu-bar dot. |
 | `LastUsedProbeHybrid` (Spotlight via `mdls`) | Spotlight metadata returns `(null)` on many apps even when they've been used recently. Sandbox-on path will need replacement. | Hybrid fallback to `URL.contentModificationDateKey`. Skip the app if both miss (under-flag, never over-flag). Future-tag: replace `Process(/usr/bin/mdls)` with `MDItemCreate` in-process when sandboxing turns on. |
 | Snapshot store schema v3 | GRDB migration drift if Apple changes underlying TCC/BTM enum bits | Per-domain `*_kind` TEXT + nullable `*_raw` INTEGER captures `unknown(rawValue:)` losslessly. Migration is purely additive — v2 tables untouched. |
+| `UNUserNotificationCenter` on unsigned bundles | An unsigned, ad-hoc-signed `.app` may register oddly with the notification system. The system prompt and delivered banner *should* show "Permission Pulse" (the `INFOPLIST_KEY_CFBundleDisplayName`) but may fall back to a generic bundle label. | Hand-test on Tahoe before any release that ships the weekly digest. If the label is wrong and unfixable without a Developer ID, ship the slice without the digest and defer to a follow-up. Never add entitlements to "fix" this — crosses the Developer-ID line. |
+
+## v0.7.0 UserDefaults keys
+
+In addition to `hasSeenWelcome`, `lastSnapshotDate`, `lastReviewedSnapshotID` from v0.3.x–v0.5.0, v0.7.0 adds:
+
+- `com.wallymagill.permissionpulse.snapshotRetentionDays` — Int (7…365, default 90)
+- `com.wallymagill.permissionpulse.staleThresholdDays` — Int (30…365, default 90)
+- `com.wallymagill.permissionpulse.digestEnabled` — Bool (default false)
+- `com.wallymagill.permissionpulse.digestWeekday` — Int (1…7, default 2 = Monday)
+- `com.wallymagill.permissionpulse.digestHour` — Int (0…23, default 9)
+- `com.wallymagill.permissionpulse.digestMinute` — Int (0…59, default 0)
+- `com.wallymagill.permissionpulse.dismissedDiffEntries` — JSON `[String: Date]` (semantic-key → expiry; `.distantFuture` = forever)
+- `com.wallymagill.permissionpulse.dismissedStaleApps` — `[String]` (bundleIDs the user skipped forever)
+
+"Reset All Data" wipes everything matching `com.wallymagill.permissionpulse.*` while preserving `NSWindow`/`NSStatusItem`/`NSSplitView` keys macOS auto-writes under our bundle domain.
 
 ## Known macOS Tahoe (26) quirks
 

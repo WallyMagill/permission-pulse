@@ -77,10 +77,14 @@ See `docs/15-what-changed-and-stale-slice.md` for the spec.
 
 See `docs/16-one-click-fixes-and-risk-slice.md` for the spec.
 
-## v0.7.0 — Polish, weekly digest, preferences
+## v0.7.0 — Preferences, weekly digest, per-row dismiss (✅ done 2026-05-16)
 
-- Weekly notification.
-- Preferences pane (digest on/off, snapshot retention, "Reset all data").
+- Preferences pane (snapshot retention + stale threshold sliders, weekly digest controls, Reset All Data). ✅
+- Weekly local notification opt-in via `UNUserNotificationCenter` + `WeeklyDigestCoordinator`. ✅
+- Per-row Dismiss / Snooze 7 days on Recent Changes (semantic keys persist across snapshots). ✅
+- Skip-stale-app-forever per stale row, filtered in `SnapshotCoordinator.computeStaleApps` so the badge count stays honest. ✅
+
+See `docs/17-preferences-and-digest-slice.md` for the spec.
 
 ## v1.0.0 — First public release
 

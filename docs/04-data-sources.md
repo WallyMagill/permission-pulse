@@ -178,6 +178,42 @@ Each scanner is documented as: **what it reads, which API, what permission is ne
 
 ---
 
+## Preferences (implemented v0.7.0)
+
+**What:** User-configurable knobs that previously lived as hardcoded constants in `SnapshotCoordinator`, plus persisted dismissals for diff rows and stale apps.
+
+**Implementation:** `PreferencesStore` in `Packages/PermissionsUI/Sources/PermissionsUI/PreferencesStore.swift`. `@Observable @MainActor` wrapper over `UserDefaults` with clamping on read and write.
+
+**Where:** Standard `UserDefaults` (`com.wallymagill.permissionpulse.*` namespace). See `CLAUDE.md` for the full key list.
+
+**API:** Direct property reads/writes via the typed accessors. The view-model layer (`PreferencesViewModel`) exposes Double mirrors for `Slider` bindings and a digest-time `Date` convenience for `.hourAndMinute` `DatePicker`.
+
+**Permission needed:** None. UserDefaults is unrestricted for our domain.
+
+**Fragility:** Low. The `dismissedDiffEntries` JSON blob is the only structured value; corrupt decode falls back to an empty map.
+
+**Failure mode:** A corrupt JSON blob in `dismissedDiffEntries` logs and is treated as empty; the next write overwrites the bad value.
+
+**Reset:** `ResetAllDataService.reset()` removes every key prefixed with `com.wallymagill.permissionpulse.`, preserving NSWindow/NSStatusItem/NSSplitView system keys.
+
+---
+
+## Weekly digest notification (implemented v0.7.0, opt-in)
+
+**What:** A single weekly local notification summarizing changes since the last digest. Body composed from `viewModel.latestDiffWeek`.
+
+**Implementation:** `WeeklyDigestScheduler` protocol in `PermissionsCore`; `LiveWeeklyDigestScheduler` (wraps `UNUserNotificationCenter.current()`) in `PermissionsScanners`; `MockWeeklyDigestScheduler` actor for tests; `WeeklyDigestCoordinator` in the app target owns reconcile + auth + body composition.
+
+**API:** `UNCalendarNotificationTrigger(repeats: true)` keyed on weekday + hour + minute. Identifier prefix `com.wallymagill.permissionpulse.digest.weekly`; cancel-then-schedule on every reconcile keeps exactly one pending request at a time.
+
+**Permission needed:** `UNUserNotificationCenter.requestAuthorization`. Prompted on first opt-in (Preferences toggle); macOS shows the system dialog. No `Info.plist` usage string is required on macOS.
+
+**Fragility:** Medium. An unsigned `.app` may show a generic bundle label in the prompt and delivered notification; see the "Known fragile surfaces" row in `CLAUDE.md`. Hand-test before each release that ships the digest.
+
+**Failure mode:** If authorization is denied, the Preferences "Notifications are off" hint shows a deep-link to the System Settings → Notifications pane via `SystemSettingsLink.openNotifications()`. Toggle stays in the user's selected position so the discrepancy is visually obvious.
+
+---
+
 ## Permission summary
 
 | Source | Permission required | Fragility | If unavailable |
