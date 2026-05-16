@@ -52,6 +52,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     static let hasSeenWelcomeKey = "com.wallymagill.permissionpulse.hasSeenWelcome"
 
     let viewModel = AppViewModel()
+    let preferencesStore = PreferencesStore()
     private var coordinator: ScanCoordinator?
     private var mediaCoordinator: MediaUseCoordinator?
     private var snapshotStore: SnapshotStore?
@@ -68,7 +69,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             )
         }
         if let snapshotStore {
-            snapshotCoordinator = SnapshotCoordinator(viewModel: viewModel, store: snapshotStore)
+            snapshotCoordinator = SnapshotCoordinator(
+                viewModel: viewModel,
+                store: snapshotStore,
+                snapshotRetentionDays: preferencesStore.snapshotRetentionDays,
+                staleThresholdDays: preferencesStore.staleThresholdDays
+            )
         }
 
         coordinator = ScanCoordinator(viewModel: viewModel)
