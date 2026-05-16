@@ -32,6 +32,17 @@ enum SystemSettingsLink {
         NSWorkspace.shared.open(loginItemsURL)
     }
 
+    // Notifications pane in System Settings. Verified on Tahoe (26).
+    // If the anchor is renamed in a future macOS, NSWorkspace falls back to
+    // the System Settings root rather than failing.
+    static let notificationsURL = URL(
+        string: "x-apple.systempreferences:com.apple.preference.notifications"
+    )!
+
+    static func openNotifications() {
+        NSWorkspace.shared.open(notificationsURL)
+    }
+
     static func url(for service: PermissionService) -> URL {
         URL(string: urlString(for: service))!
     }

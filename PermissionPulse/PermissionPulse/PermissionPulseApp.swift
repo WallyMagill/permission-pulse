@@ -63,12 +63,33 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     let preferencesStore = PreferencesStore()
     let dismissedDiffEntries = DismissedDiffEntryStore()
     let dismissedStaleApps = DismissedStaleAppStore()
-    lazy var preferencesViewModel = PreferencesViewModel(store: preferencesStore)
+    lazy var weeklyDigestCoordinator = WeeklyDigestCoordinator(
+        viewModel: viewModel,
+        preferencesStore: preferencesStore
+    )
+    lazy var preferencesViewModel = PreferencesViewModel(
+        store: preferencesStore,
+        onDigestToggle: { [weak self] turnOn in
+            guard let self else { return .disabled }
+            let result = await self.weeklyDigestCoordinator.handleAuthorizationToggle(turnOn: turnOn)
+            return Self.hint(for: result)
+        }
+    )
     private var coordinator: ScanCoordinator?
     private var mediaCoordinator: MediaUseCoordinator?
     private var snapshotStore: SnapshotStore?
     private var snapshotCoordinator: SnapshotCoordinator?
     private var welcomeWindow: NSWindow?
+
+    private static func hint(
+        for result: WeeklyDigestCoordinator.AuthorizationResult
+    ) -> PreferencesViewModel.AuthorizationHint {
+        switch result {
+        case .scheduled:                  return .scheduled(nextFireDescription: "")
+        case .deniedNeedsSystemSettings:  return .denied
+        case .disabled:                   return .disabled
+        }
+    }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         do {
@@ -93,6 +114,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         Task { @MainActor in
             await coordinator?.runScan()
             await snapshotCoordinator?.onScanCompleted()
+            await weeklyDigestCoordinator.reconcileSchedule()
         }
 
         mediaCoordinator = MediaUseCoordinator(viewModel: viewModel)
