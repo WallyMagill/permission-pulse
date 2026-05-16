@@ -27,6 +27,12 @@ struct PermissionPulseApp: App {
         }
         .menuBarExtraStyle(.window)
 
+        WindowGroup("Preferences", id: "preferences") {
+            PreferencesWindowView()
+                .environment(appDelegate.preferencesViewModel)
+        }
+        .windowResizability(.contentSize)
+
         WindowGroup("Permission Pulse", id: "detail") {
             DetailWindowView(
                 onRefresh: { [appDelegate] in
@@ -53,6 +59,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     let viewModel = AppViewModel()
     let preferencesStore = PreferencesStore()
+    lazy var preferencesViewModel = PreferencesViewModel(store: preferencesStore)
     private var coordinator: ScanCoordinator?
     private var mediaCoordinator: MediaUseCoordinator?
     private var snapshotStore: SnapshotStore?
