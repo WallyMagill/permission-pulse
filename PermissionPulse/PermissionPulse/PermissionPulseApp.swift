@@ -28,8 +28,15 @@ struct PermissionPulseApp: App {
         .menuBarExtraStyle(.window)
 
         WindowGroup("Preferences", id: "preferences") {
-            PreferencesWindowView()
-                .environment(appDelegate.preferencesViewModel)
+            PreferencesWindowView(
+                onResetAllData: { [appDelegate] in
+                    appDelegate.requestResetAllData()
+                },
+                scanInProgress: { [appDelegate] in
+                    appDelegate.viewModel.scanInProgress
+                }
+            )
+            .environment(appDelegate.preferencesViewModel)
         }
         .windowResizability(.contentSize)
 
@@ -112,8 +119,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         coordinator = ScanCoordinator(viewModel: viewModel)
         Task { @MainActor in
+            viewModel.scanInProgress = true
             await coordinator?.runScan()
             await snapshotCoordinator?.onScanCompleted()
+            viewModel.scanInProgress = false
             await weeklyDigestCoordinator.reconcileSchedule()
         }
 
@@ -126,13 +135,72 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func rescan() async {
+        viewModel.scanInProgress = true
         await coordinator?.rescan()
         await snapshotCoordinator?.onScanCompleted()
+        viewModel.scanInProgress = false
     }
 
     func markCurrentSnapshotReviewed() {
         snapshotCoordinator?.markCurrentSnapshotReviewed()
     }
+
+    func requestResetAllData() {
+        let sheet = ResetConfirmationSheet(
+            onCancel: { [weak self] in
+                self?.resetConfirmationWindow?.close()
+                self?.resetConfirmationWindow = nil
+            },
+            onConfirm: { [weak self] in
+                guard let self else { return }
+                self.resetConfirmationWindow?.close()
+                self.resetConfirmationWindow = nil
+                Task { @MainActor in await self.performReset() }
+            }
+        )
+        let window = NSWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 380, height: 200),
+            styleMask: [.titled, .closable],
+            backing: .buffered,
+            defer: false
+        )
+        window.title = String(localized: "Reset Permission Pulse")
+        window.contentView = NSHostingView(rootView: sheet)
+        window.center()
+        window.isReleasedWhenClosed = false
+        window.makeKeyAndOrderFront(nil)
+        NSApp.activate(ignoringOtherApps: true)
+        resetConfirmationWindow = window
+    }
+
+    private func performReset() async {
+        guard let url = try? SnapshotPath.canonicalURL() else { return }
+        let service = ResetAllDataService(
+            viewModel: viewModel,
+            snapshotPathURL: url,
+            onSnapshotStoreReinit: { [weak self] newStore in
+                self?.snapshotStore = newStore
+                if let self {
+                    self.snapshotCoordinator = SnapshotCoordinator(
+                        viewModel: self.viewModel,
+                        store: newStore,
+                        snapshotRetentionDays: self.preferencesStore.snapshotRetentionDays,
+                        staleThresholdDays: self.preferencesStore.staleThresholdDays,
+                        dismissedStaleApps: self.dismissedStaleApps
+                    )
+                }
+            },
+            weeklyDigestCoordinator: weeklyDigestCoordinator,
+            defaults: .standard,
+            rescan: { [weak self] in
+                await self?.rescan()
+                await self?.weeklyDigestCoordinator.reconcileSchedule()
+            }
+        )
+        await service.reset()
+    }
+
+    private var resetConfirmationWindow: NSWindow?
 
     private func showWelcomeWindow() {
         let view = WelcomeWindowView(onDismiss: { [weak self] in

@@ -5,17 +5,25 @@ public struct PreferencesWindowView: View {
     @Environment(\.dismiss) private var dismiss
 
     private let onResetAllData: (() -> Void)?
+    private let scanInProgress: () -> Bool
 
-    public init(onResetAllData: (() -> Void)? = nil) {
+    public init(
+        onResetAllData: (() -> Void)? = nil,
+        scanInProgress: @escaping () -> Bool = { false }
+    ) {
         self.onResetAllData = onResetAllData
+        self.scanInProgress = scanInProgress
     }
 
     public var body: some View {
         TabView {
-            SnapshotsPreferencesTab(onResetAllData: onResetAllData)
-                .tabItem {
-                    Label(String(localized: "Snapshots"), systemImage: "clock")
-                }
+            SnapshotsPreferencesTab(
+                onResetAllData: onResetAllData,
+                resetDisabled: scanInProgress()
+            )
+            .tabItem {
+                Label(String(localized: "Snapshots"), systemImage: "clock")
+            }
 
             NotificationsPreferencesTab()
                 .tabItem {
@@ -32,9 +40,11 @@ public struct PreferencesWindowView: View {
 private struct SnapshotsPreferencesTab: View {
     @Environment(PreferencesViewModel.self) private var viewModel
     private let onResetAllData: (() -> Void)?
+    private let resetDisabled: Bool
 
-    init(onResetAllData: (() -> Void)? = nil) {
+    init(onResetAllData: (() -> Void)? = nil, resetDisabled: Bool = false) {
         self.onResetAllData = onResetAllData
+        self.resetDisabled = resetDisabled
     }
 
     var body: some View {
@@ -89,10 +99,15 @@ private struct SnapshotsPreferencesTab: View {
                 } label: {
                     Text(String(localized: "Reset All Data…"))
                 }
-                .disabled(onResetAllData == nil)
+                .disabled(onResetAllData == nil || resetDisabled)
                 Text(String(localized: "Deletes all saved snapshots, dismissed items, and preferences. Permission Pulse will rescan immediately."))
                     .font(.footnote)
                     .foregroundStyle(.secondary)
+                if resetDisabled {
+                    Text(String(localized: "Reset is disabled while a scan is in progress."))
+                        .font(.footnote)
+                        .foregroundStyle(.orange)
+                }
             } header: {
                 Text(String(localized: "Reset"))
             }

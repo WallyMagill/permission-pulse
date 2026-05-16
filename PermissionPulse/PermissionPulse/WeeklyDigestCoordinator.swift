@@ -23,7 +23,7 @@ final class WeeklyDigestCoordinator {
 
     private let viewModel: AppViewModel
     private let preferencesStore: PreferencesStore
-    private let scheduler: any WeeklyDigestScheduler
+    let scheduler: any WeeklyDigestScheduler
     private let now: @Sendable () -> Date
 
     init(

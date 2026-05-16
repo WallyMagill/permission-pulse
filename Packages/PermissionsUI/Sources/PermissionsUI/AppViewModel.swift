@@ -45,6 +45,10 @@ public final class AppViewModel {
     // clears it back to nil.
     public var pendingDetailMode: DetailMode?
 
+    // True while a scan is in flight. Preferences disables the "Reset all
+    // data" button when this is true to avoid racing the snapshot writer.
+    public var scanInProgress: Bool = false
+
     public init(
         grants: [PermissionGrant] = [],
         launchAgents: [LaunchAgentItem] = [],
