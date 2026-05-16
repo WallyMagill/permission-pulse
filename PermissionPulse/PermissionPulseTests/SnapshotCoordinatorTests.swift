@@ -85,6 +85,48 @@ import PermissionsUI
         #expect(env.viewModel.staleApps.contains { $0.app.bundleID == "com.example.staleApp" })
     }
 
+    @Test func customStaleThresholdHonored() async throws {
+        // Probe returns a 60-day-old date for one app. Default threshold (90)
+        // would skip it; a custom 30-day threshold should flag it.
+        let bundlePath = URL(fileURLWithPath: "/Applications/SixtyDayApp.app")
+        let sixtyDaysAgo = Date(
+            timeIntervalSince1970: fixedNow().timeIntervalSince1970 - 60 * 86_400
+        )
+        let probe = MockLastUsedProbe(fixed: [bundlePath: (sixtyDaysAgo, .spotlight)])
+        let env = try await Environment(now: fixedNow, probe: probe, staleThresholdDays: 30)
+
+        env.viewModel.grants = [
+            demoGrant(bundleID: "com.example.sixtyDay", bundlePath: bundlePath),
+        ]
+        await env.coordinator.onScanCompleted()
+
+        #expect(env.viewModel.staleApps.contains { $0.app.bundleID == "com.example.sixtyDay" })
+    }
+
+    @Test func customRetentionHonored() async throws {
+        // Seed a snapshot 20 days ago. With a 10-day retention, it must be
+        // pruned after the next write. We verify by asking the store for the
+        // latest snapshot at-or-before a date 15 days ago — after prune the
+        // seeded row is gone, so the query returns nil.
+        let env = try await Environment(now: fixedNow, snapshotRetentionDays: 10)
+        let oldDate = fixedNow().addingTimeInterval(-20 * 86_400)
+        _ = try await env.store.writeFullSnapshot(
+            grants: [], launchAgents: [], btmItems: [], at: oldDate
+        )
+        let beforePrune = try await env.store.latestSnapshotID(
+            atOrBefore: fixedNow().addingTimeInterval(-15 * 86_400)
+        )
+        #expect(beforePrune != nil, "Pre-condition: seeded row should be visible")
+
+        env.viewModel.grants = [demoGrant()]
+        await env.coordinator.onScanCompleted()
+
+        let afterPrune = try await env.store.latestSnapshotID(
+            atOrBefore: fixedNow().addingTimeInterval(-15 * 86_400)
+        )
+        #expect(afterPrune == nil, "Seeded snapshot should be pruned by 10-day retention")
+    }
+
     @Test func markCurrentSnapshotReviewedClearsBadge() async throws {
         let env = try await Environment(now: fixedNow)
         // Force a state where hasUnreviewedChanges == true.
@@ -119,7 +161,9 @@ import PermissionsUI
 
         init(
             now: @Sendable @escaping () -> Date,
-            probe: any LastUsedProbe = MockLastUsedProbe()
+            probe: any LastUsedProbe = MockLastUsedProbe(),
+            snapshotRetentionDays: Int = SnapshotCoordinator.defaultSnapshotRetentionDays,
+            staleThresholdDays: Int = SnapshotCoordinator.defaultStaleThresholdDays
         ) async throws {
             self.store = try SnapshotStore.inMemory()
             self.viewModel = AppViewModel()
@@ -130,7 +174,9 @@ import PermissionsUI
                 lastUsedProbe: probe,
                 defaults: defaults,
                 calendar: Calendar(identifier: .gregorian),
-                now: now
+                now: now,
+                snapshotRetentionDays: snapshotRetentionDays,
+                staleThresholdDays: staleThresholdDays
             )
         }
 

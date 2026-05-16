@@ -14,8 +14,8 @@ final class SnapshotCoordinator {
 
     static let lastSnapshotDateKey = "com.wallymagill.permissionpulse.lastSnapshotDate"
     static let lastReviewedSnapshotIDKey = "com.wallymagill.permissionpulse.lastReviewedSnapshotID"
-    static let snapshotRetentionDays = 90
-    static let staleThresholdDays = 90
+    static let defaultSnapshotRetentionDays = 90
+    static let defaultStaleThresholdDays = 90
     static let yesterdayWindowSeconds: TimeInterval = 24 * 60 * 60
     static let weekWindowSeconds: TimeInterval = 7 * 24 * 60 * 60
     static let maxStaleProbesInFlight = 8
@@ -27,13 +27,21 @@ final class SnapshotCoordinator {
     private let calendar: Calendar
     private let now: @Sendable () -> Date
 
+    // Injected so Preferences can change them at runtime. New values take
+    // effect on the next scan cycle — we do not re-prune mid-session to
+    // avoid surprise data deletion when the user drags a slider.
+    private let snapshotRetentionDays: Int
+    private let staleThresholdDays: Int
+
     init(
         viewModel: AppViewModel,
         store: SnapshotStore,
         lastUsedProbe: any LastUsedProbe = LastUsedProbeHybrid(),
         defaults: UserDefaults = .standard,
         calendar: Calendar = .current,
-        now: @Sendable @escaping () -> Date = Date.init
+        now: @Sendable @escaping () -> Date = Date.init,
+        snapshotRetentionDays: Int = SnapshotCoordinator.defaultSnapshotRetentionDays,
+        staleThresholdDays: Int = SnapshotCoordinator.defaultStaleThresholdDays
     ) {
         self.viewModel = viewModel
         self.store = store
@@ -41,6 +49,8 @@ final class SnapshotCoordinator {
         self.defaults = defaults
         self.calendar = calendar
         self.now = now
+        self.snapshotRetentionDays = snapshotRetentionDays
+        self.staleThresholdDays = staleThresholdDays
     }
 
     func onScanCompleted() async {
@@ -68,9 +78,9 @@ final class SnapshotCoordinator {
             persistLastSnapshotDate(today)
             let retentionCutoff = calendar.date(
                 byAdding: .day,
-                value: -Self.snapshotRetentionDays,
+                value: -snapshotRetentionDays,
                 to: today
-            ) ?? today.addingTimeInterval(-Double(Self.snapshotRetentionDays) * 86_400)
+            ) ?? today.addingTimeInterval(-Double(snapshotRetentionDays) * 86_400)
             _ = try? await store.pruneSnapshots(olderThan: retentionCutoff)
             await refreshDiffsAndStale(latestID: snapshotID)
         } catch {
@@ -163,7 +173,7 @@ final class SnapshotCoordinator {
             return StaleCandidate(app: representative.app, path: path, services: services)
         }
 
-        let threshold = Self.staleThresholdDays
+        let threshold = staleThresholdDays
         let probe = lastUsedProbe
         let cal = calendar
         let limit = Self.maxStaleProbesInFlight
