@@ -106,27 +106,94 @@ private struct SnapshotsPreferencesTab: View {
     }
 }
 
-// MARK: - Notifications tab (placeholder — fleshed out in a later commit)
+// MARK: - Notifications tab
 
 private struct NotificationsPreferencesTab: View {
     @Environment(PreferencesViewModel.self) private var viewModel
+
+    private static let weekdayLabels: [(value: Int, label: String)] = [
+        (1, String(localized: "Sunday")),
+        (2, String(localized: "Monday")),
+        (3, String(localized: "Tuesday")),
+        (4, String(localized: "Wednesday")),
+        (5, String(localized: "Thursday")),
+        (6, String(localized: "Friday")),
+        (7, String(localized: "Saturday")),
+    ]
 
     var body: some View {
         @Bindable var vm = viewModel
 
         Form {
             Section {
-                Toggle(isOn: $vm.digestEnabled) {
+                Toggle(isOn: Binding(
+                    get: { vm.digestEnabled },
+                    set: { newValue in
+                        Task { await vm.handleDigestToggle(to: newValue) }
+                    }
+                )) {
                     Text(String(localized: "Send weekly digest"))
                 }
-                Text(String(localized: "Weekly notifications are wired in a later commit."))
-                    .font(.footnote)
-                    .foregroundStyle(.secondary)
+
+                Picker(selection: Binding(
+                    get: { vm.store.digestWeekday },
+                    set: { vm.store.digestWeekday = $0 }
+                )) {
+                    ForEach(Self.weekdayLabels, id: \.value) { entry in
+                        Text(entry.label).tag(entry.value)
+                    }
+                } label: {
+                    Text(String(localized: "Day"))
+                }
+                .disabled(!vm.digestEnabled)
+
+                DatePicker(
+                    String(localized: "Time"),
+                    selection: Binding(
+                        get: { vm.store.digestTime() },
+                        set: { vm.store.setDigestTime($0) }
+                    ),
+                    displayedComponents: .hourAndMinute
+                )
+                .disabled(!vm.digestEnabled)
+
+                hintLabel
             } header: {
                 Text(String(localized: "Weekly Digest"))
             }
         }
         .formStyle(.grouped)
         .padding()
+        .task {
+            await vm.refreshAuthorizationHint()
+        }
+    }
+
+    @ViewBuilder
+    private var hintLabel: some View {
+        switch viewModel.authorizationHint {
+        case .notYetRequested:
+            Text(String(localized: "Flip the toggle on to enable notifications. macOS will ask for permission."))
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+        case .scheduled:
+            Text(String(localized: "Weekly digest is on."))
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+        case .denied:
+            VStack(alignment: .leading, spacing: 4) {
+                Text(String(localized: "Notifications are off in System Settings."))
+                    .font(.footnote)
+                    .foregroundStyle(.orange)
+                Button {
+                    SystemSettingsLink.openNotifications()
+                } label: {
+                    Text(String(localized: "Open Notifications…"))
+                }
+                .buttonStyle(.link)
+            }
+        case .disabled:
+            EmptyView()
+        }
     }
 }

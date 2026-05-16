@@ -114,6 +114,24 @@ public final class PreferencesStore {
         }
     }
 
+    // MARK: - DatePicker convenience
+
+    /// Returns a `Date` whose hour/minute reflect the persisted digest time
+    /// (today's date is used as a placeholder; only h/m are surfaced by the
+    /// `.hourAndMinute` DatePicker style).
+    public func digestTime() -> Date {
+        var components = Calendar.current.dateComponents([.year, .month, .day], from: Date())
+        components.hour = digestHour
+        components.minute = digestMinute
+        return Calendar.current.date(from: components) ?? Date()
+    }
+
+    public func setDigestTime(_ date: Date) {
+        let components = Calendar.current.dateComponents([.hour, .minute], from: date)
+        if let h = components.hour { digestHour = h }
+        if let m = components.minute { digestMinute = m }
+    }
+
     // MARK: - Private
 
     private func readInt(
