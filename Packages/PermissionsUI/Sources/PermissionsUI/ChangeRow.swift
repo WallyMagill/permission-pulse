@@ -17,6 +17,8 @@ struct ChangeRow: View {
     }
 
     let kind: Kind
+    var onDismissForever: (() -> Void)? = nil
+    var onSnooze: (() -> Void)? = nil
 
     var body: some View {
         HStack(spacing: 10) {
@@ -24,6 +26,22 @@ struct ChangeRow: View {
             Text(description)
                 .lineLimit(2)
                 .frame(maxWidth: .infinity, alignment: .leading)
+            if onDismissForever != nil || onSnooze != nil {
+                Menu {
+                    if let onDismissForever {
+                        Button(String(localized: "Dismiss")) { onDismissForever() }
+                    }
+                    if let onSnooze {
+                        Button(String(localized: "Snooze 7 days")) { onSnooze() }
+                    }
+                } label: {
+                    Image(systemName: "ellipsis.circle")
+                        .foregroundStyle(.tertiary)
+                }
+                .menuStyle(.borderlessButton)
+                .menuIndicator(.hidden)
+                .fixedSize()
+            }
         }
     }
 

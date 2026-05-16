@@ -10,28 +10,29 @@ enum DiffWindowLabel: Sendable {
 struct DiffTabView: View {
     let diff: SnapshotDiffs?
     let windowLabel: DiffWindowLabel
+    @Environment(DismissedDiffEntryStore.self) private var dismissedStore
+
+    private let snoozeDuration: TimeInterval = 7 * 24 * 60 * 60
 
     var body: some View {
+        let now = Date()
+
         if let diff {
-            if diff.hasContent {
+            let tccVisible = filtered(tccRows(diff.tcc), now: now)
+            let btmVisible = filtered(btmRows(diff.btm), now: now)
+            let laVisible = filtered(launchAgentRows(diff.launchAgents), now: now)
+            let totalVisible = tccVisible.count + btmVisible.count + laVisible.count
+
+            if totalVisible > 0 {
                 VStack(alignment: .leading, spacing: 16) {
-                    if diff.tcc.hasContent {
-                        section(
-                            title: String(localized: "Permissions"),
-                            rows: tccRows(diff.tcc)
-                        )
+                    if !tccVisible.isEmpty {
+                        section(title: String(localized: "Permissions"), rows: tccVisible)
                     }
-                    if diff.btm.hasContent {
-                        section(
-                            title: String(localized: "Background Items"),
-                            rows: btmRows(diff.btm)
-                        )
+                    if !btmVisible.isEmpty {
+                        section(title: String(localized: "Background Items"), rows: btmVisible)
                     }
-                    if diff.launchAgents.hasContent {
-                        section(
-                            title: String(localized: "Launch Agents"),
-                            rows: launchAgentRows(diff.launchAgents)
-                        )
+                    if !laVisible.isEmpty {
+                        section(title: String(localized: "Launch Agents"), rows: laVisible)
                     }
                 }
             } else {
@@ -47,13 +48,27 @@ struct DiffTabView: View {
             Text(title).font(.headline)
             VStack(spacing: 0) {
                 ForEach(Array(rows.enumerated()), id: \.offset) { _, kind in
-                    ChangeRow(kind: kind)
-                        .padding(.vertical, 8)
-                        .padding(.horizontal, 12)
+                    let key = DiffEntryKey.key(for: kind)
+                    ChangeRow(
+                        kind: kind,
+                        onDismissForever: { dismissedStore.dismissForever(key: key) },
+                        onSnooze: {
+                            dismissedStore.snooze(
+                                key: key,
+                                until: Date().addingTimeInterval(snoozeDuration)
+                            )
+                        }
+                    )
+                    .padding(.vertical, 8)
+                    .padding(.horizontal, 12)
                 }
             }
             .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 8))
         }
+    }
+
+    private func filtered(_ rows: [ChangeRow.Kind], now: Date) -> [ChangeRow.Kind] {
+        rows.filter { !dismissedStore.isDismissed(key: DiffEntryKey.key(for: $0), asOf: now) }
     }
 
     private func tccRows(_ diff: TCCGrantsDiff) -> [ChangeRow.Kind] {
