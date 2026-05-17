@@ -4,28 +4,36 @@ import PermissionsCore
 public struct LaunchAgentsSection: View {
     private let items: [LaunchAgentItem]
     private let dataSource: AppViewModel.DataSource
+    private let showsHeader: Bool
 
     @State private var selectedItem: LaunchAgentItem?
 
-    public init(items: [LaunchAgentItem], dataSource: AppViewModel.DataSource) {
+    public init(
+        items: [LaunchAgentItem],
+        dataSource: AppViewModel.DataSource,
+        showsHeader: Bool = true
+    ) {
         self.items = items
         self.dataSource = dataSource
+        self.showsHeader = showsHeader
     }
 
     public var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            SectionHeader(
-                title: String(localized: "Launch Agents"),
-                showsBadge: true,
-                dataSource: dataSource
-            )
+            if showsHeader {
+                SectionHeader(
+                    title: String(localized: "Launch Agents"),
+                    showsBadge: true,
+                    dataSource: dataSource
+                )
+            }
 
             if items.isEmpty {
                 Text(String(localized: "No launch agents"))
                     .foregroundStyle(.secondary)
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .padding(12)
-                    .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 8))
+                    .vibrancyCard()
             } else {
                 VStack(spacing: 0) {
                     ForEach(Array(items.enumerated()), id: \.element) { index, item in
@@ -37,8 +45,7 @@ public struct LaunchAgentsSection: View {
                         }
                     }
                 }
-                .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 8))
-                .clipShape(RoundedRectangle(cornerRadius: 8))
+                .vibrancyCard()
             }
         }
         .sheet(item: $selectedItem) { item in

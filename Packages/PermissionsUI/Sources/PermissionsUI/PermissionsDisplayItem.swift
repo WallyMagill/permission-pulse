@@ -1,78 +1,86 @@
 import Foundation
 import PermissionsCore
 
-// UI-layer grouping of PermissionGrants. Most services produce one display
-// row per grant, but Automation grants — which carry a per-target indirect
-// object — get bundled by app so the user sees "Raycast (3 targets)" rather
-// than three near-identical rows that all live in the same Settings pane.
-//
-// The underlying PermissionGrant array stays granular so the diff engine
-// can still surface per-target add/remove events in the What Changed tab.
+// UI-layer grouping of PermissionGrants. Every distinct app collapses to ONE
+// display row that lists all of its granted services in the sub-line. The
+// underlying grants array stays granular so the detail sheet can render
+// per-service grant dates and per-target automation rows.
 enum PermissionsDisplayItem: Identifiable {
-    case single(PermissionGrant)
-    case automationGroup(AutomationGroup)
+    case appGroup(app: AppIdentity, grants: [PermissionGrant])
 
     var id: String {
         switch self {
-        case .single(let grant):       grant.id
-        case .automationGroup(let g):  g.id
+        case .appGroup(let app, let grants):
+            // Empty bundleID would otherwise collapse every unknown app
+            // together. Fall back to a per-grant id so each unknown row
+            // stays its own item.
+            if app.bundleID.isEmpty, let firstID = grants.first?.id {
+                return "grant|\(firstID)"
+            }
+            return "app|\(app.bundleID)"
         }
+    }
+
+    var app: AppIdentity {
+        switch self {
+        case .appGroup(let app, _): return app
+        }
+    }
+
+    var grants: [PermissionGrant] {
+        switch self {
+        case .appGroup(_, let grants): return grants
+        }
+    }
+
+    // De-duplicated services sorted by display name. Automation grants with
+    // multiple targets collapse to one "Automation" entry.
+    var distinctServices: [PermissionService] {
+        var seen = Set<PermissionService>()
+        var ordered: [PermissionService] = []
+        for grant in grants where seen.insert(grant.service).inserted {
+            ordered.append(grant.service)
+        }
+        return ordered.sorted {
+            $0.displayName.localizedCaseInsensitiveCompare($1.displayName) == .orderedAscending
+        }
+    }
+
+    var automationGrants: [PermissionGrant] {
+        grants.filter { $0.service == .automation }
+    }
+
+    // Pick the most recently granted instance of `service`. Used to date the
+    // service-pill in the detail sheet — even if a (service, app, target)
+    // tuple ends up duplicated for any reason, the user sees the latest.
+    func mostRecentGrant(for service: PermissionService) -> PermissionGrant? {
+        grants
+            .filter { $0.service == service }
+            .max { $0.lastModified < $1.lastModified }
     }
 
     static func make(from grants: [PermissionGrant]) -> [PermissionsDisplayItem] {
-        var nonAutomation: [PermissionGrant] = []
-        var automationByBundleID: [String: [PermissionGrant]] = [:]
+        var groups: [String: [PermissionGrant]] = [:]
+        var standalone: [PermissionGrant] = []
+
         for grant in grants {
-            if grant.service == .automation {
-                automationByBundleID[grant.app.bundleID, default: []].append(grant)
+            if grant.app.bundleID.isEmpty {
+                standalone.append(grant)
             } else {
-                nonAutomation.append(grant)
+                groups[grant.app.bundleID, default: []].append(grant)
             }
         }
 
-        var items: [PermissionsDisplayItem] = nonAutomation.map(PermissionsDisplayItem.single)
-        for (_, group) in automationByBundleID {
-            if group.count == 1 {
-                items.append(.single(group[0]))
-            } else {
-                items.append(.automationGroup(AutomationGroup(grants: group)))
-            }
+        var items: [PermissionsDisplayItem] = groups.values.map { bucket in
+            let app = bucket.first!.app
+            return .appGroup(app: app, grants: bucket)
         }
-        return items.sorted(by: itemSort)
-    }
+        for grant in standalone {
+            items.append(.appGroup(app: grant.app, grants: [grant]))
+        }
 
-    private static func itemSort(
-        _ a: PermissionsDisplayItem,
-        _ b: PermissionsDisplayItem
-    ) -> Bool {
-        let aService = a.serviceRawValue
-        let bService = b.serviceRawValue
-        if aService != bService { return aService < bService }
-        return a.displayName < b.displayName
-    }
-
-    fileprivate var serviceRawValue: String {
-        switch self {
-        case .single(let grant):       grant.service.rawValue
-        case .automationGroup(let g):  g.primaryGrant.service.rawValue
+        return items.sorted { a, b in
+            a.app.displayName.localizedCaseInsensitiveCompare(b.app.displayName) == .orderedAscending
         }
     }
-
-    fileprivate var displayName: String {
-        switch self {
-        case .single(let grant):       grant.app.displayName
-        case .automationGroup(let g):  g.app.displayName
-        }
-    }
-}
-
-struct AutomationGroup: Identifiable, Hashable {
-    let grants: [PermissionGrant]   // all .automation, same bundleID
-
-    var primaryGrant: PermissionGrant { grants[0] }
-    var app: AppIdentity             { primaryGrant.app }
-    var targets: [PermissionGrant]   { grants.sorted { $0.lastModified > $1.lastModified } }
-    var mostRecentModified: Date     { grants.map(\.lastModified).max() ?? primaryGrant.lastModified }
-
-    var id: String { "automation-group|\(app.bundleID)" }
 }

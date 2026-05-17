@@ -16,25 +16,31 @@ public struct BackgroundItemDetailSheet: View {
     }
 
     public var body: some View {
-        VStack(alignment: .leading, spacing: 16) {
+        VStack(alignment: .leading, spacing: 0) {
             header
-            propertiesBlock
+                .padding(.bottom, 16)
+
+            SheetSectionLabel(String(localized: "Properties"))
+                .padding(.bottom, 6)
+            SheetKVCard(rows: propertyRows)
+                .padding(.bottom, 16)
+
             footer
         }
-        .padding(24)
-        .frame(width: 480)
+        .padding(22)
+        .frame(width: 460)
     }
 
     private var header: some View {
-        HStack(alignment: .top, spacing: 12) {
+        HStack(alignment: .top, spacing: 13) {
             iconView
-            VStack(alignment: .leading, spacing: 4) {
+            VStack(alignment: .leading, spacing: 2) {
                 Text(item.name)
-                    .font(.title3.weight(.semibold))
+                    .font(.system(size: 17, weight: .semibold))
                     .lineLimit(2)
                 if let subtitle {
                     Text(subtitle)
-                        .font(.subheadline)
+                        .font(.system(size: 11.5))
                         .foregroundStyle(.secondary)
                 }
             }
@@ -52,32 +58,27 @@ public struct BackgroundItemDetailSheet: View {
                 .resizable()
                 .frame(width: 44, height: 44)
         } else {
-            Image(systemName: typeSymbolName)
-                .font(.system(size: 32))
-                .foregroundStyle(.tint)
-                .frame(width: 44, height: 44)
+            SheetGradientTile(symbol: typeSymbolName)
         }
     }
 
-    private var propertiesBlock: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            propertyRow(label: String(localized: "Type"), value: typeLabel)
-            propertyRow(label: String(localized: "Scope"), value: scopeLabel)
-            propertyRow(label: String(localized: "Identifier"), value: item.identifier, monospaced: true)
-            if let bid = item.bundleIdentifier, !bid.isEmpty {
-                propertyRow(label: String(localized: "Bundle ID"), value: bid, monospaced: true)
-            }
-            if let tid = item.teamIdentifier, !tid.isEmpty {
-                propertyRow(label: String(localized: "Team ID"), value: tid, monospaced: true)
-            }
-            propertyRow(label: String(localized: "Modified"), value: formattedDate(item.modificationDate))
-            if let parent = item.parentIdentifier, !parent.isEmpty {
-                propertyRow(label: String(localized: "Parent"), value: parent, monospaced: true)
-            }
+    private var propertyRows: [SheetKVRow] {
+        var rows: [SheetKVRow] = [
+            SheetKVRow(String(localized: "Type"), typeLabel),
+            SheetKVRow(String(localized: "Scope"), scopeLabel),
+            SheetKVRow(String(localized: "Identifier"), item.identifier, mono: true),
+        ]
+        if let bid = item.bundleIdentifier, !bid.isEmpty {
+            rows.append(SheetKVRow(String(localized: "Bundle ID"), bid, mono: true))
         }
-        .padding(12)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 8))
+        if let tid = item.teamIdentifier, !tid.isEmpty {
+            rows.append(SheetKVRow(String(localized: "Team ID"), tid, mono: true))
+        }
+        rows.append(SheetKVRow(String(localized: "Modified"), sheetFormattedDate(item.modificationDate)))
+        if let parent = item.parentIdentifier, !parent.isEmpty {
+            rows.append(SheetKVRow(String(localized: "Parent"), parent, mono: true))
+        }
+        return rows
     }
 
     private var footer: some View {
@@ -93,20 +94,6 @@ public struct BackgroundItemDetailSheet: View {
             }
             .keyboardShortcut(.defaultAction)
             .buttonStyle(.borderedProminent)
-        }
-    }
-
-    private func propertyRow(label: String, value: String, monospaced: Bool = false) -> some View {
-        HStack(alignment: .firstTextBaseline, spacing: 12) {
-            Text(label)
-                .font(.caption)
-                .foregroundStyle(.secondary)
-                .frame(width: 96, alignment: .leading)
-            Text(value)
-                .font(monospaced ? .body.monospaced() : .body)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .textSelection(.enabled)
-                .lineLimit(2)
         }
     }
 
@@ -140,10 +127,6 @@ public struct BackgroundItemDetailSheet: View {
         case .user:                  String(localized: "Root user")
         case .perUser(let uuid):     String(localized: "Current user (\(uuid))")
         }
-    }
-
-    private func formattedDate(_ date: Date) -> String {
-        DateFormatter.localizedString(from: date, dateStyle: .medium, timeStyle: .short)
     }
 }
 

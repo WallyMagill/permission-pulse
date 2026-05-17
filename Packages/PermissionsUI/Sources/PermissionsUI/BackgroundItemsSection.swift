@@ -5,26 +5,31 @@ public struct BackgroundItemsSection: View {
     private let items: [BTMItem]
     private let dataSource: AppViewModel.DataSource
     private let error: ScannerError?
+    private let showsHeader: Bool
 
     @State private var selectedItem: BTMItem?
 
     public init(
         items: [BTMItem],
         dataSource: AppViewModel.DataSource,
-        error: ScannerError? = nil
+        error: ScannerError? = nil,
+        showsHeader: Bool = true
     ) {
         self.items = items
         self.dataSource = dataSource
         self.error = error
+        self.showsHeader = showsHeader
     }
 
     public var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            SectionHeader(
-                title: String(localized: "Background Items"),
-                showsBadge: error == nil,
-                dataSource: dataSource
-            )
+            if showsHeader {
+                SectionHeader(
+                    title: String(localized: "Background Items"),
+                    showsBadge: error == nil,
+                    dataSource: dataSource
+                )
+            }
 
             if items.isEmpty {
                 PermissionsEmptyStateView(error: error, domain: .btm)
@@ -41,8 +46,7 @@ public struct BackgroundItemsSection: View {
                         }
                     }
                 }
-                .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 8))
-                .clipShape(RoundedRectangle(cornerRadius: 8))
+                .vibrancyCard()
             }
         }
         .sheet(item: $selectedItem) { item in
@@ -55,16 +59,51 @@ private struct BTMItemRow: View {
     let item: BTMItem
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 2) {
-            Text(item.name)
-            Text(secondaryLine)
-                .font(.caption)
-                .foregroundStyle(.secondary)
-            if let parent = item.parentIdentifier, !parent.isEmpty {
-                Text(String(localized: "under \(parent)"))
-                    .font(.caption2)
-                    .foregroundStyle(.tertiary)
+        HStack(spacing: 12) {
+            iconView
+            VStack(alignment: .leading, spacing: 2) {
+                Text(item.name)
+                Text(secondaryLine)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                if let parent = item.parentIdentifier, !parent.isEmpty {
+                    Text(String(localized: "under \(parent)"))
+                        .font(.caption2)
+                        .foregroundStyle(.tertiary)
+                }
             }
+        }
+    }
+
+    @ViewBuilder
+    private var iconView: some View {
+        if let bid = item.bundleIdentifier, !bid.isEmpty {
+            // Synthesize an AppIdentity from the BTM bundleID so the shared
+            // resolver does the LaunchServices lookup. Daemons rarely have
+            // an installed bundle — the resolver falls back to a dashed
+            // placeholder gracefully.
+            AppIconResolver.iconView(
+                for: AppIdentity(bundleID: bid, displayName: item.name, bundlePath: nil),
+                size: 28
+            )
+        } else {
+            ZStack {
+                RoundedRectangle(cornerRadius: 7, style: .continuous)
+                    .fill(Color.secondary.opacity(0.14))
+                    .frame(width: 28, height: 28)
+                Image(systemName: typeSymbolName)
+                    .font(.system(size: 14, weight: .medium))
+                    .foregroundStyle(.secondary)
+            }
+        }
+    }
+
+    private var typeSymbolName: String {
+        switch item.type {
+        case .app:            "app.fill"
+        case .legacyDaemon:   "gearshape.2.fill"
+        case .developerGroup: "folder.fill"
+        case .unknown:        "questionmark.circle.fill"
         }
     }
 

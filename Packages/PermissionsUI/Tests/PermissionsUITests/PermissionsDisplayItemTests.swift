@@ -4,26 +4,43 @@ import PermissionsCore
 @testable import PermissionsUI
 
 @Suite struct PermissionsDisplayItemTests {
-    @Test func nonAutomationGrantsPassThroughAsSingles() {
+    @Test func eachDistinctAppProducesOneAppGroup() {
         let grants = [
-            grant(.microphone, "com.example.a"),
-            grant(.camera, "com.example.b"),
+            grant(.microphone, "com.example.a", name: "App A"),
+            grant(.camera, "com.example.b", name: "App B"),
         ]
         let items = PermissionsDisplayItem.make(from: grants)
         #expect(items.count == 2)
-        #expect(items.allSatisfy { if case .single = $0 { return true } else { return false } })
+        #expect(items.allSatisfy { if case .appGroup = $0 { return true } else { return false } })
     }
 
-    @Test func singleAutomationGrantStaysSingle() {
+    @Test func multipleServicesForSameAppAggregateIntoOneGroup() {
         let grants = [
-            automation("com.example.tool", target: "com.apple.finder"),
+            grant(.camera, "us.zoom.xos", name: "Zoom"),
+            grant(.microphone, "us.zoom.xos", name: "Zoom"),
+            grant(.screenRecording, "us.zoom.xos", name: "Zoom"),
         ]
         let items = PermissionsDisplayItem.make(from: grants)
         #expect(items.count == 1)
-        if case .single = items[0] {} else { Issue.record("Expected .single") }
+        #expect(items[0].grants.count == 3)
+        #expect(items[0].distinctServices.count == 3)
+        #expect(items[0].app.bundleID == "us.zoom.xos")
     }
 
-    @Test func multipleAutomationGrantsForSameAppGroup() {
+    @Test func duplicateServiceGrantsDedupeInDistinctServices() {
+        // Two microphone grants for the same app (defensive: shouldn't happen
+        // post-scanner-dedupe but the UI must not show "Microphone · Microphone").
+        let grants = [
+            grant(.microphone, "com.example.a", name: "App A"),
+            grant(.microphone, "com.example.a", name: "App A"),
+        ]
+        let items = PermissionsDisplayItem.make(from: grants)
+        #expect(items.count == 1)
+        #expect(items[0].grants.count == 2)
+        #expect(items[0].distinctServices == [.microphone])
+    }
+
+    @Test func multipleAutomationGrantsCollapseToOneServiceEntry() {
         let grants = [
             automation("com.raycast.macos", target: "com.apple.systemevents"),
             automation("com.raycast.macos", target: "com.apple.MobileSMS"),
@@ -31,47 +48,88 @@ import PermissionsCore
         ]
         let items = PermissionsDisplayItem.make(from: grants)
         #expect(items.count == 1)
-        guard case .automationGroup(let group) = items[0] else {
-            Issue.record("Expected .automationGroup"); return
-        }
-        #expect(group.targets.count == 3)
-        #expect(group.app.bundleID == "com.raycast.macos")
+        #expect(items[0].distinctServices == [.automation])
+        #expect(items[0].automationGrants.count == 3)
     }
 
-    @Test func differentAppsAreNotGrouped() {
+    @Test func mixedAutomationAndOtherServicesForSameApp() {
         let grants = [
-            automation("com.example.a", target: "com.apple.finder"),
-            automation("com.example.a", target: "com.apple.MobileSMS"),
-            automation("com.example.b", target: "com.apple.finder"),
+            grant(.accessibility, "com.raycast.macos", name: "Raycast"),
+            grant(.inputMonitoring, "com.raycast.macos", name: "Raycast"),
+            automation("com.raycast.macos", target: "com.apple.systemevents"),
+            automation("com.raycast.macos", target: "com.apple.MobileSMS"),
         ]
         let items = PermissionsDisplayItem.make(from: grants)
-        // App A → grouped (2 targets). App B → single (1 target).
-        #expect(items.count == 2)
-        let groupCount = items.filter {
-            if case .automationGroup = $0 { return true } else { return false }
-        }.count
-        #expect(groupCount == 1)
+        #expect(items.count == 1)
+        // Distinct services: Accessibility, Automation, Input Monitoring
+        #expect(items[0].distinctServices.count == 3)
+        #expect(items[0].distinctServices.contains(.accessibility))
+        #expect(items[0].distinctServices.contains(.inputMonitoring))
+        #expect(items[0].distinctServices.contains(.automation))
+        // Automation targets queryable
+        #expect(items[0].automationGrants.count == 2)
     }
 
-    @Test func nonAutomationServicesDoNotGroupEvenAcrossSameApp() {
-        // Defensive: only .automation gets bundled. Two microphone grants for
-        // the same app (post-dedupe shouldn't happen, but be safe) stay as
-        // two singles, not a fake group.
+    @Test func emptyBundleIDDoesNotCollapseAcrossUnknownApps() {
         let grants = [
-            grant(.microphone, "com.example.a"),
-            grant(.microphone, "com.example.a"),
+            grant(.microphone, "", name: "Unknown 1"),
+            grant(.camera, "", name: "Unknown 2"),
         ]
         let items = PermissionsDisplayItem.make(from: grants)
         #expect(items.count == 2)
-        #expect(items.allSatisfy { if case .single = $0 { return true } else { return false } })
+        // Both items must have distinct ids so SwiftUI doesn't merge them.
+        #expect(Set(items.map(\.id)).count == 2)
+    }
+
+    @Test func sortOrderIsCaseInsensitiveByDisplayName() {
+        let grants = [
+            grant(.microphone, "com.zebra", name: "zebra"),
+            grant(.microphone, "com.alpha", name: "Alpha"),
+            grant(.microphone, "com.bravo", name: "BRAVO"),
+        ]
+        let items = PermissionsDisplayItem.make(from: grants)
+        #expect(items.count == 3)
+        #expect(items[0].app.displayName == "Alpha")
+        #expect(items[1].app.displayName == "BRAVO")
+        #expect(items[2].app.displayName == "zebra")
+    }
+
+    @Test func sameDisplayNameDifferentBundleIDsStaySeparate() {
+        let grants = [
+            grant(.microphone, "com.helper.one", name: "Helper"),
+            grant(.camera, "com.helper.two", name: "Helper"),
+        ]
+        let items = PermissionsDisplayItem.make(from: grants)
+        #expect(items.count == 2)
+        #expect(items[0].app.bundleID != items[1].app.bundleID)
+    }
+
+    @Test func mostRecentGrantPicksLatestModification() {
+        let earlier = Date(timeIntervalSince1970: 1_700_000_000)
+        let later = Date(timeIntervalSince1970: 1_700_100_000)
+        let grants = [
+            PermissionGrant(
+                service: .microphone,
+                app: AppIdentity(bundleID: "com.example.a", displayName: "App A"),
+                lastModified: earlier
+            ),
+            PermissionGrant(
+                service: .microphone,
+                app: AppIdentity(bundleID: "com.example.a", displayName: "App A"),
+                lastModified: later
+            ),
+        ]
+        let items = PermissionsDisplayItem.make(from: grants)
+        #expect(items.count == 1)
+        #expect(items[0].mostRecentGrant(for: .microphone)?.lastModified == later)
     }
 
     // MARK: - Helpers
 
-    private func grant(_ service: PermissionService, _ bundleID: String) -> PermissionGrant {
+    private func grant(_ service: PermissionService, _ bundleID: String, name: String) -> PermissionGrant {
         PermissionGrant(
             service: service,
-            app: AppIdentity(bundleID: bundleID, displayName: bundleID),
+            app: AppIdentity(bundleID: bundleID, displayName: name),
             lastModified: Date(timeIntervalSince1970: 1_700_000_000)
         )
     }

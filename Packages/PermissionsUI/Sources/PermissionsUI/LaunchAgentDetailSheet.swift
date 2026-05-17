@@ -5,10 +5,9 @@ import PermissionsCore
 // Per-row detail sheet for a single LaunchAgent / LaunchDaemon entry.
 //
 // Launch agents are not apps — they are property-list-defined background
-// helpers. The sheet shows the launchd properties (program, args, load
-// triggers) plus the file path so the user can inspect or remove the
-// underlying .plist via Finder. There is no System Settings deep-link
-// for launch agents.
+// helpers. The sheet shows the launchd properties plus the file path so the
+// user can inspect or remove the underlying .plist via Finder. No System
+// Settings deep-link exists for launch agents.
 public struct LaunchAgentDetailSheet: View {
     @Environment(\.dismiss) private var dismiss
     private let item: LaunchAgentItem
@@ -18,61 +17,69 @@ public struct LaunchAgentDetailSheet: View {
     }
 
     public var body: some View {
-        VStack(alignment: .leading, spacing: 16) {
+        VStack(alignment: .leading, spacing: 0) {
             header
-            propertiesBlock
-            pathBlock
+                .padding(.bottom, 16)
+
+            SheetSectionLabel(String(localized: "Properties"))
+                .padding(.bottom, 6)
+            SheetKVCard(rows: propertyRows)
+                .padding(.bottom, 14)
+
+            SheetSectionLabel(String(localized: "Source"))
+                .padding(.bottom, 6)
+            sourcePathLine
+                .padding(.bottom, 16)
+
             footer
         }
-        .padding(24)
-        .frame(width: 480)
+        .padding(22)
+        .frame(width: 460)
     }
 
     private var header: some View {
-        HStack(alignment: .top, spacing: 12) {
-            Image(systemName: "gearshape.fill")
-                .font(.system(size: 32))
-                .foregroundStyle(.tint)
-                .frame(width: 44, height: 44)
-            VStack(alignment: .leading, spacing: 4) {
+        HStack(alignment: .top, spacing: 13) {
+            SheetGradientTile(symbol: "gearshape.fill")
+            VStack(alignment: .leading, spacing: 2) {
                 Text(item.label)
-                    .font(.title3.weight(.semibold))
+                    .font(.system(size: 17, weight: .semibold))
                     .lineLimit(2)
                 Text(scopeLabel)
-                    .font(.subheadline)
+                    .font(.system(size: 11.5))
                     .foregroundStyle(.secondary)
             }
             Spacer(minLength: 0)
         }
     }
 
-    private var propertiesBlock: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            propertyRow(label: String(localized: "Program"), value: item.programPath ?? String(localized: "(unset)"))
-            propertyRow(
-                label: String(localized: "Arguments"),
-                value: item.programArguments.isEmpty
+    private var propertyRows: [SheetKVRow] {
+        [
+            SheetKVRow(
+                String(localized: "Program"),
+                item.programPath ?? String(localized: "(unset)"),
+                mono: true
+            ),
+            SheetKVRow(
+                String(localized: "Arguments"),
+                item.programArguments.isEmpty
                     ? String(localized: "(none)")
-                    : item.programArguments.joined(separator: " ")
-            )
-            propertyRow(label: String(localized: "Run at load"), value: item.runAtLoad ? "Yes" : "No")
-            propertyRow(label: String(localized: "Keep alive"), value: item.keepAlive ? "Yes" : "No")
-        }
-        .padding(12)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 8))
+                    : item.programArguments.joined(separator: " "),
+                mono: true
+            ),
+            SheetKVRow(String(localized: "Run at load"), item.runAtLoad ? "Yes" : "No"),
+            SheetKVRow(String(localized: "Keep alive"), item.keepAlive ? "Yes" : "No"),
+        ]
     }
 
-    private var pathBlock: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            Text(String(localized: "Source directory"))
-                .font(.caption)
-                .foregroundStyle(.secondary)
-            Text(item.sourceDirectory.path)
-                .font(.caption.monospaced())
-                .foregroundStyle(.secondary)
-                .textSelection(.enabled)
-        }
+    private var sourcePathLine: some View {
+        Text(item.sourceDirectory.path)
+            .font(.system(size: 12).monospaced())
+            .foregroundStyle(.secondary)
+            .textSelection(.enabled)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.horizontal, 14)
+            .padding(.vertical, 10)
+            .vibrancyCard()
     }
 
     private var footer: some View {
@@ -88,19 +95,6 @@ public struct LaunchAgentDetailSheet: View {
             }
             .keyboardShortcut(.defaultAction)
             .buttonStyle(.borderedProminent)
-        }
-    }
-
-    private func propertyRow(label: String, value: String) -> some View {
-        HStack(alignment: .firstTextBaseline, spacing: 12) {
-            Text(label)
-                .font(.caption)
-                .foregroundStyle(.secondary)
-                .frame(width: 96, alignment: .leading)
-            Text(value)
-                .font(.body.monospaced())
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .textSelection(.enabled)
         }
     }
 
