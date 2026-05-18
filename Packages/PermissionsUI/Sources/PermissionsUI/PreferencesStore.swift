@@ -1,12 +1,18 @@
 import Foundation
 import Observation
 
-/// `@Observable` wrapper over `UserDefaults` for the six v0.7.0 preference keys.
+/// `@Observable` store for the six v0.7.0 preference keys.
 ///
-/// Defaults preserve the v0.6.0 behavior baked into `SnapshotCoordinator`:
-/// retention = 90 days, stale = 90 days, digest = off, weekday = 2 (Monday),
-/// hour = 9, minute = 0. Reads clamp to safe ranges so a corrupted defaults
-/// blob cannot push the rest of the app off a cliff.
+/// Values are held as stored properties (not computed wrappers around
+/// `UserDefaults`). The `@Observable` macro can only instrument stored
+/// properties — without that, SwiftUI `Binding`s round-trip the value
+/// through the setter but never see a tracked mutation, and the view
+/// doesn't re-render. Stored property + `didSet` writeback is the
+/// only shape that works for Slider/Toggle/DatePicker bindings.
+///
+/// Defaults preserve v0.6.0 `SnapshotCoordinator` behavior. Writes clamp
+/// to safe ranges so a corrupted blob cannot push the rest of the app
+/// off a cliff; the clamp re-enters `didSet` exactly once.
 @Observable
 @MainActor
 public final class PreferencesStore {
@@ -38,80 +44,104 @@ public final class PreferencesStore {
 
     private let defaults: UserDefaults
 
-    public init(defaults: UserDefaults = .standard) {
-        self.defaults = defaults
-    }
-
     public var snapshotRetentionDays: Int {
-        get {
-            readInt(Self.snapshotRetentionDaysKey,
-                    default: Self.defaultSnapshotRetentionDays,
-                    range: Self.snapshotRetentionDaysRange)
-        }
-        set {
-            writeInt(newValue, key: Self.snapshotRetentionDaysKey,
-                     range: Self.snapshotRetentionDaysRange)
+        didSet {
+            let clamped = Self.clamp(snapshotRetentionDays, to: Self.snapshotRetentionDaysRange)
+            if clamped != snapshotRetentionDays {
+                snapshotRetentionDays = clamped // re-enters didSet once, then stops
+                return
+            }
+            defaults.set(clamped, forKey: Self.snapshotRetentionDaysKey)
         }
     }
 
     public var staleThresholdDays: Int {
-        get {
-            readInt(Self.staleThresholdDaysKey,
-                    default: Self.defaultStaleThresholdDays,
-                    range: Self.staleThresholdDaysRange)
-        }
-        set {
-            writeInt(newValue, key: Self.staleThresholdDaysKey,
-                     range: Self.staleThresholdDaysRange)
+        didSet {
+            let clamped = Self.clamp(staleThresholdDays, to: Self.staleThresholdDaysRange)
+            if clamped != staleThresholdDays {
+                staleThresholdDays = clamped
+                return
+            }
+            defaults.set(clamped, forKey: Self.staleThresholdDaysKey)
         }
     }
 
     public var digestEnabled: Bool {
-        get {
-            guard defaults.object(forKey: Self.digestEnabledKey) != nil else {
-                return Self.defaultDigestEnabled
-            }
-            return defaults.bool(forKey: Self.digestEnabledKey)
-        }
-        set {
-            defaults.set(newValue, forKey: Self.digestEnabledKey)
+        didSet {
+            defaults.set(digestEnabled, forKey: Self.digestEnabledKey)
         }
     }
 
     public var digestWeekday: Int {
-        get {
-            readInt(Self.digestWeekdayKey,
-                    default: Self.defaultDigestWeekday,
-                    range: Self.weekdayRange)
-        }
-        set {
-            writeInt(newValue, key: Self.digestWeekdayKey,
-                     range: Self.weekdayRange)
+        didSet {
+            let clamped = Self.clamp(digestWeekday, to: Self.weekdayRange)
+            if clamped != digestWeekday {
+                digestWeekday = clamped
+                return
+            }
+            defaults.set(clamped, forKey: Self.digestWeekdayKey)
         }
     }
 
     public var digestHour: Int {
-        get {
-            readInt(Self.digestHourKey,
-                    default: Self.defaultDigestHour,
-                    range: Self.hourRange)
-        }
-        set {
-            writeInt(newValue, key: Self.digestHourKey,
-                     range: Self.hourRange)
+        didSet {
+            let clamped = Self.clamp(digestHour, to: Self.hourRange)
+            if clamped != digestHour {
+                digestHour = clamped
+                return
+            }
+            defaults.set(clamped, forKey: Self.digestHourKey)
         }
     }
 
     public var digestMinute: Int {
-        get {
-            readInt(Self.digestMinuteKey,
-                    default: Self.defaultDigestMinute,
-                    range: Self.minuteRange)
+        didSet {
+            let clamped = Self.clamp(digestMinute, to: Self.minuteRange)
+            if clamped != digestMinute {
+                digestMinute = clamped
+                return
+            }
+            defaults.set(clamped, forKey: Self.digestMinuteKey)
         }
-        set {
-            writeInt(newValue, key: Self.digestMinuteKey,
-                     range: Self.minuteRange)
+    }
+
+    public init(defaults: UserDefaults = .standard) {
+        self.defaults = defaults
+        self.snapshotRetentionDays = Self.readClampedInt(
+            defaults: defaults,
+            key: Self.snapshotRetentionDaysKey,
+            fallback: Self.defaultSnapshotRetentionDays,
+            range: Self.snapshotRetentionDaysRange
+        )
+        self.staleThresholdDays = Self.readClampedInt(
+            defaults: defaults,
+            key: Self.staleThresholdDaysKey,
+            fallback: Self.defaultStaleThresholdDays,
+            range: Self.staleThresholdDaysRange
+        )
+        if defaults.object(forKey: Self.digestEnabledKey) != nil {
+            self.digestEnabled = defaults.bool(forKey: Self.digestEnabledKey)
+        } else {
+            self.digestEnabled = Self.defaultDigestEnabled
         }
+        self.digestWeekday = Self.readClampedInt(
+            defaults: defaults,
+            key: Self.digestWeekdayKey,
+            fallback: Self.defaultDigestWeekday,
+            range: Self.weekdayRange
+        )
+        self.digestHour = Self.readClampedInt(
+            defaults: defaults,
+            key: Self.digestHourKey,
+            fallback: Self.defaultDigestHour,
+            range: Self.hourRange
+        )
+        self.digestMinute = Self.readClampedInt(
+            defaults: defaults,
+            key: Self.digestMinuteKey,
+            fallback: Self.defaultDigestMinute,
+            range: Self.minuteRange
+        )
     }
 
     // MARK: - DatePicker convenience
@@ -134,21 +164,17 @@ public final class PreferencesStore {
 
     // MARK: - Private
 
-    private func readInt(
-        _ key: String,
-        default fallback: Int,
+    private static func readClampedInt(
+        defaults: UserDefaults,
+        key: String,
+        fallback: Int,
         range: ClosedRange<Int>
     ) -> Int {
         guard defaults.object(forKey: key) != nil else { return fallback }
-        let raw = defaults.integer(forKey: key)
-        return clamp(raw, to: range)
+        return clamp(defaults.integer(forKey: key), to: range)
     }
 
-    private func writeInt(_ value: Int, key: String, range: ClosedRange<Int>) {
-        defaults.set(clamp(value, to: range), forKey: key)
-    }
-
-    private func clamp(_ value: Int, to range: ClosedRange<Int>) -> Int {
+    private static func clamp(_ value: Int, to range: ClosedRange<Int>) -> Int {
         min(max(value, range.lowerBound), range.upperBound)
     }
 }

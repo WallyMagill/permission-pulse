@@ -17,7 +17,9 @@ public final class PreferencesViewModel {
         case disabled
     }
 
-    public let store: PreferencesStore
+    // `var` (not `let`) so SwiftUI can synthesize a writable key-path
+    // through `$vm.store.<...>` via @Bindable. The reference never changes.
+    public var store: PreferencesStore
     public var authorizationHint: AuthorizationHint = .notYetRequested
 
     private let onDigestToggle: @MainActor (Bool) async -> AuthorizationHint

@@ -1,11 +1,22 @@
 import SwiftUI
 
+// Preferences window — Tahoe Vibrant style.
+//
+// Two tabs, both built from the same primitives as the detail sheets
+// (`vibrancyCard()`, `SheetSectionLabel`) so this window feels like part
+// of the rest of the app, not a stock macOS preferences panel.
 public struct PreferencesWindowView: View {
     @Environment(PreferencesViewModel.self) private var viewModel
-    @Environment(\.dismiss) private var dismiss
 
     private let onResetAllData: (() -> Void)?
     private let scanInProgress: () -> Bool
+
+    @State private var selectedTab: Tab = .snapshots
+
+    enum Tab: Hashable {
+        case snapshots
+        case notifications
+    }
 
     public init(
         onResetAllData: (() -> Void)? = nil,
@@ -16,22 +27,77 @@ public struct PreferencesWindowView: View {
     }
 
     public var body: some View {
-        TabView {
-            SnapshotsPreferencesTab(
-                onResetAllData: onResetAllData,
-                resetDisabled: scanInProgress()
-            )
-            .tabItem {
-                Label(String(localized: "Snapshots"), systemImage: "clock")
-            }
+        VStack(spacing: 0) {
+            tabBar
+                .padding(.horizontal, 22)
+                .padding(.top, 16)
+                .padding(.bottom, 14)
 
-            NotificationsPreferencesTab()
-                .tabItem {
-                    Label(String(localized: "Notifications"), systemImage: "bell")
+            ScrollView {
+                Group {
+                    switch selectedTab {
+                    case .snapshots:
+                        SnapshotsPreferencesTab(
+                            onResetAllData: onResetAllData,
+                            resetDisabled: scanInProgress()
+                        )
+                    case .notifications:
+                        NotificationsPreferencesTab()
+                    }
                 }
+                .padding(.horizontal, 22)
+                .padding(.bottom, 22)
+            }
         }
-        .frame(width: 520, height: 360)
+        .frame(width: 560, height: 460)
+        .background(WindowBackground())
         .navigationTitle(String(localized: "Preferences"))
+    }
+
+    private var tabBar: some View {
+        HStack(spacing: 4) {
+            tabButton(.snapshots, title: String(localized: "Snapshots"), symbol: "clock.fill")
+            tabButton(.notifications, title: String(localized: "Notifications"), symbol: "bell.fill")
+            Spacer()
+        }
+    }
+
+    private func tabButton(_ tab: Tab, title: String, symbol: String) -> some View {
+        let isSelected = selectedTab == tab
+        return Button {
+            selectedTab = tab
+        } label: {
+            HStack(spacing: 6) {
+                Image(systemName: symbol)
+                    .font(.system(size: 12, weight: .semibold))
+                Text(title)
+                    .font(.system(size: 12.5, weight: .medium))
+            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 7)
+            .foregroundStyle(isSelected ? Color.accentColor : Color.secondary)
+            .background(
+                Capsule().fill(
+                    isSelected
+                        ? Color.accentColor.opacity(0.14)
+                        : Color.clear
+                )
+            )
+            .contentShape(Capsule())
+        }
+        .buttonStyle(.plain)
+    }
+}
+
+// MARK: - Window background (matches detail window canvas)
+
+private struct WindowBackground: View {
+    var body: some View {
+        #if canImport(AppKit)
+        Color(nsColor: .windowBackgroundColor).ignoresSafeArea()
+        #else
+        Color.white.ignoresSafeArea()
+        #endif
     }
 }
 
@@ -50,74 +116,103 @@ private struct SnapshotsPreferencesTab: View {
     var body: some View {
         @Bindable var vm = viewModel
 
-        Form {
-            Section {
-                LabeledContent {
-                    Text(daysLabel(viewModel.store.snapshotRetentionDays))
-                        .monospacedDigit()
-                        .foregroundStyle(.secondary)
-                } label: {
-                    Text(String(localized: "Keep snapshots for"))
-                }
-                Slider(
-                    value: $vm.snapshotRetentionDaysDouble,
-                    in: Double(PreferencesStore.snapshotRetentionDaysRange.lowerBound)
-                        ... Double(PreferencesStore.snapshotRetentionDaysRange.upperBound),
-                    step: 1
-                )
-                Text(String(localized: "Older snapshots are pruned automatically on the next scan after a change."))
-                    .font(.footnote)
-                    .foregroundStyle(.secondary)
-            } header: {
-                Text(String(localized: "Snapshot Retention"))
-            }
+        VStack(alignment: .leading, spacing: 22) {
+            sliderSection(
+                label: String(localized: "Snapshot Retention"),
+                title: String(localized: "Keep snapshots for"),
+                value: Binding(
+                    get: { Double(vm.store.snapshotRetentionDays) },
+                    set: { vm.store.snapshotRetentionDays = Int($0.rounded()) }
+                ),
+                range: Double(PreferencesStore.snapshotRetentionDaysRange.lowerBound)
+                    ... Double(PreferencesStore.snapshotRetentionDaysRange.upperBound),
+                currentDays: vm.store.snapshotRetentionDays,
+                footnote: String(localized: "Older snapshots are pruned automatically on the next scan.")
+            )
 
-            Section {
-                LabeledContent {
-                    Text(daysLabel(viewModel.store.staleThresholdDays))
-                        .monospacedDigit()
-                        .foregroundStyle(.secondary)
-                } label: {
-                    Text(String(localized: "Flag apps unused for"))
-                }
-                Slider(
-                    value: $vm.staleThresholdDaysDouble,
-                    in: Double(PreferencesStore.staleThresholdDaysRange.lowerBound)
-                        ... Double(PreferencesStore.staleThresholdDaysRange.upperBound),
-                    step: 1
-                )
-                Text(String(localized: "Apps that haven't launched in this many days appear in the Stale Apps tab."))
-                    .font(.footnote)
-                    .foregroundStyle(.secondary)
-            } header: {
-                Text(String(localized: "Stale Apps"))
-            }
+            sliderSection(
+                label: String(localized: "Stale Apps"),
+                title: String(localized: "Flag apps unused for"),
+                value: Binding(
+                    get: { Double(vm.store.staleThresholdDays) },
+                    set: { vm.store.staleThresholdDays = Int($0.rounded()) }
+                ),
+                range: Double(PreferencesStore.staleThresholdDaysRange.lowerBound)
+                    ... Double(PreferencesStore.staleThresholdDaysRange.upperBound),
+                currentDays: vm.store.staleThresholdDays,
+                footnote: String(localized: "Apps unused for this long appear in the Stale Apps tab.")
+            )
 
-            Section {
-                Button(role: .destructive) {
-                    onResetAllData?()
-                } label: {
-                    Text(String(localized: "Reset All Data…"))
+            resetSection
+        }
+    }
+
+    private func sliderSection(
+        label: String,
+        title: String,
+        value: Binding<Double>,
+        range: ClosedRange<Double>,
+        currentDays: Int,
+        footnote: String
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            SheetSectionLabel(label)
+
+            VStack(alignment: .leading, spacing: 10) {
+                HStack(alignment: .firstTextBaseline) {
+                    Text(title)
+                        .font(.system(size: 13))
+                    Spacer()
+                    Text(daysLabel(currentDays))
+                        .font(.system(size: 12.5, weight: .semibold).monospacedDigit())
+                        .foregroundStyle(Color.accentColor)
                 }
-                .disabled(onResetAllData == nil || resetDisabled)
-                Text(String(localized: "Deletes all saved snapshots, dismissed items, and preferences. Permission Pulse will rescan immediately."))
-                    .font(.footnote)
+                Slider(value: value, in: range, step: 1)
+                Text(footnote)
+                    .font(.system(size: 11))
                     .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            .padding(14)
+            .vibrancyCard()
+        }
+    }
+
+    private var resetSection: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            SheetSectionLabel(String(localized: "Reset"))
+
+            VStack(alignment: .leading, spacing: 10) {
+                Text(String(localized: "Deletes all saved snapshots, dismissals, snoozes, and preferences. Permission Pulse will rescan immediately. This cannot be undone."))
+                    .font(.system(size: 12))
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+
+                HStack {
+                    Spacer()
+                    Button(role: .destructive) {
+                        onResetAllData?()
+                    } label: {
+                        Text(String(localized: "Reset All Data…"))
+                    }
+                    .disabled(onResetAllData == nil || resetDisabled)
+                }
+
                 if resetDisabled {
                     Text(String(localized: "Reset is disabled while a scan is in progress."))
-                        .font(.footnote)
+                        .font(.system(size: 11))
                         .foregroundStyle(.orange)
                 }
-            } header: {
-                Text(String(localized: "Reset"))
             }
+            .padding(14)
+            .vibrancyCard()
         }
-        .formStyle(.grouped)
-        .padding()
     }
 
     private func daysLabel(_ days: Int) -> String {
-        String(localized: "\(days) days")
+        days == 1
+            ? String(localized: "1 day")
+            : String(localized: "\(days) days")
     }
 }
 
@@ -139,76 +234,132 @@ private struct NotificationsPreferencesTab: View {
     var body: some View {
         @Bindable var vm = viewModel
 
-        Form {
-            Section {
-                Toggle(isOn: Binding(
-                    get: { vm.digestEnabled },
-                    set: { newValue in
-                        Task { await vm.handleDigestToggle(to: newValue) }
+        VStack(alignment: .leading, spacing: 22) {
+            VStack(alignment: .leading, spacing: 8) {
+                SheetSectionLabel(String(localized: "Weekly Digest"))
+
+                VStack(alignment: .leading, spacing: 14) {
+                    Toggle(isOn: Binding(
+                        get: { vm.digestEnabled },
+                        set: { newValue in
+                            Task { await vm.handleDigestToggle(to: newValue) }
+                        }
+                    )) {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(String(localized: "Send weekly digest"))
+                                .font(.system(size: 13))
+                            Text(String(localized: "A local notification summarizing this week's changes. macOS will ask for permission the first time you turn this on."))
+                                .font(.system(size: 11))
+                                .foregroundStyle(.secondary)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
                     }
-                )) {
-                    Text(String(localized: "Send weekly digest"))
-                }
+                    .toggleStyle(.switch)
+                    .tint(.accentColor)
 
-                Picker(selection: Binding(
-                    get: { vm.store.digestWeekday },
-                    set: { vm.store.digestWeekday = $0 }
-                )) {
-                    ForEach(Self.weekdayLabels, id: \.value) { entry in
-                        Text(entry.label).tag(entry.value)
+                    Divider()
+
+                    HStack(alignment: .firstTextBaseline) {
+                        Text(String(localized: "Day"))
+                            .font(.system(size: 13))
+                            .frame(width: 90, alignment: .leading)
+                        Picker("", selection: $vm.store.digestWeekday) {
+                            ForEach(Self.weekdayLabels, id: \.value) { entry in
+                                Text(entry.label).tag(entry.value)
+                            }
+                        }
+                        .pickerStyle(.menu)
+                        .labelsHidden()
+                        .disabled(!vm.digestEnabled)
                     }
-                } label: {
-                    Text(String(localized: "Day"))
+
+                    HStack(alignment: .firstTextBaseline) {
+                        Text(String(localized: "Time"))
+                            .font(.system(size: 13))
+                            .frame(width: 90, alignment: .leading)
+                        DatePicker(
+                            "",
+                            selection: Binding(
+                                get: { vm.store.digestTime() },
+                                set: { vm.store.setDigestTime($0) }
+                            ),
+                            displayedComponents: .hourAndMinute
+                        )
+                        .labelsHidden()
+                        .datePickerStyle(.compact)
+                        .disabled(!vm.digestEnabled)
+                    }
                 }
-                .disabled(!vm.digestEnabled)
+                .padding(14)
+                .vibrancyCard()
 
-                DatePicker(
-                    String(localized: "Time"),
-                    selection: Binding(
-                        get: { vm.store.digestTime() },
-                        set: { vm.store.setDigestTime($0) }
-                    ),
-                    displayedComponents: .hourAndMinute
-                )
-                .disabled(!vm.digestEnabled)
-
-                hintLabel
-            } header: {
-                Text(String(localized: "Weekly Digest"))
+                hintCard
             }
         }
-        .formStyle(.grouped)
-        .padding()
         .task {
             await vm.refreshAuthorizationHint()
         }
     }
 
     @ViewBuilder
-    private var hintLabel: some View {
+    private var hintCard: some View {
         switch viewModel.authorizationHint {
-        case .notYetRequested:
-            Text(String(localized: "Flip the toggle on to enable notifications. macOS will ask for permission."))
-                .font(.footnote)
-                .foregroundStyle(.secondary)
-        case .scheduled:
-            Text(String(localized: "Weekly digest is on."))
-                .font(.footnote)
-                .foregroundStyle(.secondary)
-        case .denied:
-            VStack(alignment: .leading, spacing: 4) {
-                Text(String(localized: "Notifications are off in System Settings."))
-                    .font(.footnote)
-                    .foregroundStyle(.orange)
-                Button {
-                    SystemSettingsLink.openNotifications()
-                } label: {
-                    Text(String(localized: "Open Notifications…"))
-                }
-                .buttonStyle(.link)
-            }
-        case .disabled:
+        case .notYetRequested, .disabled:
             EmptyView()
+        case .scheduled:
+            statusRow(
+                icon: "checkmark.circle.fill",
+                tint: .green,
+                primary: String(localized: "Weekly digest is on."),
+                secondary: nil,
+                action: nil
+            )
+        case .denied:
+            statusRow(
+                icon: "exclamationmark.triangle.fill",
+                tint: .orange,
+                primary: String(localized: "Notifications are off in System Settings."),
+                secondary: String(localized: "Re-enable them to receive the weekly digest."),
+                action: (
+                    title: String(localized: "Open Notifications…"),
+                    perform: { SystemSettingsLink.openNotifications() }
+                )
+            )
         }
+    }
+
+    private func statusRow(
+        icon: String,
+        tint: Color,
+        primary: String,
+        secondary: String?,
+        action: (title: String, perform: () -> Void)?
+    ) -> some View {
+        HStack(alignment: .top, spacing: 10) {
+            Image(systemName: icon)
+                .font(.system(size: 14))
+                .foregroundStyle(tint)
+                .padding(.top, 1)
+            VStack(alignment: .leading, spacing: 4) {
+                Text(primary)
+                    .font(.system(size: 12.5, weight: .medium))
+                if let secondary {
+                    Text(secondary)
+                        .font(.system(size: 11.5))
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                if let action {
+                    Button(action: action.perform) {
+                        Text(action.title)
+                            .font(.system(size: 11.5, weight: .medium))
+                    }
+                    .buttonStyle(.link)
+                }
+            }
+            Spacer(minLength: 0)
+        }
+        .padding(12)
+        .vibrancyCard()
     }
 }
