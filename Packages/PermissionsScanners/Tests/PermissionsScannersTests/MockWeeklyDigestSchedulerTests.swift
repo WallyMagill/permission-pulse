@@ -39,4 +39,61 @@ import PermissionsCore
         let requested = try await scheduler.requestAuthorization()
         #expect(requested == .denied)
     }
+
+    @Test func scheduleOneShotRecordsAndAddsToPending() async throws {
+        let scheduler = MockWeeklyDigestScheduler(initialStatus: .authorized)
+        try await scheduler.scheduleOneShot(
+            identifier: "test.123",
+            after: 5,
+            title: "Hi",
+            body: "Body"
+        )
+        let pending = await scheduler.pendingIdentifiers()
+        #expect(pending.contains("test.123"))
+        let actions = await scheduler.recorded
+        #expect(actions.contains(where: { action in
+            if case .scheduledOneShot(let id, let after, _, _) = action {
+                return id == "test.123" && after == 5
+            }
+            return false
+        }))
+    }
+
+    @Test func nextFireDatePopulatedForBothTriggerKinds() async throws {
+        let scheduler = MockWeeklyDigestScheduler(initialStatus: .authorized)
+        try await scheduler.scheduleWeekly(
+            identifier: "weekly", weekday: 2, hour: 9, minute: 0,
+            title: "T", body: "B"
+        )
+        try await scheduler.scheduleOneShot(
+            identifier: "oneshot", after: 5,
+            title: "T", body: "B"
+        )
+        let weeklyNext = await scheduler.nextFireDate(for: "weekly")
+        let oneshotNext = await scheduler.nextFireDate(for: "oneshot")
+        #expect(weeklyNext != nil)
+        #expect(oneshotNext != nil)
+        #expect(await scheduler.nextFireDate(for: "nonexistent") == nil)
+    }
+
+    @Test func cancelAllPrefixRemovesBothKinds() async throws {
+        let scheduler = MockWeeklyDigestScheduler(initialStatus: .authorized)
+        try await scheduler.scheduleWeekly(
+            identifier: "com.example.digest.weekly", weekday: 2, hour: 9, minute: 0,
+            title: "T", body: "B"
+        )
+        try await scheduler.scheduleOneShot(
+            identifier: "com.example.digest.test.abc", after: 5,
+            title: "T", body: "B"
+        )
+        try await scheduler.scheduleOneShot(
+            identifier: "com.unrelated.thing", after: 5,
+            title: "T", body: "B"
+        )
+
+        await scheduler.cancelAll(matchingPrefix: "com.example.digest")
+
+        let pending = await scheduler.pendingIdentifiers()
+        #expect(pending == ["com.unrelated.thing"])
+    }
 }

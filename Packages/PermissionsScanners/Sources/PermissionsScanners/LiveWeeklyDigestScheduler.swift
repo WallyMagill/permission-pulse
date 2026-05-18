@@ -62,6 +62,30 @@ public struct LiveWeeklyDigestScheduler: WeeklyDigestScheduler {
         try await UNUserNotificationCenter.current().add(request)
     }
 
+    public func scheduleOneShot(
+        identifier: String,
+        after seconds: TimeInterval,
+        title: String,
+        body: String
+    ) async throws {
+        let trigger = UNTimeIntervalNotificationTrigger(
+            timeInterval: max(1, seconds),
+            repeats: false
+        )
+
+        let content = UNMutableNotificationContent()
+        content.title = title
+        content.body = body
+        content.sound = .default
+
+        let request = UNNotificationRequest(
+            identifier: identifier,
+            content: content,
+            trigger: trigger
+        )
+        try await UNUserNotificationCenter.current().add(request)
+    }
+
     public func cancelAll(matchingPrefix prefix: String) async {
         let center = UNUserNotificationCenter.current()
         let pending = await center.pendingNotificationRequests()
@@ -77,6 +101,21 @@ public struct LiveWeeklyDigestScheduler: WeeklyDigestScheduler {
         await UNUserNotificationCenter.current()
             .pendingNotificationRequests()
             .map(\.identifier)
+    }
+
+    public func nextFireDate(for identifier: String) async -> Date? {
+        let pending = await UNUserNotificationCenter.current()
+            .pendingNotificationRequests()
+        guard let request = pending.first(where: { $0.identifier == identifier }) else {
+            return nil
+        }
+        if let calendarTrigger = request.trigger as? UNCalendarNotificationTrigger {
+            return calendarTrigger.nextTriggerDate()
+        }
+        if let intervalTrigger = request.trigger as? UNTimeIntervalNotificationTrigger {
+            return intervalTrigger.nextTriggerDate()
+        }
+        return nil
     }
 
     // MARK: - Private

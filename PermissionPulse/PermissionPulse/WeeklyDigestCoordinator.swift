@@ -14,11 +14,18 @@ final class WeeklyDigestCoordinator {
 
     static let identifierPrefix = "com.wallymagill.permissionpulse.digest.weekly"
     static let weeklyIdentifier = "com.wallymagill.permissionpulse.digest.weekly.v1"
+    static let testIdentifierPrefix = "com.wallymagill.permissionpulse.digest.test"
 
     enum AuthorizationResult: Sendable, Equatable {
         case scheduled
         case deniedNeedsSystemSettings
         case disabled
+    }
+
+    enum TestSendResult: Sendable, Equatable {
+        case scheduled(in: TimeInterval)
+        case notAuthorized
+        case failed(String)
     }
 
     private let viewModel: AppViewModel
@@ -101,6 +108,39 @@ final class WeeklyDigestCoordinator {
         case .denied, .notDetermined, .unknown:
             return .deniedNeedsSystemSettings
         }
+    }
+
+    /// Schedule a one-shot test notification N seconds from now. Bypasses
+    /// the weekly-calendar-trigger logic entirely so the user can verify the
+    /// OS delivery pipeline (auth state, signing, banner presentation)
+    /// independently. Identifier carries a unique suffix so multiple test
+    /// sends in a row don't collide.
+    func sendTestNotification(after seconds: TimeInterval = 5) async -> TestSendResult {
+        let status = await scheduler.currentAuthorizationStatus()
+        guard status == .authorized || status == .provisional else {
+            return .notAuthorized
+        }
+        let id = "\(Self.testIdentifierPrefix).\(UUID().uuidString)"
+        do {
+            try await scheduler.scheduleOneShot(
+                identifier: id,
+                after: seconds,
+                title: String(localized: "Permission Pulse · Test"),
+                body: String(localized: "If you see this banner, notifications are working.")
+            )
+            return .scheduled(in: seconds)
+        } catch {
+            Self.logger.error(
+                "Test notification failed: \(error.localizedDescription, privacy: .public)"
+            )
+            return .failed(error.localizedDescription)
+        }
+    }
+
+    /// Next fire date for the weekly digest, if any pending. Surfaces in
+    /// the Preferences hint card so users see a concrete date.
+    func nextWeeklyFireDate() async -> Date? {
+        await scheduler.nextFireDate(for: Self.weeklyIdentifier)
     }
 
     /// Pure, testable. Composes title + body from the week-long diff.

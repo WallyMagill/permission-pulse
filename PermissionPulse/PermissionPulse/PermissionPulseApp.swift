@@ -80,6 +80,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             guard let self else { return .disabled }
             let result = await self.weeklyDigestCoordinator.handleAuthorizationToggle(turnOn: turnOn)
             return Self.hint(for: result)
+        },
+        onSendTestNotification: { [weak self] in
+            guard let self else { return .idle }
+            let result = await self.weeklyDigestCoordinator.sendTestNotification()
+            return Self.testResult(for: result)
+        },
+        onFetchNextFireDate: { [weak self] in
+            await self?.weeklyDigestCoordinator.nextWeeklyFireDate()
         }
     )
     private var coordinator: ScanCoordinator?
@@ -95,6 +103,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         case .scheduled:                  return .scheduled(nextFireDescription: "")
         case .deniedNeedsSystemSettings:  return .denied
         case .disabled:                   return .disabled
+        }
+    }
+
+    private static func testResult(
+        for result: WeeklyDigestCoordinator.TestSendResult
+    ) -> PreferencesViewModel.TestNotificationResult {
+        switch result {
+        case .scheduled(let seconds):  return .scheduled(in: seconds)
+        case .notAuthorized:           return .notAuthorized
+        case .failed(let message):     return .failed(message)
         }
     }
 

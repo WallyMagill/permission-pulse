@@ -294,6 +294,10 @@ private struct NotificationsPreferencesTab: View {
                 .vibrancyCard()
 
                 hintCard
+
+                if vm.digestEnabled {
+                    diagnosticsCard(vm: vm)
+                }
             }
         }
         .task {
@@ -311,7 +315,7 @@ private struct NotificationsPreferencesTab: View {
                 icon: "checkmark.circle.fill",
                 tint: .green,
                 primary: String(localized: "Weekly digest is on."),
-                secondary: nil,
+                secondary: nextFireSecondary,
                 action: nil
             )
         case .denied:
@@ -325,6 +329,79 @@ private struct NotificationsPreferencesTab: View {
                     perform: { SystemSettingsLink.openNotifications() }
                 )
             )
+        }
+    }
+
+    private var nextFireSecondary: String? {
+        guard let date = viewModel.nextWeeklyFireDate else { return nil }
+        let formatter = DateFormatter()
+        formatter.dateStyle = .full
+        formatter.timeStyle = .short
+        return String(localized: "Next: \(formatter.string(from: date))")
+    }
+
+    @ViewBuilder
+    private func diagnosticsCard(vm: PreferencesViewModel) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(alignment: .firstTextBaseline) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(String(localized: "Send test notification"))
+                        .font(.system(size: 13, weight: .medium))
+                    Text(String(localized: "Fires a one-off banner in 5 seconds. Useful for verifying delivery without waiting for the scheduled day."))
+                        .font(.system(size: 11))
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                Spacer(minLength: 12)
+                Button {
+                    Task {
+                        await vm.sendTestNotification()
+                        // Clear the inline result after 8 seconds so the
+                        // user can re-fire without state leftover.
+                        try? await Task.sleep(nanoseconds: 8_000_000_000)
+                        vm.clearTestNotificationResult()
+                    }
+                } label: {
+                    Text(String(localized: "Send"))
+                        .frame(minWidth: 60)
+                }
+                .buttonStyle(.borderedProminent)
+                .controlSize(.regular)
+                .disabled(vm.testNotificationResult == .scheduling)
+            }
+
+            if let resultText = testResultText(vm.testNotificationResult) {
+                Text(resultText)
+                    .font(.system(size: 11.5))
+                    .foregroundStyle(testResultColor(vm.testNotificationResult))
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+        .padding(14)
+        .vibrancyCard()
+    }
+
+    private func testResultText(_ result: PreferencesViewModel.TestNotificationResult) -> String? {
+        switch result {
+        case .idle:
+            return nil
+        case .scheduling:
+            return String(localized: "Scheduling…")
+        case .scheduled(let seconds):
+            return String(localized: "Test notification scheduled. Switch away from Permission Pulse to see the banner in \(Int(seconds)) seconds.")
+        case .notAuthorized:
+            return String(localized: "Notifications are not authorized. Open Notifications in System Settings to re-enable.")
+        case .failed(let message):
+            return String(localized: "Test send failed: \(message)")
+        }
+    }
+
+    private func testResultColor(_ result: PreferencesViewModel.TestNotificationResult) -> Color {
+        switch result {
+        case .idle, .scheduling, .scheduled:
+            return .secondary
+        case .notAuthorized, .failed:
+            return .orange
         }
     }
 

@@ -17,19 +17,35 @@ public final class PreferencesViewModel {
         case disabled
     }
 
+    public enum TestNotificationResult: Sendable, Equatable {
+        case idle
+        case scheduling
+        case scheduled(in: TimeInterval)
+        case notAuthorized
+        case failed(String)
+    }
+
     // `var` (not `let`) so SwiftUI can synthesize a writable key-path
     // through `$vm.store.<...>` via @Bindable. The reference never changes.
     public var store: PreferencesStore
     public var authorizationHint: AuthorizationHint = .notYetRequested
+    public var nextWeeklyFireDate: Date?
+    public var testNotificationResult: TestNotificationResult = .idle
 
     private let onDigestToggle: @MainActor (Bool) async -> AuthorizationHint
+    private let onSendTestNotification: @MainActor () async -> TestNotificationResult
+    private let onFetchNextFireDate: @MainActor () async -> Date?
 
     public init(
         store: PreferencesStore,
-        onDigestToggle: @escaping @MainActor (Bool) async -> AuthorizationHint = { _ in .disabled }
+        onDigestToggle: @escaping @MainActor (Bool) async -> AuthorizationHint = { _ in .disabled },
+        onSendTestNotification: @escaping @MainActor () async -> TestNotificationResult = { .idle },
+        onFetchNextFireDate: @escaping @MainActor () async -> Date? = { nil }
     ) {
         self.store = store
         self.onDigestToggle = onDigestToggle
+        self.onSendTestNotification = onSendTestNotification
+        self.onFetchNextFireDate = onFetchNextFireDate
     }
 
     // MARK: - Slider bindings (Double mirrors)
@@ -61,5 +77,16 @@ public final class PreferencesViewModel {
         // the user toggled notifications in System Settings while the app
         // was alive.
         authorizationHint = await onDigestToggle(store.digestEnabled)
+        nextWeeklyFireDate = await onFetchNextFireDate()
+    }
+
+    public func sendTestNotification() async {
+        testNotificationResult = .scheduling
+        let result = await onSendTestNotification()
+        testNotificationResult = result
+    }
+
+    public func clearTestNotificationResult() {
+        testNotificationResult = .idle
     }
 }

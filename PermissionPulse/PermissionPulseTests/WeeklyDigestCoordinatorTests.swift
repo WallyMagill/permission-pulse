@@ -69,6 +69,83 @@ import PermissionsUI
         #expect(composed.body.contains("1 removed"))
     }
 
+    @Test func composeAddedOnlyOmitsRemovedAndChanged() {
+        let env = makeEnv(digestEnabled: true, status: .authorized)
+        let diff = SnapshotDiffs(
+            fromID: SnapshotID(rawValue: 1),
+            toID: SnapshotID(rawValue: 2),
+            tcc: TCCGrantsDiff(added: [demoGrant(), demoGrant(bundleID: "com.b")], removed: []),
+            btm: BTMItemsDiff(added: [], removed: []),
+            launchAgents: LaunchAgentsDiff(added: [], removed: [])
+        )
+        let composed = env.coordinator.composeDigestBody(diff: diff)
+        #expect(composed.body.contains("2 added"))
+        #expect(!composed.body.contains("removed"))
+        #expect(!composed.body.contains("changed"))
+    }
+
+    @Test func composeRemovedOnlyOmitsAddedAndChanged() {
+        let env = makeEnv(digestEnabled: true, status: .authorized)
+        let diff = SnapshotDiffs(
+            fromID: SnapshotID(rawValue: 1),
+            toID: SnapshotID(rawValue: 2),
+            tcc: TCCGrantsDiff(added: [], removed: [demoGrant()]),
+            btm: BTMItemsDiff(added: [], removed: []),
+            launchAgents: LaunchAgentsDiff(added: [], removed: [])
+        )
+        let composed = env.coordinator.composeDigestBody(diff: diff)
+        #expect(composed.body.contains("1 removed"))
+        #expect(!composed.body.contains("added"))
+        #expect(!composed.body.contains("changed"))
+    }
+
+    @Test func handleAuthorizationToggleOffCancelsPending() async throws {
+        let env = makeEnv(digestEnabled: true, status: .authorized)
+        env.preferencesStore.digestEnabled = true
+        await env.coordinator.reconcileSchedule()
+        var pending = await env.scheduler.pendingIdentifiers()
+        #expect(pending.count == 1)
+
+        let result = await env.coordinator.handleAuthorizationToggle(turnOn: false)
+        #expect(result == .disabled)
+
+        pending = await env.scheduler.pendingIdentifiers()
+        #expect(pending.isEmpty)
+    }
+
+    @Test func sendTestNotificationWhenAuthorizedSchedulesOneShot() async throws {
+        let env = makeEnv(digestEnabled: false, status: .authorized)
+        let result = await env.coordinator.sendTestNotification(after: 5)
+        if case .scheduled(let seconds) = result {
+            #expect(seconds == 5)
+        } else {
+            Issue.record("Expected .scheduled, got \(result)")
+        }
+        let pending = await env.scheduler.pendingIdentifiers()
+        #expect(pending.contains(where: { $0.hasPrefix(WeeklyDigestCoordinator.testIdentifierPrefix) }))
+    }
+
+    @Test func sendTestNotificationWhenDeniedReturnsNotAuthorized() async throws {
+        let env = makeEnv(digestEnabled: false, status: .denied)
+        let result = await env.coordinator.sendTestNotification(after: 5)
+        #expect(result == .notAuthorized)
+        let pending = await env.scheduler.pendingIdentifiers()
+        #expect(pending.isEmpty)
+    }
+
+    @Test func nextWeeklyFireDateReturnsPendingDate() async throws {
+        let env = makeEnv(digestEnabled: true, status: .authorized)
+        await env.coordinator.reconcileSchedule()
+        let date = await env.coordinator.nextWeeklyFireDate()
+        #expect(date != nil)
+    }
+
+    @Test func nextWeeklyFireDateNilWhenNothingPending() async throws {
+        let env = makeEnv(digestEnabled: false, status: .authorized)
+        let date = await env.coordinator.nextWeeklyFireDate()
+        #expect(date == nil)
+    }
+
     // MARK: - Env
 
     @MainActor
@@ -101,10 +178,10 @@ import PermissionsUI
     }
 }
 
-private func demoGrant() -> PermissionGrant {
+private func demoGrant(bundleID: String = "com.example.demo") -> PermissionGrant {
     PermissionGrant(
         service: .microphone,
-        app: AppIdentity(bundleID: "com.example.demo", displayName: "Demo"),
+        app: AppIdentity(bundleID: bundleID, displayName: bundleID),
         lastModified: Date(timeIntervalSince1970: 0)
     )
 }

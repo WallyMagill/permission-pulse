@@ -52,6 +52,46 @@ import Testing
         #expect(vm.authorizationHint == .denied)
     }
 
+    @Test func sendTestNotificationFlowsThroughClosure() async {
+        var callCount = 0
+        let vm = PreferencesViewModel(
+            store: PreferencesStore(defaults: fresh()),
+            onSendTestNotification: {
+                callCount += 1
+                return .scheduled(in: 5)
+            }
+        )
+        await vm.sendTestNotification()
+        #expect(callCount == 1)
+        if case .scheduled(let seconds) = vm.testNotificationResult {
+            #expect(seconds == 5)
+        } else {
+            Issue.record("Expected .scheduled(in: 5), got \(vm.testNotificationResult)")
+        }
+    }
+
+    @Test func clearTestNotificationResultResetsToIdle() async {
+        let vm = PreferencesViewModel(
+            store: PreferencesStore(defaults: fresh()),
+            onSendTestNotification: { .notAuthorized }
+        )
+        await vm.sendTestNotification()
+        #expect(vm.testNotificationResult == .notAuthorized)
+        vm.clearTestNotificationResult()
+        #expect(vm.testNotificationResult == .idle)
+    }
+
+    @Test func refreshAuthorizationHintAlsoFetchesNextFireDate() async {
+        let target = Date(timeIntervalSince1970: 1_800_000_000)
+        let vm = PreferencesViewModel(
+            store: PreferencesStore(defaults: fresh()),
+            onDigestToggle: { _ in .scheduled(nextFireDescription: "") },
+            onFetchNextFireDate: { target }
+        )
+        await vm.refreshAuthorizationHint()
+        #expect(vm.nextWeeklyFireDate == target)
+    }
+
     // MARK: - Helpers
 
     private func fresh() -> UserDefaults {
