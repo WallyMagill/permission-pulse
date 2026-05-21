@@ -40,4 +40,23 @@ import PermissionsCore
 
         _ = oneDayAgo // silence unused-var warning
     }
+
+    @Test func latestSnapshotIDIsByDateNotByInsertionOrder() async throws {
+        // Out-of-order inserts (test seeding, manual sqlite, restored
+        // backups) should still resolve to the actually-newest date. This
+        // guards against a regression where the query orders by id.
+        let store = try SnapshotStore.inMemory()
+        let day: TimeInterval = 24 * 60 * 60
+        let now = Date(timeIntervalSince1970: 1_700_000_000)
+
+        let today = try await store.writeLaunchAgentsSnapshot([], at: now)
+        let twoDaysAgo = try await store.writeLaunchAgentsSnapshot(
+            [], at: now.addingTimeInterval(-2 * day)
+        )
+        // Second insert has the higher id but the older date. The freshest
+        // by created_at is `today`, NOT `twoDaysAgo`.
+        #expect(today.rawValue < twoDaysAgo.rawValue)
+        let latest = try await store.latestSnapshotID()
+        #expect(latest == today)
+    }
 }

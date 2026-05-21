@@ -187,7 +187,16 @@ public struct SnapshotStore: Sendable {
 
     public func latestSnapshotID() async throws -> SnapshotID? {
         try await dbQueue.read { db in
-            try Int64.fetchOne(db, sql: "SELECT id FROM snapshots ORDER BY id DESC LIMIT 1")
+            // Order by created_at primarily so out-of-order inserts (test
+            // seeding, restored backups, manual sqlite edits) resolve to
+            // the actually-most-recent snapshot. Fall back to id for the
+            // degenerate tie case (two snapshots at the same instant —
+            // impossible in production but worth being deterministic).
+            try Int64.fetchOne(db, sql: """
+                SELECT id FROM snapshots
+                ORDER BY created_at DESC, id DESC
+                LIMIT 1
+                """)
                 .map(SnapshotID.init(rawValue:))
         }
     }
@@ -197,7 +206,7 @@ public struct SnapshotStore: Sendable {
             try Int64.fetchOne(db, sql: """
                 SELECT id FROM snapshots
                 WHERE created_at <= ?
-                ORDER BY id DESC
+                ORDER BY created_at DESC, id DESC
                 LIMIT 1
                 """, arguments: [cutoff])
                 .map(SnapshotID.init(rawValue:))
