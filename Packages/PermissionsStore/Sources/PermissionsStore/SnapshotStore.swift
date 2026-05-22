@@ -441,13 +441,27 @@ public struct SnapshotStore: Sendable {
         identity: (Item) -> String,
         wrap: ([Item], [Item], [DomainChange<Item>]) -> Diff
     ) -> Diff where Item: Sendable & Hashable {
-        let beforeByKey = Dictionary(uniqueKeysWithValues: before.map { (identity($0), $0) })
-        let afterByKey = Dictionary(uniqueKeysWithValues: after.map { (identity($0), $0) })
+        // Collapse on duplicate identity keys instead of trapping. Two TCC
+        // grants legitimately share an identity key when the client is
+        // path-based and carries no bundle ID — both map to e.g.
+        // "filesAndFolders||". `Dictionary(uniqueKeysWithValues:)` fatal-
+        // errors on that; `uniquingKeysWith` keeps the first, which is all
+        // a presence-based diff needs.
+        let beforeByKey = Dictionary(
+            before.map { (identity($0), $0) },
+            uniquingKeysWith: { first, _ in first }
+        )
+        let afterByKey = Dictionary(
+            after.map { (identity($0), $0) },
+            uniquingKeysWith: { first, _ in first }
+        )
         let beforeKeys = Set(beforeByKey.keys)
         let afterKeys = Set(afterByKey.keys)
 
-        let added = after.filter { !beforeKeys.contains(identity($0)) }
-        let removed = before.filter { !afterKeys.contains(identity($0)) }
+        // Derive added/removed from the deduped maps so the result stays
+        // consistent with beforeByKey/afterByKey (no phantom duplicate rows).
+        let added = afterKeys.subtracting(beforeKeys).sorted().map { afterByKey[$0]! }
+        let removed = beforeKeys.subtracting(afterKeys).sorted().map { beforeByKey[$0]! }
 
         let shared = beforeKeys.intersection(afterKeys).sorted()
         let changed: [DomainChange<Item>] = shared.compactMap { key in

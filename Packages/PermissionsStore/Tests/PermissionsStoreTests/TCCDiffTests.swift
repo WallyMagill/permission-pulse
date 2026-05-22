@@ -79,6 +79,32 @@ import PermissionsCore
         #expect(diff.added.isEmpty)
     }
 
+    @Test func diffDoesNotTrapOnDuplicateIdentityKeys() async throws {
+        // Path-based TCC clients carry no bundle ID. Two Files-and-Folders
+        // grants for distinct paths both collapse to identity key
+        // "filesAndFolders||". The diff engine must collapse, not trap.
+        let store = try SnapshotStore.inMemory()
+        let dupeA = grant(
+            service: .filesAndFolders,
+            bundleID: "",
+            bundlePath: URL(fileURLWithPath: "/usr/local/bin/toolA")
+        )
+        let dupeB = grant(
+            service: .filesAndFolders,
+            bundleID: "",
+            bundlePath: URL(fileURLWithPath: "/usr/local/bin/toolB")
+        )
+        let other = grant(service: .microphone, bundleID: "com.example.mic")
+
+        let firstID = try await store.writeTCCGrantsSnapshot([])
+        let secondID = try await store.writeTCCGrantsSnapshot([dupeA, dupeB, other])
+
+        // Before the fix this trapped with "Duplicate values for key".
+        let diff = try await store.diffTCCGrants(from: firstID, to: secondID)
+        #expect(diff.added.count == 2, "two distinct identity keys: filesAndFolders|| and microphone|com.example.mic|")
+        #expect(diff.removed.isEmpty)
+    }
+
     private func grant(
         service: PermissionService,
         bundleID: String,
