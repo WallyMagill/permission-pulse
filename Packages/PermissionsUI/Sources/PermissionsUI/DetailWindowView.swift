@@ -1,3 +1,5 @@
+// AppKit: NSApp.activate(ignoringOtherApps:) from the Preferences toolbar
+// button — SwiftUI does not expose an app-activation primitive.
 import AppKit
 import SwiftUI
 import PermissionsCore

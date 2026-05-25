@@ -268,9 +268,9 @@ passed --no-launch). Run through them and report any deviations.
      ← THIS is the diagnostic for the missing-notification bug.
 
   G. Recent Changes — trailing ellipsis menu → Dismiss / Snooze 7 days
-     work. To force a non-empty diff:
-        sqlite3 "$HOME/Library/Application Support/com.wallymagill.permissionpulse/snapshots.db" \
-          "INSERT INTO snapshots (created_at) VALUES (strftime('%s','now','-2 days'));"
+     work. To force a non-empty diff, run scripts/seed-diff.sh (which
+     writes a 2-day-old empty snapshot in GRDB's TEXT date format), then
+     click Refresh in the detail-window toolbar.
 
   H. Stale Apps — trailing ellipsis menu → Skip forever, confirmation
      alert appears.
