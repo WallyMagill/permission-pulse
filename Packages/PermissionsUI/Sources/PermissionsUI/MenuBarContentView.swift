@@ -238,7 +238,7 @@ public struct MenuBarContentView: View {
             AttentionBanner(
                 title: String(localized: "Schema mismatch detected"),
                 subtitle: String(localized: "Open for details"),
-                action: { openWindow(id: "detail") }
+                action: { activateAndOpen("detail") }
             )
         case .clean:
             EmptyView()
@@ -247,7 +247,16 @@ public struct MenuBarContentView: View {
 
     private func presentFDASheet() {
         viewModel.showFDASheetOnDetail = true
-        openWindow(id: "detail")
+        activateAndOpen("detail")
+    }
+
+    // Bring PP to the foreground first, then open/raise the target window.
+    // Opening from the menu bar without this leaves PP in the background even
+    // though the window is now key — feels disorienting because nothing
+    // visually responds to the click.
+    private func activateAndOpen(_ id: String) {
+        NSApp.activate(ignoringOtherApps: true)
+        openWindow(id: id)
     }
 
     private func isPermissionDenied(_ error: ScannerError?) -> Bool {
@@ -274,7 +283,7 @@ public struct MenuBarContentView: View {
                 showsChangeDot: viewModel.hasUnreviewedChanges
             ) {
                 viewModel.pendingDetailMode = .whatChanged
-                openWindow(id: "detail")
+                activateAndOpen("detail")
             }
 
             MenuRowButton(
@@ -284,7 +293,7 @@ public struct MenuBarContentView: View {
                 shortcutDisplay: "⌘O"
             ) {
                 viewModel.pendingDetailMode = .current
-                openWindow(id: "detail")
+                activateAndOpen("detail")
             }
 
             MenuRowButton(
@@ -293,7 +302,7 @@ public struct MenuBarContentView: View {
                 shortcutKey: ",",
                 shortcutDisplay: "⌘,"
             ) {
-                openWindow(id: "preferences")
+                activateAndOpen("preferences")
             }
 
             Divider()

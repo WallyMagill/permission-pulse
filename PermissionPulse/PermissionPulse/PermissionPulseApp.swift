@@ -27,7 +27,9 @@ struct PermissionPulseApp: App {
         }
         .menuBarExtraStyle(.window)
 
-        WindowGroup("Preferences", id: "preferences") {
+        // Singleton scenes — Window (not WindowGroup) so openWindow(id:) reuses
+        // the existing window instead of stacking a new one each click.
+        Window("Preferences", id: "preferences") {
             PreferencesWindowView(
                 onResetAllData: { [appDelegate] in
                     appDelegate.requestResetAllData()
@@ -40,7 +42,7 @@ struct PermissionPulseApp: App {
         }
         .windowResizability(.contentSize)
 
-        WindowGroup("Permission Pulse", id: "detail") {
+        Window("Permission Pulse", id: "detail") {
             DetailWindowView(
                 onRefresh: { [appDelegate] in
                     await appDelegate.rescan()

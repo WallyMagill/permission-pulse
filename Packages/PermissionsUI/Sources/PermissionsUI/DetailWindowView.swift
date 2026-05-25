@@ -1,8 +1,10 @@
+import AppKit
 import SwiftUI
 import PermissionsCore
 import PermissionsStore
 
 public struct DetailWindowView: View {
+    @Environment(\.openWindow) private var openWindow
     @Environment(AppViewModel.self) private var viewModel
     private let onRefresh: (() async -> Void)?
     private let onWhatChangedSelected: (() -> Void)?
@@ -32,6 +34,12 @@ public struct DetailWindowView: View {
                             RefreshToolbarButton {
                                 await onRefresh()
                             }
+                        }
+                    }
+                    ToolbarItem(placement: .primaryAction) {
+                        PreferencesToolbarButton {
+                            NSApp.activate(ignoringOtherApps: true)
+                            openWindow(id: "preferences")
                         }
                     }
                 }
@@ -619,5 +627,29 @@ private struct RefreshToolbarButton: View {
         .buttonStyle(.plain)
         .onHover { isHovering = $0 }
         .help(String(localized: "Refresh"))
+    }
+}
+
+private struct PreferencesToolbarButton: View {
+    let action: () -> Void
+
+    @State private var isHovering = false
+
+    var body: some View {
+        Button(action: action) {
+            Image(systemName: "gearshape")
+                .font(.system(size: 13, weight: .semibold))
+                .foregroundStyle(.secondary)
+                .frame(width: 26, height: 26)
+                .background(
+                    Circle()
+                        .fill(isHovering ? Color.primary.opacity(0.08) : Color.clear)
+                )
+                .contentShape(Circle())
+        }
+        .buttonStyle(.plain)
+        .onHover { isHovering = $0 }
+        .help(String(localized: "Preferences"))
+        .keyboardShortcut(",", modifiers: [.command])
     }
 }
