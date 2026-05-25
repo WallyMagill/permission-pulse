@@ -72,6 +72,22 @@ import Testing
         #expect(reader.digestEnabled == true)
     }
 
+    /// Regression guard: a fresh init must NOT write fallback values back
+    /// into UserDefaults. The distinction between "absent key" (user has
+    /// never touched this preference) and "set to default" is load-bearing
+    /// for anything that wants to differentiate first-launch from a
+    /// deliberate reset-to-default in future slices.
+    @Test func initDoesNotWriteFallbacksWhenDefaultsAreEmpty() {
+        let defaults = fresh()
+        _ = PreferencesStore(defaults: defaults)
+        #expect(defaults.object(forKey: PreferencesStore.snapshotRetentionDaysKey) == nil)
+        #expect(defaults.object(forKey: PreferencesStore.staleThresholdDaysKey) == nil)
+        #expect(defaults.object(forKey: PreferencesStore.digestEnabledKey) == nil)
+        #expect(defaults.object(forKey: PreferencesStore.digestWeekdayKey) == nil)
+        #expect(defaults.object(forKey: PreferencesStore.digestHourKey) == nil)
+        #expect(defaults.object(forKey: PreferencesStore.digestMinuteKey) == nil)
+    }
+
     // MARK: - Helpers
 
     private func fresh() -> UserDefaults {

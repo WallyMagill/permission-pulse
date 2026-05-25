@@ -116,15 +116,15 @@ if [[ -n "$APP_PATH" ]]; then
     PLIST="$APP_PATH/Contents/Info.plist"
     MARKETING=$(/usr/libexec/PlistBuddy -c "Print CFBundleShortVersionString" "$PLIST" 2>/dev/null)
     BUILD_NO=$(/usr/libexec/PlistBuddy -c "Print CFBundleVersion" "$PLIST" 2>/dev/null)
-    if [[ "$MARKETING" == "0.7.0" ]]; then
+    if [[ "$MARKETING" == "0.7.1" ]]; then
         pass "CFBundleShortVersionString = $MARKETING"
     else
-        fail "CFBundleShortVersionString = $MARKETING (expected 0.7.0)"
+        fail "CFBundleShortVersionString = $MARKETING (expected 0.7.1)"
     fi
-    if [[ "$BUILD_NO" == "10" ]]; then
+    if [[ "$BUILD_NO" == "11" ]]; then
         pass "CFBundleVersion = $BUILD_NO"
     else
-        warn "CFBundleVersion = $BUILD_NO (expected 10)"
+        warn "CFBundleVersion = $BUILD_NO (expected 11)"
     fi
 fi
 

@@ -334,10 +334,8 @@ private struct NotificationsPreferencesTab: View {
 
     private var nextFireSecondary: String? {
         guard let date = viewModel.nextWeeklyFireDate else { return nil }
-        let formatter = DateFormatter()
-        formatter.dateStyle = .full
-        formatter.timeStyle = .short
-        return String(localized: "Next: \(formatter.string(from: date))")
+        let formatted = DateFormatter.localizedString(from: date, dateStyle: .full, timeStyle: .short)
+        return String(localized: "Next: \(formatted)")
     }
 
     @ViewBuilder
