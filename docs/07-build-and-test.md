@@ -39,7 +39,7 @@ xcodebuild \
 
 ## Run
 
-From Xcode: ⌘R. A shield icon appears in the menu bar near the clock. Click it → "Open Permission Pulse" → the detail window opens with mock-data sections labeled with an orange `Mock` badge.
+From Xcode: ⌘R. A shield icon appears in the menu bar near the clock. Click it → "Open Permission Pulse" → the detail window opens. With Full Disk Access granted it shows live TCC + BTM data; without FDA those sections show an FDA prompt / empty state (Launch Agents and mic/cam work regardless). The app always uses the live scanners — mock data only appears in tests and SwiftUI previews, badged orange `Mock`.
 
 From the CLI after a Debug build:
 
@@ -51,18 +51,18 @@ You can `open` it directly.
 
 ## Test
 
-From Xcode: ⌘U runs the per-package smoke tests and the (currently empty) app-level test target.
+From Xcode: ⌘U runs the per-package suites and the app-level test target.
 
 From the CLI:
 
 ```bash
-# Package-level tests (run without the Xcode project)
-swift test --package-path Packages/PermissionsCore
-swift test --package-path Packages/PermissionsScanners
-swift test --package-path Packages/PermissionsStore
-swift test --package-path Packages/PermissionsUI
+# Package-level tests (run without the Xcode project) — ~161 tests total
+swift test --package-path Packages/PermissionsCore       # ~15
+swift test --package-path Packages/PermissionsScanners   # ~48
+swift test --package-path Packages/PermissionsStore      # ~24
+swift test --package-path Packages/PermissionsUI         # ~74
 
-# Full app build + (empty) test target via xcodebuild
+# App build + app-target tests via xcodebuild (the ~27 coordinator tests)
 xcodebuild \
   -project PermissionPulse/PermissionPulse.xcodeproj \
   -scheme PermissionPulse \
@@ -70,16 +70,20 @@ xcodebuild \
   test
 ```
 
-Tests use **Swift Testing** (`import Testing`) for new tests. The four packages each have a smoke test that asserts the package builds and basic types initialize.
+Tests use **Swift Testing** (`import Testing`); the UITest target uses XCTest. Coverage is real, not smoke: the packages carry ~161 tests and the app target adds ~27 coordinator tests (`SnapshotCoordinator`, `WeeklyDigestCoordinator`, `ResetAllDataService`).
+
+### Full local smoke test
+
+`scripts/smoke-test.sh` is the comprehensive pre-release gate. It wipes only Permission Pulse's own state (never the real TCC.db / login items), does a Release build, asserts the bundle version (`0.7.1` / build `11`), runs all package + app-target tests, verifies the on-disk `snapshots.db` schema, and prints a human checklist (§A–§I). `scripts/seed-diff.sh` inserts a dated empty snapshot so the next scan produces a non-empty diff for exercising the dismiss/snooze flow.
 
 ## CI
 
-GitHub Actions runs on every PR and every push to `main`:
+GitHub Actions (`.github/workflows/ci.yml`) runs on every PR and every push to `main`, on `macos-latest`:
 
-- Build + test of all four SwiftPM packages with `swift test`.
-- Build + test of the Xcode app target with `xcodebuild`.
+- **`packages` job** — `swift test` for all four SwiftPM packages. This is the real coverage gate.
+- **`app` job** — `xcodebuild … build` only (Debug, signing disabled). It **builds** the app target but does **not** run the app-target tests; those ~27 coordinator tests run locally via `smoke-test.sh §4`. There is no release/packaging automation in CI (distribution is manual).
 
-Workflow file: `.github/workflows/ci.yml`. The CI runner uses macOS-latest; the deployment target stays at macOS 14.
+GRDB is pinned at `7.10.0` (see each `Package.resolved`). Deployment targets are not uniform: the app release target is `14.6`, the test targets are `26.4`, and the SwiftPM packages floor at `.macOS(.v14)`. The app is built and tested only on Tahoe 26; treat 14.x as the declared floor, not a verified one.
 
 ## How this project was bootstrapped (historical)
 
@@ -88,11 +92,11 @@ The Xcode project at `PermissionPulse/PermissionPulse.xcodeproj` is committed. A
 For reference, the original bootstrap (one-time, recorded for posterity in `git log`):
 
 - File → New → Project → macOS → App
-- Product Name `PermissionPulse`, Bundle ID `com.wallymagill.permissionpulse`, Interface SwiftUI, Language Swift, Storage None, Team None, **Include Tests** can be either (the auto-generated test targets are kept as no-op hosts).
+- Product Name `PermissionPulse`, Bundle ID `com.wallymagill.permissionpulse`, Interface SwiftUI, Language Swift, Storage None, Team None, **Include Tests** yes (the auto-generated test targets started as no-op hosts but now carry the app-target coordinator tests).
 - Min Deployments → macOS 14, App Category Utilities.
 - App Sandbox OFF; Hardened Runtime ON with no exception checkboxes ticked.
 - Add the four local packages via **File → Add Package Dependencies → Add Local…** and link each to the app target.
-- `INFOPLIST_KEY_LSUIElement = YES` (set in the target's build settings, not the Info.plist file directly — Xcode 16+ generates Info.plist from build settings).
+- `INFOPLIST_KEY_LSUIElement = YES` (set in the target's build settings, not the Info.plist file directly — Xcode 26 generates Info.plist from build settings).
 - Share the scheme: Product → Scheme → Manage Schemes → check the **Shared** column next to `PermissionPulse`.
 
 ## Troubleshooting

@@ -40,7 +40,7 @@ Apps that hold powerful permissions but haven't been launched in ≥ 90 days.
 
 We approximate "last launched" with a combination of `URL.contentModificationDateKey` on the `.app` bundle and `mdls -name kMDItemLastUsedDate`, picking the most recent of the two.
 
-**Acceptance:** Lists apps where (permission ∈ {Accessibility, Screen Recording, FDA}) AND (last-touched > 90 days). Threshold is a constant for v1; user-configurable in v1.1.
+**Acceptance:** Lists apps where (permission ∈ {Accessibility, Screen Recording, FDA}) AND (last-touched > 90 days). The threshold defaulted to a 90-day constant initially and became **user-configurable in v0.7.0** (30–365 days, Preferences → Snapshots).
 
 ### Screen 5 — One-Click Fixes
 
@@ -66,9 +66,9 @@ Once per week, on Monday 09:00 local time. Local notification only. Summary: "N 
 
 ## Stretch — possibly v1, more likely v1.1
 
-- **Export to JSON/Markdown** for the user's own records.
-- **Search and filter** in the Inbox.
-- **Quick revoke helper** showing the bundle ID for `tccutil reset` next to the System Settings deep link.
+- **Export to JSON/Markdown** for the user's own records. (Not yet shipped.)
+- **Search and filter** in the Inbox. (Shipped — the detail window has a toolbar search that filters every page.)
+- **Quick revoke helper** showing the bundle ID for `tccutil reset` next to the System Settings deep link. (Not yet shipped.)
 
 ## Anti-scope — never in this product
 

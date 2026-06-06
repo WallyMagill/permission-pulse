@@ -63,7 +63,7 @@ One source of truth, three observers. The error case itself encodes the intent.
 
 - `AppViewModelErrorStateTests`: 4 cases covering the new `tccScanError` property — default nil, settable, init-parameter honored, clearable.
 - Existing v0.3.0 test suites all still pass without modification (44 → 48 tests across all packages).
-- ScanCoordinator integration coverage is manual smoke (the Xcode test target stays a no-op host per `docs/03-architecture.md`).
+- ScanCoordinator integration coverage is manual smoke (the Xcode app-target test bundle was still a no-op host at v0.3.1; app-target coordinator tests landed in v0.5.0).
 
 ## FDA URL
 

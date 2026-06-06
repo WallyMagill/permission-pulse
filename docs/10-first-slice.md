@@ -1,6 +1,6 @@
 # 10 — First slice: LaunchAgents scanner
 
-**Status:** Speced, not implemented.
+**Status:** Implemented v0.2.0 — 2026-05-13. (Spec below; the section describes the slice as originally planned.)
 
 **Why this slice first:**
 

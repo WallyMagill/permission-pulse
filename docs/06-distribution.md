@@ -2,31 +2,29 @@
 
 **Channel:** GitHub Releases only.
 
-**Form:** `.dmg` containing `Permission Pulse.app`.
+**Form (current):** a `.zip` of `Permission Pulse.app` — `PermissionPulse-vX.Y.Z.app.zip`. The `.dmg` packaging described below is planned but not yet built.
 
 **Signing:** Ad-hoc (`-`) for now. Notarization deferred indefinitely until a paid Apple Developer ID is acquired. Sparkle 2 auto-updates also deferred.
 
-## Release flow (v1)
+## Release flow (current — manual)
 
-1. Bump version in the Xcode project and `CFBundleShortVersionString`.
-2. Tag the commit: `git tag vX.Y.Z && git push origin vX.Y.Z`.
-3. **GitHub Action** triggered by tag push:
-   - Builds the app in Release with `xcodebuild`.
-   - Ad-hoc-signs the resulting `.app`.
-   - Packages it into a `.dmg` using `create-dmg` or `hdiutil`.
-   - Creates a GitHub Release for the tag.
-   - Uploads the `.dmg`.
-4. Release notes are hand-written in `CHANGELOG.md` (added when we cut v0.1.0); the workflow pulls them from the most recent entry.
+Releases v0.2.0 → v0.7.1 were all cut by hand. There is **no** tag-triggered release workflow; CI only builds and tests (see `docs/07-build-and-test.md`). The actual steps:
 
-The notarization step is **not** in the workflow yet. When a Developer ID lands, this doc is updated and the workflow gains:
+1. Bump `MARKETING_VERSION` / `CURRENT_PROJECT_VERSION` across the six pbxproj configs and update `scripts/smoke-test.sh`'s expected-version literals.
+2. Run `scripts/smoke-test.sh` and work the §A–§I human checklist.
+3. Build Release with `xcodebuild`, locate the `.app` in DerivedData, and zip it to `PermissionPulse-vX.Y.Z.app.zip`.
+4. Tag the commit: `git tag vX.Y.Z && git push origin vX.Y.Z`.
+5. Create the release and upload the zip: `gh release create vX.Y.Z PermissionPulse-vX.Y.Z.app.zip --title "vX.Y.Z — …" --notes "…"`.
 
-- Code signing with the Developer ID certificate from a CI secret.
-- `xcrun notarytool submit` + `xcrun stapler staple`.
-- (Optional) Sparkle appcast generation, hosted on GitHub Pages.
+Release notes are written by hand directly in the GitHub Release. There is **no `CHANGELOG.md`** in the repo — `docs/09-roadmap.md` is the closest thing to a changelog.
+
+## Release flow (planned automation — not built)
+
+A future tag-triggered GitHub Action could: build Release with `xcodebuild` → ad-hoc-sign the `.app` → package a `.dmg` via `create-dmg`/`hdiutil` → create the release → upload. When a Developer ID lands it would also gain code signing from a CI secret, `xcrun notarytool submit` + `xcrun stapler staple`, and optional Sparkle appcast generation on GitHub Pages.
 
 ## Update mechanism (v1)
 
-No auto-updater in v1. The app has a `Check for Updates…` menu item that opens `https://github.com/WallyMagill/permission-pulse/releases` in the browser.
+No auto-updater in v1. The plan is a `Check for Updates…` menu item that opens `https://github.com/WallyMagill/permission-pulse/releases` in the browser — **this item is not wired up in the app yet**; for now users check the Releases page directly.
 
 Why not Sparkle now:
 - Sparkle's update download lands a `.dmg` that Gatekeeper quarantines because we are unsigned. The user sees the same "Apple could not verify..." dialog they saw on initial install. Sparkle's value is mostly nullified.
@@ -36,10 +34,10 @@ When we add a Developer ID, we revisit. The architecture leaves room for Sparkle
 
 ## First-install instructions (replicated in README)
 
-1. Download the `.dmg` from the Releases page.
-2. Open the `.dmg`, drag `Permission Pulse.app` to `/Applications`.
+1. Download `PermissionPulse-vX.Y.Z.app.zip` from the Releases page and unzip it.
+2. Drag `Permission Pulse.app` to `/Applications`.
 3. **First launch:** right-click → Open. Gatekeeper warning is expected and the right-click → Open path is the standard workaround for unsigned OSS apps.
-4. Grant Full Disk Access when the app asks.
+4. Grant Full Disk Access when the app asks (required for TCC + BTM reads; macOS may ask you to quit and reopen).
 
 ## Anti-distribution
 
@@ -53,6 +51,7 @@ Once we have at least one stable release, a `homebrew-tap` repo gets added: `bre
 
 ## File sizes / artifacts to expect
 
-- `.app` bundle: 15–30 MB (depends on whether GRDB statically links SQLite vs uses the system one).
-- `.dmg`: ~5 MB larger than the `.app`.
-- Single artifact: universal binary (arm64 + x86_64) so older Intel Macs work.
+- `.app` bundle: ~16 MB.
+- `PermissionPulse-vX.Y.Z.app.zip`: ~5 MB (v0.7.1 was 4.8 MB).
+- The Release binary is a **universal binary (arm64 + x86_64)** — the Intel slice is built but is **untested** (development is Apple-Silicon-only). The app should run on Intel Macs in principle, but no one has verified it.
+- A `.dmg` would add a few MB over the zip, once `.dmg` packaging is built.

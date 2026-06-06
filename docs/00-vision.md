@@ -12,7 +12,7 @@ Permission Pulse is that surface.
 
 A menu-bar app that:
 
-1. Reads the TCC database, LaunchAgents/Daemons, BTM-managed background items, and AVFoundation mic/cam usage.
+1. Reads the TCC database, LaunchAgents/Daemons, BTM-managed background items, and current mic/cam usage (via the CoreMediaIO + CoreAudio device-use APIs).
 2. Stores a daily snapshot locally in SQLite.
 3. Shows what's currently granted, what changed since yesterday and last week, what looks stale, and a plain-English explanation of what each permission actually lets an app do.
 4. Provides deep links to the correct System Settings pane for any change the user wants to make.

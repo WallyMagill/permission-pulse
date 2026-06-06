@@ -10,7 +10,7 @@
 ## Scope cut
 
 - **In v0.7.0:** A. Preferences pane · B. Weekly local notification · C. Per-row dismiss/snooze on Recent Changes · D. Skip-stale-app-forever.
-- **Deferred:** E (sub-service preservation) bundles with H (`auth_value`) in a future "model fidelity" slice. F (Sonoma/Sequoia anchor verification) needs a VM matrix. G (BTM tree view) is cosmetic. Notification click → Recent Changes routing is v0.7.1.
+- **Deferred:** E (sub-service preservation) bundles with H (`auth_value`) in a future "model fidelity" slice (now tracked as v0.8.x in `docs/09-roadmap.md`). F (Sonoma/Sequoia anchor verification) needs a VM matrix. G (BTM tree view) is cosmetic. Notification click → Recent Changes routing was originally pencilled in for v0.7.1, but v0.7.1 shipped as a maintenance release (DateFormatter reuse + a regression-guard test); the routing work moved to v0.8.x.
 
 ## What shipped
 
@@ -188,7 +188,7 @@ Grand total: **172 tests** (was 129 → +43, comfortably above the +28 floor and
 - F. Sonoma + Sequoia anchor verification — needs a VM matrix.
 - G. BTM developer-group tree view — cosmetic, no user pressure.
 - H. `auth_value` tracking for TCC — pairs with E.
-- Notification click → open Recent Changes — needs `UNUserNotificationCenterDelegate` + routing into `pendingDetailMode`. v0.7.1.
+- Notification click → open Recent Changes — needs `UNUserNotificationCenterDelegate` + routing into `pendingDetailMode`. Moved to v0.8.x (v0.7.1 was a maintenance release).
 - Global hotkey for Preferences (`KeyboardShortcuts` dep) — third-party dep; defer.
 
 ## Done means

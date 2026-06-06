@@ -2,14 +2,14 @@
 
 Honest, not aspirational. Each milestone is a single shipped binary on GitHub Releases.
 
-## v0.1.0 — Scaffold (✅ done 2026-05-13, not yet tagged)
+## v0.1.0 — Scaffold (✅ done 2026-05-13, never tagged)
 
 - Xcode project + four SwiftPM packages with smoke tests passing. ✅
 - Menu-bar icon and detail window render mock data clearly labeled as mock. ✅
 - CI green (build + test) on macOS-latest, both SwiftPM jobs and xcodebuild app job. ✅
 - No real scanners wired yet (deliberate). ✅
 
-The `v0.1.0` git tag will be cut at the same time as the v0.2.0 release, since the scaffold milestone has no user-facing artifact worth distributing on its own.
+The scaffold milestone had no user-facing artifact worth distributing on its own, so a `v0.1.0` git tag was never cut — the first tag is `v0.2.0`, which folds in the scaffold.
 
 ## v0.2.0 — First real scanner (✅ done 2026-05-13)
 
@@ -77,7 +77,13 @@ See `docs/15-what-changed-and-stale-slice.md` for the spec.
 
 See `docs/16-one-click-fixes-and-risk-slice.md` for the spec.
 
-## v0.7.0 — Preferences, weekly digest, per-row dismiss (✅ done 2026-05-16)
+## v0.6.1 — Tahoe Vibrant UI polish (✅ done 2026-05-17)
+
+- `DetailWindowView` rebuilt as a `NavigationSplitView` — sidebar navigation (Permissions / Launch Agents / Background Items / Recent Changes / Stale Apps) replacing the single ScrollView. ✅
+- Unified detail sheets and a shared `VibrancyCard` surface for the "Tahoe Vibrant" visual direction. ✅
+- No new scanners or data — visual/navigation polish only. No dedicated slice doc; the UI direction is traced in the untracked `design-mockups/` HTML files. ✅
+
+## v0.7.0 — Preferences, weekly digest, per-row dismiss (✅ released 2026-05-25; implemented 2026-05-16)
 
 - Preferences pane (snapshot retention + stale threshold sliders, weekly digest controls, Reset All Data). ✅
 - Weekly local notification opt-in via `UNUserNotificationCenter` + `WeeklyDigestCoordinator`. ✅
@@ -85,6 +91,24 @@ See `docs/16-one-click-fixes-and-risk-slice.md` for the spec.
 - Skip-stale-app-forever per stale row, filtered in `SnapshotCoordinator.computeStaleApps` so the badge count stays honest. ✅
 
 See `docs/17-preferences-and-digest-slice.md` for the spec.
+
+## v0.7.1 — Maintenance (✅ done 2026-05-25)
+
+A small post-v0.7.0 code-review follow-up — no new features:
+
+- `PreferencesWindowView` next-fire label uses `DateFormatter.localizedString(from:dateStyle:timeStyle:)` instead of allocating a fresh `DateFormatter` on each evaluation. ✅
+- New regression-guard test (`PreferencesStoreTests.initDoesNotWriteFallbacksWhenDefaultsAreEmpty`): `didSet` must not fire during `@Observable` init under Tahoe, so a fresh launch with no prior keys leaves `UserDefaults` untouched. ✅
+- Version bumped to `0.7.1` / build `11`. ✅
+
+(The store/window fixes also visible in recent history — `computeDiff` no longer traps on duplicate identity keys, `latestSnapshotID` orders by `created_at`, singleton detail/preferences windows + Preferences toolbar entry — landed within the v0.7.0 tag range, not v0.7.1.)
+
+## v0.8.x — Model fidelity (planned, deferred from v0.7.0)
+
+Carried over from `docs/17` "Deferred to later slices":
+
+- TCC `auth_value` tracking so a granted→denied transition shows as a change, not remove+add (`TCCGrantsDiff.changed` is currently always empty).
+- Sub-service preservation for `.filesAndFolders` / Photos / Bluetooth (the five folder-scope TCC strings currently collapse to one grant).
+- Notification click → open Recent Changes (needs a `UNUserNotificationCenterDelegate` routing into `pendingDetailMode`).
 
 ## v1.0.0 — First public release
 
@@ -95,11 +119,10 @@ See `docs/17-preferences-and-digest-slice.md` for the spec.
 
 ## v1.1 (post-launch)
 
-- Search and filter in the Inbox.
 - Export to JSON/Markdown.
-- Configurable stale-app threshold.
 - Homebrew tap.
 - Localization for at least one non-English locale.
+- (Configurable stale-app threshold already shipped in v0.7.0; the detail window already has a toolbar search that filters every page.)
 
 ## v2 (speculative)
 
