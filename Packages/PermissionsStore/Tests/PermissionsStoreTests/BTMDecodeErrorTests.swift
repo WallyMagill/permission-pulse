@@ -21,6 +21,15 @@ import Testing
         }
     }
 
+    @Test func perUserScopeWithMissingUUIDThrows() {
+        // A "perUser" scope row with a NULL uuid is a corruption state; it must
+        // throw (StoreError.missingPerUserScopeUUID), not silently produce a
+        // bogus scope. (R3)
+        #expect(throws: StoreError.self) {
+            _ = try SnapshotStore.decodeScope(kind: "perUser", uuid: nil)
+        }
+    }
+
     @Test func knownKindsStillDecode() throws {
         #expect(try SnapshotStore.decodeItemType(kind: "app", raw: nil) == .app)
         #expect(try SnapshotStore.decodeDisposition(kind: "enabled", raw: nil) == .enabled)
