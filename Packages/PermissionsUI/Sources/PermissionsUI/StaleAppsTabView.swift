@@ -97,6 +97,8 @@ private struct StaleAppRow: View {
                 .menuStyle(.borderlessButton)
                 .menuIndicator(.hidden)
                 .fixedSize()
+                .accessibilityLabel(String(localized: "Options"))
+                .accessibilityHint(String(localized: "Skip this app forever"))
             }
         }
     }

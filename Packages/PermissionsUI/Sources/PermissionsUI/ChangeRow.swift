@@ -41,6 +41,8 @@ struct ChangeRow: View {
                 .menuStyle(.borderlessButton)
                 .menuIndicator(.hidden)
                 .fixedSize()
+                .accessibilityLabel(String(localized: "Options"))
+                .accessibilityHint(String(localized: "Dismiss or snooze this change"))
             }
         }
     }
@@ -50,11 +52,14 @@ struct ChangeRow: View {
         switch kind {
         case .granted, .btmAdded, .launchAgentAdded:
             Image(systemName: "plus.circle.fill").foregroundStyle(.green)
+                .accessibilityHidden(true)
         case .revoked, .btmRemoved, .launchAgentRemoved:
             Image(systemName: "minus.circle.fill").foregroundStyle(.red)
+                .accessibilityHidden(true)
         case .btmDispositionFlipped, .launchAgentFlipped:
             Image(systemName: "arrow.triangle.2.circlepath.circle.fill")
                 .foregroundStyle(.orange)
+                .accessibilityHidden(true)
         }
     }
 
