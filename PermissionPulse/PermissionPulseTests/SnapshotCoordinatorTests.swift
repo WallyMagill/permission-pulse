@@ -178,6 +178,31 @@ import PermissionsUI
         #expect(stored == 1)
     }
 
+    @Test func yesterdayDiffUsesCalendarDayBoundaryNotRollingWindow() async throws {
+        // Regression for C1. "Now" is early morning today; a snapshot taken
+        // yesterday afternoon is only ~18h old, so the old rolling 24h window
+        // wrongly excluded it. The calendar-day boundary must include it.
+        var cal = Calendar(identifier: .gregorian)
+        cal.timeZone = TimeZone(identifier: "UTC")!
+        let base = Date(timeIntervalSince1970: 1_700_000_000)
+        let startOfToday = cal.startOfDay(for: base)
+        let nowMorning = startOfToday.addingTimeInterval(8 * 3600)      // today 08:00 UTC
+        let yesterdayAfternoon = startOfToday.addingTimeInterval(-10 * 3600) // yesterday 14:00 UTC
+
+        let env = try await Environment(now: { nowMorning }, calendar: cal)
+        _ = try await env.store.writeFullSnapshot(
+            grants: [demoGrant(bundleID: "com.example.old")],
+            launchAgents: [], btmItems: [],
+            at: yesterdayAfternoon
+        )
+
+        env.viewModel.grants = [demoGrant(bundleID: "com.example.new")]
+        await env.coordinator.onScanCompleted()
+
+        #expect(env.viewModel.latestDiffYesterday != nil)
+        #expect(env.viewModel.latestDiffYesterday?.hasContent == true)
+    }
+
     // MARK: - Helpers
 
     @MainActor
@@ -190,6 +215,7 @@ import PermissionsUI
         init(
             now: @Sendable @escaping () -> Date,
             probe: any LastUsedProbe = MockLastUsedProbe(),
+            calendar: Calendar = Calendar(identifier: .gregorian),
             snapshotRetentionDays: Int = SnapshotCoordinator.defaultSnapshotRetentionDays,
             staleThresholdDays: Int = SnapshotCoordinator.defaultStaleThresholdDays,
             dismissedStaleApps: DismissedStaleAppStore? = nil
@@ -202,7 +228,7 @@ import PermissionsUI
                 store: store,
                 lastUsedProbe: probe,
                 defaults: defaults,
-                calendar: Calendar(identifier: .gregorian),
+                calendar: calendar,
                 now: now,
                 snapshotRetentionDays: snapshotRetentionDays,
                 staleThresholdDays: staleThresholdDays,

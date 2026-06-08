@@ -16,7 +16,6 @@ final class SnapshotCoordinator {
     static let lastReviewedSnapshotIDKey = "com.wallymagill.permissionpulse.lastReviewedSnapshotID"
     static let defaultSnapshotRetentionDays = 90
     static let defaultStaleThresholdDays = 90
-    static let yesterdayWindowSeconds: TimeInterval = 24 * 60 * 60
     static let weekWindowSeconds: TimeInterval = 7 * 24 * 60 * 60
     static let maxStaleProbesInFlight = 8
 
@@ -135,10 +134,16 @@ final class SnapshotCoordinator {
         }
 
         let nowDate = now()
-        let yesterdayCutoff = nowDate.addingTimeInterval(-Self.yesterdayWindowSeconds)
-        let weekCutoff = nowDate.addingTimeInterval(-Self.weekWindowSeconds)
+        // Anchor diff baselines to calendar-day boundaries, not a rolling
+        // window, because snapshots are written at most once per calendar day.
+        // `latestSnapshotID(atOrBefore:)` is inclusive (<=): today's snapshot
+        // has a timestamp after startOfToday and is excluded; the most recent
+        // prior-day snapshot is <= startOfToday and is selected. (C1)
+        let startOfToday = calendar.startOfDay(for: nowDate)
+        let weekCutoff = calendar.date(byAdding: .day, value: -7, to: startOfToday)
+            ?? startOfToday.addingTimeInterval(-Self.weekWindowSeconds)
 
-        viewModel.latestDiffYesterday = await computeDiffs(cutoff: yesterdayCutoff, latestID: latestID)
+        viewModel.latestDiffYesterday = await computeDiffs(cutoff: startOfToday, latestID: latestID)
         viewModel.latestDiffWeek = await computeDiffs(cutoff: weekCutoff, latestID: latestID)
         viewModel.staleApps = await computeStaleApps(nowDate: nowDate)
     }
