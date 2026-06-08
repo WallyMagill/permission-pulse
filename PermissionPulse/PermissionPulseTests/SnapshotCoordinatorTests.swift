@@ -203,6 +203,16 @@ import PermissionsUI
         #expect(env.viewModel.latestDiffYesterday?.hasContent == true)
     }
 
+    @Test func constructingCoordinatorClearsSnapshotStoreUnavailable() async throws {
+        // Regression: a successful store (re)open must clear the "unavailable"
+        // banner — previously it stuck after a successful Reset All Data.
+        let store = try SnapshotStore.inMemory()
+        let vm = AppViewModel()
+        vm.snapshotStoreUnavailable = true
+        _ = SnapshotCoordinator(viewModel: vm, store: store)
+        #expect(vm.snapshotStoreUnavailable == false)
+    }
+
     // MARK: - Helpers
 
     @MainActor

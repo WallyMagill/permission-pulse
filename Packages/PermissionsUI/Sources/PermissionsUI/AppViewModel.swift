@@ -56,6 +56,12 @@ public final class AppViewModel {
     // scan, matching when the stale filter itself changes. (C7)
     public var staleThresholdDays: Int = 90
 
+    // True when the snapshot store could not be opened — diff/stale history is
+    // unavailable, which is NOT the same as "no changes yet." (C2)
+    public var snapshotStoreUnavailable: Bool = false
+    // True when a diff query errored (vs. genuinely having no prior snapshot). (C2)
+    public var diffUnavailable: Bool = false
+
     public init(
         grants: [PermissionGrant] = [],
         launchAgents: [LaunchAgentItem] = [],

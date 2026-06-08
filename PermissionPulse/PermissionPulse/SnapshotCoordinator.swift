@@ -53,6 +53,9 @@ final class SnapshotCoordinator {
         self.snapshotRetentionDays = snapshotRetentionDays
         self.staleThresholdDays = staleThresholdDays
         self.dismissedStaleApps = dismissedStaleApps
+        // A constructed coordinator implies the store opened successfully, so
+        // clear any stale "unavailable" banner (e.g. after a successful Reset). (C2)
+        viewModel.snapshotStoreUnavailable = false
     }
 
     func onScanCompleted() async {
@@ -117,6 +120,7 @@ final class SnapshotCoordinator {
     private func refreshDiffsAndStale(latestID: SnapshotID?) async {
         guard let latestID else { return }
         viewModel.latestSnapshotID = latestID
+        viewModel.diffUnavailable = false
 
         // Defensive: if a stored lastReviewedSnapshotID points past the current
         // latest (could happen if snapshots.db was deleted while UserDefaults
@@ -167,6 +171,7 @@ final class SnapshotCoordinator {
             )
         } catch {
             Self.logger.error("Diff query failed: \(error.localizedDescription, privacy: .public)")
+            viewModel.diffUnavailable = true   // (C2) error, not "no data yet"
             return nil
         }
     }

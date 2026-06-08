@@ -126,6 +126,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             Self.logger.error(
                 "SnapshotStore init failed: \(error.localizedDescription, privacy: .public)"
             )
+            viewModel.snapshotStoreUnavailable = true
         }
         if let snapshotStore {
             snapshotCoordinator = SnapshotCoordinator(

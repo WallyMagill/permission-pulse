@@ -10,6 +10,8 @@ enum DiffWindowLabel: Sendable {
 struct DiffTabView: View {
     let diff: SnapshotDiffs?
     let windowLabel: DiffWindowLabel
+    var snapshotStoreUnavailable: Bool = false
+    var diffUnavailable: Bool = false
     @Environment(DismissedDiffEntryStore.self) private var dismissedStore
 
     private let snoozeDuration: TimeInterval = 7 * 24 * 60 * 60
@@ -17,7 +19,17 @@ struct DiffTabView: View {
     var body: some View {
         let now = Date()
 
-        if let diff {
+        if snapshotStoreUnavailable {
+            unavailableState(
+                headline: String(localized: "Snapshot history unavailable"),
+                detail: String(localized: "Permission Pulse couldn't open its local database, so it can't track changes. Try Reset All Data in Preferences.")
+            )
+        } else if diffUnavailable {
+            unavailableState(
+                headline: String(localized: "Couldn't read changes"),
+                detail: String(localized: "A problem reading the local database prevented computing changes. Try Refresh.")
+            )
+        } else if let diff {
             let tccVisible = filtered(tccRows(diff.tcc), now: now)
             let btmVisible = filtered(btmRows(diff.btm), now: now)
             let laVisible = filtered(launchAgentRows(diff.launchAgents), now: now)
@@ -109,6 +121,21 @@ struct DiffTabView: View {
                 .font(.system(size: 36))
                 .foregroundStyle(.green)
             Text(emptyContentHeadline).font(.headline)
+        }
+        .padding(.vertical, 36)
+        .frame(maxWidth: .infinity)
+    }
+
+    private func unavailableState(headline: String, detail: String) -> some View {
+        VStack(spacing: 12) {
+            Image(systemName: "exclamationmark.triangle.fill")
+                .font(.system(size: 36))
+                .foregroundStyle(.orange)
+            Text(headline).font(.headline)
+            Text(detail)
+                .font(.body)
+                .foregroundStyle(.secondary)
+                .multilineTextAlignment(.center)
         }
         .padding(.vertical, 36)
         .frame(maxWidth: .infinity)

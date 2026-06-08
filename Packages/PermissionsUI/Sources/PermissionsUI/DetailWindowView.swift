@@ -537,9 +537,19 @@ private struct RecentChangesDetailPage: View {
 
             switch window {
             case .yesterday:
-                DiffTabView(diff: viewModel.latestDiffYesterday, windowLabel: .yesterday)
+                DiffTabView(
+                    diff: viewModel.latestDiffYesterday,
+                    windowLabel: .yesterday,
+                    snapshotStoreUnavailable: viewModel.snapshotStoreUnavailable,
+                    diffUnavailable: viewModel.diffUnavailable
+                )
             case .week:
-                DiffTabView(diff: viewModel.latestDiffWeek, windowLabel: .lastWeek)
+                DiffTabView(
+                    diff: viewModel.latestDiffWeek,
+                    windowLabel: .lastWeek,
+                    snapshotStoreUnavailable: viewModel.snapshotStoreUnavailable,
+                    diffUnavailable: viewModel.diffUnavailable
+                )
             }
         }
     }
