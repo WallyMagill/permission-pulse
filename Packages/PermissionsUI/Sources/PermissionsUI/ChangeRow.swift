@@ -29,7 +29,7 @@ struct ChangeRow: View {
             if onDismissForever != nil || onSnooze != nil {
                 Menu {
                     if let onDismissForever {
-                        Button(String(localized: "Dismiss")) { onDismissForever() }
+                        Button(String(localized: "Dismiss forever"), role: .destructive) { onDismissForever() }
                     }
                     if let onSnooze {
                         Button(String(localized: "Snooze 7 days")) { onSnooze() }
@@ -64,6 +64,10 @@ struct ChangeRow: View {
     }
 
     private var description: String {
+        Self.summary(for: kind)
+    }
+
+    static func summary(for kind: Kind) -> String {
         switch kind {
         case .granted(let g):
             return String(localized: "Granted \(g.service.displayName) to \(g.app.displayName)")
@@ -74,15 +78,15 @@ struct ChangeRow: View {
         case .btmRemoved(let i):
             return String(localized: "Removed background item: \(i.name)")
         case .btmDispositionFlipped(let change):
-            let from = Self.dispositionLabel(change.before.disposition)
-            let to = Self.dispositionLabel(change.after.disposition)
+            let from = dispositionLabel(change.before.disposition)
+            let to = dispositionLabel(change.after.disposition)
             return String(localized: "Disposition changed: \(change.after.name) (\(from) → \(to))")
         case .launchAgentAdded(let i):
             return String(localized: "New launch agent: \(i.label)")
         case .launchAgentRemoved(let i):
             return String(localized: "Removed launch agent: \(i.label)")
         case .launchAgentFlipped(let change):
-            return Self.launchAgentFlipDescription(change)
+            return launchAgentFlipDescription(change)
         }
     }
 

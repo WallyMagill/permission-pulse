@@ -13,8 +13,15 @@ struct DiffTabView: View {
     var snapshotStoreUnavailable: Bool = false
     var diffUnavailable: Bool = false
     @Environment(DismissedDiffEntryStore.self) private var dismissedStore
+    @State private var pendingDismiss: PendingDismiss?
 
     private let snoozeDuration: TimeInterval = 7 * 24 * 60 * 60
+
+    private struct PendingDismiss: Identifiable {
+        var id: String { key }
+        let key: String
+        let summary: String
+    }
 
     var body: some View {
         let now = Date()
@@ -47,6 +54,24 @@ struct DiffTabView: View {
                         section(title: String(localized: "Launch Agents"), rows: laVisible)
                     }
                 }
+                .alert(
+                    String(localized: "Dismiss this change forever?"),
+                    isPresented: Binding(
+                        get: { pendingDismiss != nil },
+                        set: { if !$0 { pendingDismiss = nil } }
+                    ),
+                    presenting: pendingDismiss
+                ) { candidate in
+                    Button(String(localized: "Dismiss forever"), role: .destructive) {
+                        dismissedStore.dismissForever(key: candidate.key)
+                        pendingDismiss = nil
+                    }
+                    Button(String(localized: "Cancel"), role: .cancel) {
+                        pendingDismiss = nil
+                    }
+                } message: { candidate in
+                    Text(String(localized: "Permission Pulse will stop showing this change: \(candidate.summary). Use Reset All Data in Preferences to bring it back."))
+                }
             } else {
                 emptyContentState
             }
@@ -64,7 +89,12 @@ struct DiffTabView: View {
                     let key = DiffEntryKey.key(for: kind)
                     ChangeRow(
                         kind: kind,
-                        onDismissForever: { dismissedStore.dismissForever(key: key) },
+                        onDismissForever: {
+                            pendingDismiss = PendingDismiss(
+                                key: key,
+                                summary: ChangeRow.summary(for: kind)
+                            )
+                        },
                         onSnooze: {
                             dismissedStore.snooze(
                                 key: key,
