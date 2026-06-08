@@ -51,34 +51,42 @@ public struct LastUsedProbeHybrid: LastUsedProbe, Sendable {
     }
 
     private static func runMDLS(path: String) async -> Date? {
-        await withCheckedContinuation { continuation in
-            let process = Process()
-            process.executableURL = URL(fileURLWithPath: "/usr/bin/mdls")
-            process.arguments = ["-name", "kMDItemLastUsedDate", "-raw", path]
-            let stdout = Pipe()
-            let stderr = Pipe()
-            process.standardOutput = stdout
-            process.standardError = stderr
-            process.terminationHandler = { proc in
-                guard proc.terminationStatus == 0 else {
-                    continuation.resume(returning: nil)
-                    return
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/usr/bin/mdls")
+        process.arguments = ["-name", "kMDItemLastUsedDate", "-raw", path]
+        let stdout = Pipe()
+        let stderr = Pipe()
+        process.standardOutput = stdout
+        process.standardError = stderr
+        return await withTaskCancellationHandler {
+            await withCheckedContinuation { (continuation: CheckedContinuation<Date?, Never>) in
+                process.terminationHandler = { proc in
+                    guard proc.terminationStatus == 0 else {
+                        continuation.resume(returning: nil)
+                        return
+                    }
+                    let data = stdout.fileHandleForReading.readDataToEndOfFile()
+                    let raw = String(data: data, encoding: .utf8)?
+                        .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+                    if raw.isEmpty || raw == "(null)" {
+                        continuation.resume(returning: nil)
+                        return
+                    }
+                    continuation.resume(returning: Self.parseMDLSDate(raw))
                 }
-                let data = stdout.fileHandleForReading.readDataToEndOfFile()
-                let raw = String(data: data, encoding: .utf8)?
-                    .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-                if raw.isEmpty || raw == "(null)" {
+                do {
+                    try process.run()
+                } catch {
+                    logger.error("mdls launch failed: \(error.localizedDescription, privacy: .public)")
                     continuation.resume(returning: nil)
-                    return
                 }
-                continuation.resume(returning: Self.parseMDLSDate(raw))
             }
-            do {
-                try process.run()
-            } catch {
-                logger.error("mdls launch failed: \(error.localizedDescription, privacy: .public)")
-                continuation.resume(returning: nil)
-            }
+        } onCancel: {
+            // Cancellation (e.g. the 2s timeout) fired: signal mdls to terminate
+            // (SIGTERM) so its terminationHandler runs and the continuation
+            // resumes — no orphaned process, no stranded continuation. terminate()
+            // on an already-exited process is harmless. (R4)
+            if process.isRunning { process.terminate() }
         }
     }
 
