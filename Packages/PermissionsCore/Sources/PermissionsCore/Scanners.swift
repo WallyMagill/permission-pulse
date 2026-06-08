@@ -4,14 +4,16 @@ public enum ScannerError: Error, Sendable {
     case permissionDenied(reason: String)
     case schemaMismatch(detail: String)
     case unsupportedOnThisOS(detail: String)
+    case temporarilyUnavailable(reason: String)
 }
 
 extension ScannerError: LocalizedError {
     public var errorDescription: String? {
         switch self {
-        case .permissionDenied(let reason):    reason
-        case .schemaMismatch(let detail):      detail
-        case .unsupportedOnThisOS(let detail): detail
+        case .permissionDenied(let reason):       reason
+        case .schemaMismatch(let detail):         detail
+        case .unsupportedOnThisOS(let detail):    detail
+        case .temporarilyUnavailable(let reason): reason
         }
     }
 }

@@ -240,14 +240,39 @@ public struct TCCScannerSQLite: TCCScanner, Sendable {
         return a.lastModified < b.lastModified
     }
 
-    private static func mapDatabaseError(_ error: DatabaseError) -> ScannerError {
-        // For v0.3.0, every SQLite open/read error funnels to permissionDenied.
-        // FDA missing is the dominant cause; v0.3.1 will refine.
-        ScannerError.permissionDenied(reason: permissionDeniedReason)
+    // internal (not private): exposed for unit testing via @testable import.
+    static func mapDatabaseError(_ error: DatabaseError) -> ScannerError {
+        // FDA-missing surfaces as CANTOPEN/AUTH/PERM/READONLY and is the
+        // dominant cause; corruption and transient locks need different advice
+        // so we don't send users on a Full-Disk-Access wild goose chase. (C5)
+        switch error.resultCode.primaryResultCode {
+        case .SQLITE_CANTOPEN, .SQLITE_AUTH, .SQLITE_PERM, .SQLITE_READONLY:
+            return .permissionDenied(reason: permissionDeniedReason)
+        case .SQLITE_CORRUPT, .SQLITE_NOTADB:
+            return .schemaMismatch(detail: corruptReason)
+        case .SQLITE_BUSY, .SQLITE_LOCKED:
+            return .temporarilyUnavailable(reason: busyReason)
+        case .SQLITE_IOERR:
+            return .temporarilyUnavailable(reason: ioErrorReason)
+        default:
+            return .permissionDenied(reason: permissionDeniedReason)
+        }
     }
 
     private static let permissionDeniedReason = String(
         localized: "Full Disk Access is required. Grant it in System Settings → Privacy & Security → Full Disk Access."
+    )
+
+    private static let corruptReason = String(
+        localized: "The TCC database appears to be unreadable or corrupt."
+    )
+
+    private static let busyReason = String(
+        localized: "The TCC database is temporarily locked by macOS. Try Refresh in a moment."
+    )
+
+    private static let ioErrorReason = String(
+        localized: "A disk I/O error occurred reading the TCC database. Check available disk space and try Refresh."
     )
 
     private struct TCCRow: Sendable {

@@ -18,6 +18,8 @@ struct PermissionsEmptyStateView: View {
             permissionDeniedView
         case .schemaMismatch, .unsupportedOnThisOS:
             schemaMismatchView
+        case .temporarilyUnavailable:
+            temporarilyUnavailableView
         case nil:
             emptyView
         }
@@ -75,6 +77,22 @@ struct PermissionsEmptyStateView: View {
                 .foregroundStyle(.tertiary)
         }
         .padding(.vertical, 16)
+        .frame(maxWidth: .infinity)
+    }
+
+    private var temporarilyUnavailableView: some View {
+        VStack(spacing: 8) {
+            Image(systemName: "clock.badge.exclamationmark")
+                .font(.system(size: 36))
+                .foregroundStyle(.secondary)
+            Text(String(localized: "Temporarily unavailable"))
+                .font(.headline)
+            Text(String(localized: "The database is busy right now. Use Refresh to try again."))
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+                .multilineTextAlignment(.center)
+        }
+        .padding(.vertical, 24)
         .frame(maxWidth: .infinity)
     }
 
