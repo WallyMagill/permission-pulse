@@ -278,6 +278,37 @@ passed --no-launch). Run through them and report any deviations.
   I. Reset All Data — confirmation sheet, cascade works, NSWindow
      keys preserved.
 
+  ─── Accessibility (W4) — needs a VoiceOver session (toggle VO: ⌘F5) ───
+
+  J. Menu-bar icon state (A1 — MOST IMPORTANT). With VoiceOver on, move to
+     the Permission Pulse status item. It must announce the STATE label
+     ("Permission Pulse — unreviewed changes" / "… — camera in use" /
+     "… — scan error, action needed"), NOT a raw SF Symbol name like
+     "bell badge fill". ⚠ If it reads the symbol name, MenuBarExtra isn't
+     bridging .accessibilityLabel to the NSStatusBarButton — add an AppKit
+     bridge in AppDelegate (set NSStatusBarButton.accessibilityLabel from
+     viewModel.menuBarAccessibilityLabel). Caveat is documented above the
+     modifier in PermissionPulseApp.swift.
+
+  K. Reduce Motion (A4). System Settings → Accessibility → Display →
+     Reduce Motion ON. In the detail window, click Refresh: the icon must
+     NOT spin — it dims and VoiceOver reads "Refreshing". Turn Reduce
+     Motion OFF and confirm the icon spins again.
+
+  L. Selected state (A3). VoiceOver/Tab through the detail-window sidebar
+     and the Preferences tabs: it announces "selected" on the active item/
+     tab, and the announcement moves when you change selection.
+
+  M. Action menus (A2). Recent Changes and Stale Apps rows: VoiceOver reads
+     the trailing menu as "Options, pop up button" with the hint ("Dismiss
+     or snooze this change" / "Skip this app forever"), and the menu is
+     reachable by keyboard (no mouse).
+
+  N. No symbol-name noise (A5). VoiceOver should NOT read decorative icon
+     names: section labels are reachable via the Headings rotor (VO+U →
+     Headings); overview rows read as one phrase ("Permissions, 12"); and
+     empty-state / hero icons (Welcome, FDA sheet, empty diffs) stay silent.
+
 EOF
 
 if [[ ${#FAILED[@]} -gt 0 ]]; then
