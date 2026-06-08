@@ -86,6 +86,7 @@ public struct PreferencesWindowView: View {
             .contentShape(Capsule())
         }
         .buttonStyle(.plain)
+        .accessibilityAddTraits(isSelected ? [.isSelected] : [])
     }
 }
 
