@@ -86,7 +86,14 @@ final class SnapshotCoordinator {
                 value: -snapshotRetentionDays,
                 to: today
             ) ?? today.addingTimeInterval(-Double(snapshotRetentionDays) * 86_400)
-            _ = try? await store.pruneSnapshots(olderThan: retentionCutoff)
+            // A prune failure must NOT abort the diff refresh below, so it gets
+            // its own do/catch (not the outer one) and is logged rather than
+            // swallowed — otherwise the DB grows unbounded with no signal. (R1)
+            do {
+                _ = try await store.pruneSnapshots(olderThan: retentionCutoff)
+            } catch {
+                Self.logger.error("Snapshot prune failed: \(error.localizedDescription, privacy: .public)")
+            }
             await refreshDiffsAndStale(latestID: snapshotID)
         } catch {
             Self.logger.error(
