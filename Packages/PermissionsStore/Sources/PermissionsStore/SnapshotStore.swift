@@ -369,7 +369,7 @@ public struct SnapshotStore: Sendable {
                     typeEncoded.kind,
                     typeEncoded.raw,
                     dispositionEncoded.kind,
-                    dispositionEncoded.raw,
+                    item.dispositionRaw,
                     scopeEncoded.kind,
                     scopeEncoded.uuid,
                     item.modificationDate,
@@ -425,7 +425,8 @@ public struct SnapshotStore: Sendable {
         let typeKind: String = row["type_kind"]
         let typeRaw: Int? = row["type_raw"]
         let dispositionKind: String = row["disposition_kind"]
-        let dispositionRaw: Int? = row["disposition_raw"]
+        let dispositionRawDB: Int? = row["disposition_raw"]
+        let dispositionRaw: Int = dispositionRawDB ?? 0
         let scopeKind: String = row["scope_kind"]
         let scopeUUID: String? = row["scope_per_user_uuid"]
         let modificationDate: Date = row["modification_date"]
@@ -436,7 +437,8 @@ public struct SnapshotStore: Sendable {
             bundleIdentifier: row["bundle_identifier"],
             teamIdentifier: row["team_identifier"],
             type: try decodeItemType(kind: typeKind, raw: typeRaw),
-            disposition: try decodeDisposition(kind: dispositionKind, raw: dispositionRaw),
+            disposition: try decodeDisposition(kind: dispositionKind, raw: dispositionRawDB),
+            dispositionRaw: dispositionRaw,
             scope: try decodeScope(kind: scopeKind, uuid: scopeUUID),
             modificationDate: modificationDate,
             parentIdentifier: row["parent_identifier"]

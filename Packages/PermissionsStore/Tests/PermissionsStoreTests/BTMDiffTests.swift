@@ -81,6 +81,26 @@ import PermissionsCore
         #expect(read[0].scope == .perUser(uuid: uuid))
     }
 
+    @Test func dispositionRawRoundTripsAndDoesNotCreateDiffNoise() async throws {
+        let store = try SnapshotStore.inMemory()
+        func item(raw: Int) -> BTMItem {
+            BTMItem(identifier: "com.example.helper", name: "Helper",
+                    type: .legacyDaemon, disposition: .disabled, dispositionRaw: raw,
+                    scope: .system, modificationDate: Date(timeIntervalSince1970: 0))
+        }
+        // Round-trip preserves the raw bits in the persisted snapshot.
+        let s1 = try await store.writeBTMItemsSnapshot([item(raw: 5)], at: Date(timeIntervalSince1970: 1))
+        let read = try await store.readBTMItems(snapshotID: s1)
+        #expect(read.first?.dispositionRaw == 5)
+        // Two items identical except dispositionRaw must NOT show as a change
+        // (raw is excluded from Equatable; representing it is deferred).
+        let s2 = try await store.writeBTMItemsSnapshot([item(raw: 9)], at: Date(timeIntervalSince1970: 2))
+        let diff = try await store.diffBTMItems(from: s1, to: s2)
+        #expect(diff.changed.isEmpty)
+        #expect(diff.added.isEmpty)
+        #expect(diff.removed.isEmpty)
+    }
+
     private func item(
         id identifier: String,
         type: BTMItem.ItemType = .app,

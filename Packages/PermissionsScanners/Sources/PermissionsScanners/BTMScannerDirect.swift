@@ -151,6 +151,7 @@ public struct BTMScannerDirect: BTMScanner, Sendable {
             teamIdentifier: entry.shim.teamIdentifier,
             type: mapType(entry.shim.type),
             disposition: mapDisposition(entry.shim.disposition),
+            dispositionRaw: entry.shim.disposition,
             scope: mapScope(userUUID: entry.userUUID),
             modificationDate: Date(timeIntervalSinceReferenceDate: entry.shim.modificationDate),
             parentIdentifier: entry.shim.container
