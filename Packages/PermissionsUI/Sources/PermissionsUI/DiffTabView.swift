@@ -58,6 +58,7 @@ struct DiffTabView: View {
     private func section(title: String, rows: [ChangeRow.Kind]) -> some View {
         VStack(alignment: .leading, spacing: 8) {
             Text(title).font(.headline)
+                .accessibilityAddTraits(.isHeader)
             VStack(spacing: 0) {
                 ForEach(Array(rows.enumerated()), id: \.offset) { _, kind in
                     let key = DiffEntryKey.key(for: kind)

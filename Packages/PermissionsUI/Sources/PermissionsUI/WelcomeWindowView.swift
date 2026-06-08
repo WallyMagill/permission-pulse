@@ -12,6 +12,7 @@ public struct WelcomeWindowView: View {
             Image(systemName: "shield.lefthalf.filled")
                 .font(.system(size: 56))
                 .foregroundStyle(.tint)
+                .accessibilityHidden(true)
 
             Text(String(localized: "Welcome to Permission Pulse"))
                 .font(.title2.bold())

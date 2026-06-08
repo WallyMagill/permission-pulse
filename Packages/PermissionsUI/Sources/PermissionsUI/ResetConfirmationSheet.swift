@@ -20,6 +20,7 @@ public struct ResetConfirmationSheet: View {
                 Image(systemName: "exclamationmark.triangle.fill")
                     .font(.system(size: 26))
                     .foregroundStyle(.orange)
+                    .accessibilityHidden(true)
                 VStack(alignment: .leading, spacing: 4) {
                     Text(String(localized: "Reset Permission Pulse?"))
                         .font(.headline)

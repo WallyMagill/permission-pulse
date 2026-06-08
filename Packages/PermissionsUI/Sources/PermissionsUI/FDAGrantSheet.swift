@@ -11,6 +11,7 @@ public struct FDAGrantSheet: View {
                 Image(systemName: "lock.shield")
                     .font(.system(size: 36))
                     .foregroundStyle(.tint)
+                    .accessibilityHidden(true)
                 VStack(alignment: .leading, spacing: 4) {
                     Text(String(localized: "Grant Full Disk Access"))
                         .font(.title2.weight(.semibold))

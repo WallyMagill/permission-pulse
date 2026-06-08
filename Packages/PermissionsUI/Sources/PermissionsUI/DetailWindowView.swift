@@ -283,6 +283,7 @@ private struct SidebarButton: View {
                     Image(systemName: icon)
                         .font(.system(size: 10, weight: .semibold))
                         .foregroundStyle(isSelected ? Color.white : tint)
+                        .accessibilityHidden(true)
                 }
                 Text(title)
                     .font(.system(size: 12))
@@ -537,6 +538,7 @@ private struct RecentChangesDetailPage: View {
             }
             .pickerStyle(.segmented)
             .labelsHidden()
+            .accessibilityLabel(String(localized: "Change window"))
             .padding(.bottom, 4)
 
             switch window {
@@ -605,6 +607,7 @@ private struct EmptySearchView: View {
             Image(systemName: "magnifyingglass")
                 .font(.system(size: 28))
                 .foregroundStyle(.tertiary)
+                .accessibilityHidden(true)
             Text(String(localized: "No matches for \"\(query)\""))
                 .font(.headline)
                 .foregroundStyle(.secondary)

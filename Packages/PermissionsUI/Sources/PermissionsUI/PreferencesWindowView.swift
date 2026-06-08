@@ -70,6 +70,7 @@ public struct PreferencesWindowView: View {
             HStack(spacing: 6) {
                 Image(systemName: symbol)
                     .font(.system(size: 12, weight: .semibold))
+                    .accessibilityHidden(true)
                 Text(title)
                     .font(.system(size: 12.5, weight: .medium))
             }
@@ -416,6 +417,7 @@ private struct NotificationsPreferencesTab: View {
                 .font(.system(size: 14))
                 .foregroundStyle(tint)
                 .padding(.top, 1)
+                .accessibilityHidden(true)
             VStack(alignment: .leading, spacing: 4) {
                 Text(primary)
                     .font(.system(size: 12.5, weight: .medium))

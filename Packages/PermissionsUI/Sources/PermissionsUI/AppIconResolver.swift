@@ -16,11 +16,13 @@ enum AppIconResolver {
             Image(nsImage: nsImage)
                 .resizable()
                 .frame(width: size, height: size)
+                .accessibilityHidden(true)
         } else {
             Image(systemName: "app.dashed")
                 .font(.system(size: size * 0.78))
                 .foregroundStyle(.secondary)
                 .frame(width: size, height: size)
+                .accessibilityHidden(true)
         }
     }
 

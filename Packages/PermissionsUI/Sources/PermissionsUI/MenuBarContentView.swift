@@ -545,6 +545,7 @@ private struct MenuRowButton: View {
                     .font(.system(size: 13, weight: .medium))
                     .frame(width: 22, height: 22)
                     .foregroundStyle(iconTint)
+                    .accessibilityHidden(true)
                 Text(title)
                     .font(.system(size: 13))
                     .foregroundStyle(.primary)

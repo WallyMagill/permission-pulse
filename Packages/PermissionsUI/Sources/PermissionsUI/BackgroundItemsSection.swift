@@ -94,6 +94,7 @@ private struct BTMItemRow: View {
                 Image(systemName: typeSymbolName)
                     .font(.system(size: 14, weight: .medium))
                     .foregroundStyle(.secondary)
+                    .accessibilityHidden(true)
             }
         }
     }
