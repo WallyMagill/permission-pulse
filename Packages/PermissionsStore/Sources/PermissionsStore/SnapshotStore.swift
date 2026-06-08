@@ -530,7 +530,10 @@ public struct SnapshotStore: Sendable {
         }
     }
 
-    private static func decodeItemType(kind: String, raw: Int?) throws -> BTMItem.ItemType {
+    // internal (not private): the unknown-kind throw is a data-integrity guarantee
+    // (a corrupt/foreign snapshot row surfaces as an error state, not silent
+    // default). Exposed for BTMDecodeErrorTests. (R3)
+    static func decodeItemType(kind: String, raw: Int?) throws -> BTMItem.ItemType {
         switch kind {
         case "app":            return .app
         case "legacyDaemon":   return .legacyDaemon
@@ -548,7 +551,7 @@ public struct SnapshotStore: Sendable {
         }
     }
 
-    private static func decodeDisposition(kind: String, raw: Int?) throws -> BTMItem.Disposition {
+    static func decodeDisposition(kind: String, raw: Int?) throws -> BTMItem.Disposition {
         switch kind {
         case "enabled":  return .enabled
         case "disabled": return .disabled
@@ -565,7 +568,7 @@ public struct SnapshotStore: Sendable {
         }
     }
 
-    private static func decodeScope(kind: String, uuid: String?) throws -> BTMItem.Scope {
+    static func decodeScope(kind: String, uuid: String?) throws -> BTMItem.Scope {
         switch kind {
         case "system":  return .system
         case "user":    return .user
