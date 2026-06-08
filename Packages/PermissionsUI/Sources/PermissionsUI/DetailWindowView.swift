@@ -344,6 +344,7 @@ private struct DetailPageScaffold<Content: View>: View {
     let title: String
     var inlineMeta: String? = nil
     let subtitle: String?
+    var dataSource: AppViewModel.DataSource? = nil
     @ViewBuilder let content: () -> Content
 
     var body: some View {
@@ -352,6 +353,10 @@ private struct DetailPageScaffold<Content: View>: View {
                 Text(title)
                     .font(.system(size: 22, weight: .semibold))
                     .accessibilityAddTraits(.isHeader)
+                if dataSource == .mock {
+                    MockBadge()
+                        .accessibilityLabel(String(localized: "Mock data"))
+                }
                 if let inlineMeta {
                     Text(inlineMeta)
                         .font(.system(size: 12.5))
@@ -392,7 +397,8 @@ private struct PermissionsDetailPage: View {
             inlineMeta: inlineMeta,
             subtitle: viewModel.grants.isEmpty
                 ? nil
-                : String(localized: "Tap a row to see what each grant unlocks and how it was given.")
+                : String(localized: "Tap a row to see what each grant unlocks and how it was given."),
+            dataSource: viewModel.tccDataSource
         ) {
             if let error = viewModel.tccScanError, isSchemaIssue(error) {
                 SchemaMismatchBanner(error: error, domain: .tcc)
@@ -443,7 +449,7 @@ private struct LaunchAgentsDetailPage: View {
     let searchText: String
 
     var body: some View {
-        DetailPageScaffold(title: String(localized: "Launch Agents"), subtitle: subtitle) {
+        DetailPageScaffold(title: String(localized: "Launch Agents"), subtitle: subtitle, dataSource: viewModel.launchAgentsDataSource) {
             if let error = viewModel.launchAgentScanError {
                 VStack(spacing: 8) {
                     Image(systemName: "exclamationmark.triangle.fill")
@@ -502,7 +508,7 @@ private struct BackgroundItemsDetailPage: View {
     let searchText: String
 
     var body: some View {
-        DetailPageScaffold(title: String(localized: "Background Items"), subtitle: subtitle) {
+        DetailPageScaffold(title: String(localized: "Background Items"), subtitle: subtitle, dataSource: viewModel.btmDataSource) {
             if let error = viewModel.btmScanError, isSchemaIssue(error) {
                 SchemaMismatchBanner(error: error, domain: .btm)
             }
