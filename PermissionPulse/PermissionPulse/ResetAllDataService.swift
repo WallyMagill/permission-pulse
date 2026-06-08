@@ -51,7 +51,8 @@ final class ResetAllDataService {
         self.rescan = rescan
     }
 
-    func reset() async {
+    @discardableResult
+    func reset() async -> Bool {
         // 1. Cancel pending digest notifications.
         await weeklyDigestCoordinator.scheduler.cancelAll(
             matchingPrefix: WeeklyDigestCoordinator.identifierPrefix
@@ -62,9 +63,11 @@ final class ResetAllDataService {
 
         // 3. Re-init the snapshot store at the same path so subsequent
         //    scans have somewhere to write.
+        var reinitSucceeded = false
         do {
             let newStore = try SnapshotStore(path: snapshotPathURL.path(percentEncoded: false))
             onSnapshotStoreReinit(newStore)
+            reinitSucceeded = true
         } catch {
             Self.logger.error(
                 "Failed to re-init snapshot store after reset: \(error.localizedDescription, privacy: .public)"
@@ -91,6 +94,8 @@ final class ResetAllDataService {
 
         // 6. Trigger a fresh scan so the UI repopulates immediately.
         await rescan()
+
+        return reinitSucceeded
     }
 }
 

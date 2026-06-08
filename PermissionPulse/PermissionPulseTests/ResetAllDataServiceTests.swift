@@ -51,11 +51,41 @@ import PermissionsUI
         #expect(afterPending.isEmpty)
     }
 
+    @Test func resetReportsReinitSuccess() async throws {
+        let env = try Environment()
+        let succeeded = await env.service.reset()
+        #expect(succeeded == true)
+    }
+
     @Test func idempotentOnSecondCallWithEmptyState() async throws {
         let env = try Environment()
         await env.service.reset() // clean state
         await env.service.reset() // should not throw / no-op
         #expect(env.counter.reinitCount == 2, "Re-init runs each call even when DB absent")
+    }
+
+    @Test func resetReportsFailureWhenStoreCannotReinit() async throws {
+        // Make the parent of the snapshot path a regular file so SnapshotStore
+        // re-init must fail (you can't create a file inside a file).
+        let tmp = FileManager.default.temporaryDirectory
+            .appendingPathComponent("pp-reset-fail-\(UUID().uuidString)")
+        try Data().write(to: tmp)                       // `tmp` is now a regular FILE
+        defer { try? FileManager.default.removeItem(at: tmp) }
+        let badPath = tmp.appendingPathComponent("snapshots.db")  // parent is a file
+
+        var reinitCalled = false
+        let env = try Environment()
+        let service = ResetAllDataService(
+            viewModel: env.viewModel,
+            snapshotPathURL: badPath,
+            onSnapshotStoreReinit: { _ in reinitCalled = true },
+            weeklyDigestCoordinator: env.weeklyDigestCoordinator,
+            defaults: env.defaults,
+            rescan: { }
+        )
+        let ok = await service.reset()
+        #expect(ok == false)
+        #expect(reinitCalled == false)
     }
 
     // MARK: - Env

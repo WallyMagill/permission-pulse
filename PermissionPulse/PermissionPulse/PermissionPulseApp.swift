@@ -197,7 +197,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private func performReset() async {
-        guard let url = try? SnapshotPath.canonicalURL() else { return }
+        let url: URL
+        do {
+            url = try SnapshotPath.canonicalURL()
+        } catch {
+            Self.logger.error("Reset aborted — cannot resolve data path: \(error.localizedDescription, privacy: .public)")
+            presentResetError(
+                message: String(localized: "Reset failed: Permission Pulse couldn't locate its data folder.")
+            )
+            return
+        }
         let service = ResetAllDataService(
             viewModel: viewModel,
             snapshotPathURL: url,
@@ -220,7 +229,29 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 await self?.weeklyDigestCoordinator.reconcileSchedule()
             }
         )
-        await service.reset()
+        let reinitSucceeded = await service.reset()
+        if !reinitSucceeded {
+            // Don't let scans write to a store we couldn't recreate.
+            snapshotStore = nil
+            snapshotCoordinator = nil
+            viewModel.snapshotStoreUnavailable = true
+            presentResetError(
+                message: String(localized: "Data was cleared, but Permission Pulse couldn't recreate its database. Restart the app to recover.")
+            )
+        }
+    }
+
+    // AppKit: NSAlert is the idiomatic one-shot modal error dialog; SwiftUI has
+    // no equivalent for an app-level (non-window-hosted) modal here.
+    private func presentResetError(message: String) {
+        let alert = NSAlert()
+        alert.messageText = String(localized: "Reset Permission Pulse")
+        alert.informativeText = message
+        alert.alertStyle = .warning
+        alert.addButton(withTitle: String(localized: "OK"))
+        // Blocking modal is intentional: the user must acknowledge the failure
+        // before any subsequent scan begins.
+        alert.runModal()
     }
 
     private var resetConfirmationWindow: NSWindow?
