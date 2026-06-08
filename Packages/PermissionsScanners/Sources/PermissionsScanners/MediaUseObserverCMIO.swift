@@ -19,6 +19,8 @@ public final class MediaUseObserverCMIO: MediaUseObserver, @unchecked Sendable {
 
     private var videoListeners: [(id: CMIOObjectID, block: CMIOObjectPropertyListenerBlock)] = []
     private var audioListeners: [(id: AudioObjectID, block: AudioObjectPropertyListenerBlock)] = []
+    private var allVideoDeviceIDs: [CMIOObjectID] = []
+    private var allAudioDeviceIDs: [AudioObjectID] = []
 
     public init() {}
 
@@ -35,6 +37,18 @@ public final class MediaUseObserverCMIO: MediaUseObserver, @unchecked Sendable {
             self.startObservingVideo()
             self.startObservingAudio()
             self.emitInitialState()
+
+            let (vAll, vReg, aAll, aReg) = self.lock.withLock {
+                (self.allVideoDeviceIDs.count, self.videoListeners.count,
+                 self.allAudioDeviceIDs.count, self.audioListeners.count)
+            }
+            // NOTE: devices without a registered listener are polled on initial
+            // state and whenever another device fires a callback. A device that
+            // becomes active in isolation after startup won't surface a live
+            // update in this degraded path — hence the log for diagnosis.
+            if vReg < vAll || aReg < aAll {
+                Self.logger.error("Media monitoring degraded — live updates may be missed (video \(vReg)/\(vAll), audio \(aReg)/\(aAll))")
+            }
 
             continuation.onTermination = { [weak self] _ in
                 self?.tearDownListeners()
@@ -53,6 +67,7 @@ public final class MediaUseObserverCMIO: MediaUseObserver, @unchecked Sendable {
 
     private func startObservingVideo() {
         let ids = enumerateVideoDevices()
+        lock.withLock { allVideoDeviceIDs = ids }
         for id in ids {
             var address = CMIOObjectPropertyAddress(
                 mSelector: CMIOObjectPropertySelector(kCMIODevicePropertyDeviceIsRunningSomewhere),
@@ -75,6 +90,7 @@ public final class MediaUseObserverCMIO: MediaUseObserver, @unchecked Sendable {
 
     private func startObservingAudio() {
         let ids = enumerateAudioInputDevices()
+        lock.withLock { allAudioDeviceIDs = ids }
         for id in ids {
             var address = AudioObjectPropertyAddress(
                 mSelector: kAudioDevicePropertyDeviceIsRunningSomewhere,
@@ -96,8 +112,7 @@ public final class MediaUseObserverCMIO: MediaUseObserver, @unchecked Sendable {
     }
 
     private func emitInitialState() {
-        let videoIDs = lock.withLock { videoListeners.map(\.id) }
-        let audioIDs = lock.withLock { audioListeners.map(\.id) }
+        let (videoIDs, audioIDs) = lock.withLock { (allVideoDeviceIDs, allAudioDeviceIDs) }
 
         let cameraInUse = videoIDs.contains { queryVideoIsRunning($0) }
         let micInUse = audioIDs.contains { queryAudioIsRunning($0) }
@@ -110,10 +125,10 @@ public final class MediaUseObserverCMIO: MediaUseObserver, @unchecked Sendable {
         let aggregate: Bool
         switch device {
         case .camera:
-            let ids = lock.withLock { videoListeners.map(\.id) }
+            let ids = lock.withLock { allVideoDeviceIDs }
             aggregate = isRunning || ids.contains { queryVideoIsRunning($0) }
         case .microphone:
-            let ids = lock.withLock { audioListeners.map(\.id) }
+            let ids = lock.withLock { allAudioDeviceIDs }
             aggregate = isRunning || ids.contains { queryAudioIsRunning($0) }
         }
         emit(MediaUseEvent(device: device, inUse: aggregate, timestamp: Date()))
@@ -130,6 +145,8 @@ public final class MediaUseObserverCMIO: MediaUseObserver, @unchecked Sendable {
             let a = audioListeners
             videoListeners.removeAll()
             audioListeners.removeAll()
+            allVideoDeviceIDs.removeAll()
+            allAudioDeviceIDs.removeAll()
             return (v, a)
         }
 
