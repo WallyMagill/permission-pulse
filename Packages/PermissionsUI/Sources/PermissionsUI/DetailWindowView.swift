@@ -626,6 +626,7 @@ private struct RefreshToolbarButton: View {
 
     @State private var isHovering = false
     @State private var isRefreshing = false
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
         Button {
@@ -644,13 +645,15 @@ private struct RefreshToolbarButton: View {
                     Circle()
                         .fill(isHovering ? Color.primary.opacity(0.08) : Color.clear)
                 )
-                .rotationEffect(.degrees(isRefreshing ? 360 : 0))
+                .rotationEffect(.degrees(isRefreshing && !reduceMotion ? 360 : 0))
                 .animation(
-                    isRefreshing
+                    isRefreshing && !reduceMotion
                         ? .linear(duration: 0.9).repeatForever(autoreverses: false)
                         : .default,
                     value: isRefreshing
                 )
+                .opacity(reduceMotion && isRefreshing ? 0.45 : 1.0)
+                .accessibilityLabel(isRefreshing ? String(localized: "Refreshing") : String(localized: "Refresh"))
                 .contentShape(Circle())
         }
         .buttonStyle(.plain)
