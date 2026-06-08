@@ -24,6 +24,13 @@ struct PermissionPulseApp: App {
                 .environment(appDelegate.viewModel)
         } label: {
             Image(systemName: appDelegate.viewModel.menuBarSymbolName)
+                // NOTE: SwiftUI may not reliably bridge .accessibilityLabel from a
+                // MenuBarExtra label down to the NSStatusBarButton that VoiceOver
+                // reads on macOS. This is the correct declarative place for it;
+                // VERIFY manually with VoiceOver on Tahoe. If VoiceOver reads the
+                // SF Symbol name instead, set NSStatusBarButton.accessibilityLabel
+                // directly via an AppKit bridge in AppDelegate. (A1)
+                .accessibilityLabel(appDelegate.viewModel.menuBarAccessibilityLabel)
         }
         .menuBarExtraStyle(.window)
 

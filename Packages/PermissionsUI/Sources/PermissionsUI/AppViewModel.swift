@@ -127,6 +127,24 @@ public final class AppViewModel {
         return "shield.lefthalf.filled"
     }
 
+    // VoiceOver-readable mirror of `menuBarSymbolName` — the icon's state is
+    // otherwise conveyed only by SF Symbol swap, which a VoiceOver user can't
+    // perceive. Same precedence as the symbol. (A1)
+    public var menuBarAccessibilityLabel: String {
+        if tccScanError != nil || btmScanError != nil || launchAgentScanError != nil {
+            return String(localized: "Permission Pulse — scan error, action needed")
+        }
+        if hasUnreviewedChanges {
+            return String(localized: "Permission Pulse — unreviewed changes")
+        }
+        if micInUse && cameraInUse {
+            return String(localized: "Permission Pulse — microphone and camera in use")
+        }
+        if cameraInUse { return String(localized: "Permission Pulse — camera in use") }
+        if micInUse { return String(localized: "Permission Pulse — microphone in use") }
+        return String(localized: "Permission Pulse")
+    }
+
     // Verify the preferred symbol exists on this OS. `bell.badge.fill` has
     // shipped since Big Sur, but a one-time guard is cheap and survives
     // future SF Symbol renames.
