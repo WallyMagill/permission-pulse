@@ -103,6 +103,11 @@ final class SnapshotCoordinator {
 
     // MARK: - Private
 
+    // Only TCC and BTM gate the snapshot write: they are the FDA-critical,
+    // higher-value domains where a partial write would corrupt the diff. A rare
+    // unreadable LaunchAgents directory does NOT block the daily snapshot —
+    // blocking would also discard that day's TCC/BTM history for a low-stakes,
+    // infrequent failure.
     private func scanFullySucceeded() -> Bool {
         viewModel.tccScanError == nil && viewModel.btmScanError == nil
     }
@@ -118,9 +123,9 @@ final class SnapshotCoordinator {
     }
 
     private func refreshDiffsAndStale(latestID: SnapshotID?) async {
+        viewModel.diffUnavailable = false
         guard let latestID else { return }
         viewModel.latestSnapshotID = latestID
-        viewModel.diffUnavailable = false
 
         // Defensive: if a stored lastReviewedSnapshotID points past the current
         // latest (could happen if snapshots.db was deleted while UserDefaults

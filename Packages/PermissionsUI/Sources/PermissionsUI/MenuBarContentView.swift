@@ -68,6 +68,7 @@ public struct MenuBarContentView: View {
         case .clean: String(localized: "Watching for changes")
         case .fdaDenied, .btmOnlyFDADenied: String(localized: "Action needed")
         case .schemaMismatch: String(localized: "Schema mismatch")
+        case .launchAgentError: String(localized: "Action needed")
         }
     }
 
@@ -201,6 +202,7 @@ public struct MenuBarContentView: View {
         case fdaDenied
         case btmOnlyFDADenied
         case schemaMismatch
+        case launchAgentError
         case clean
     }
 
@@ -212,6 +214,7 @@ public struct MenuBarContentView: View {
         if isSchemaIssue(viewModel.tccScanError) || isSchemaIssue(viewModel.btmScanError) {
             return .schemaMismatch
         }
+        if viewModel.launchAgentScanError != nil { return .launchAgentError }
         return .clean
     }
 
@@ -237,6 +240,12 @@ public struct MenuBarContentView: View {
         case .schemaMismatch:
             AttentionBanner(
                 title: String(localized: "Schema mismatch detected"),
+                subtitle: String(localized: "Open for details"),
+                action: { activateAndOpen("detail") }
+            )
+        case .launchAgentError:
+            AttentionBanner(
+                title: String(localized: "Launch Agents couldn't be read"),
                 subtitle: String(localized: "Open for details"),
                 action: { activateAndOpen("detail") }
             )
