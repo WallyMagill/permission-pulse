@@ -138,6 +138,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
 
         coordinator = ScanCoordinator(viewModel: viewModel)
+        viewModel.staleThresholdDays = preferencesStore.staleThresholdDays
         Task { @MainActor in
             viewModel.scanInProgress = true
             await coordinator?.runScan()
@@ -156,6 +157,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func rescan() async {
         viewModel.scanInProgress = true
+        viewModel.staleThresholdDays = preferencesStore.staleThresholdDays
         await coordinator?.rescan()
         await snapshotCoordinator?.onScanCompleted()
         viewModel.scanInProgress = false

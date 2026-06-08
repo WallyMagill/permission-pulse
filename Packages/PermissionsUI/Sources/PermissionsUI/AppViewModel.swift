@@ -49,6 +49,12 @@ public final class AppViewModel {
     // data" button when this is true to avoid racing the snapshot writer.
     public var scanInProgress: Bool = false
 
+    // Mirror of the user's configured stale threshold, set by AppDelegate from
+    // PreferencesStore at launch and on each rescan. Used only for display copy
+    // ("…N+ days"); a mid-session preference change is reflected on the next
+    // scan, matching when the stale filter itself changes. (C7)
+    public var staleThresholdDays: Int = 90
+
     public init(
         grants: [PermissionGrant] = [],
         launchAgents: [LaunchAgentItem] = [],
@@ -67,7 +73,8 @@ public final class AppViewModel {
         latestDiffYesterday: SnapshotDiffs? = nil,
         latestDiffWeek: SnapshotDiffs? = nil,
         staleApps: [StaleApp] = [],
-        pendingDetailMode: DetailMode? = nil
+        pendingDetailMode: DetailMode? = nil,
+        staleThresholdDays: Int = 90
     ) {
         self.grants = grants
         self.launchAgents = launchAgents
@@ -87,6 +94,7 @@ public final class AppViewModel {
         self.latestDiffWeek = latestDiffWeek
         self.staleApps = staleApps
         self.pendingDetailMode = pendingDetailMode
+        self.staleThresholdDays = staleThresholdDays
     }
 
     public var hasUnreviewedChanges: Bool {

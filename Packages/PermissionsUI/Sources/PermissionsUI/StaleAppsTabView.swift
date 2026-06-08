@@ -4,6 +4,7 @@ import PermissionsCore
 
 struct StaleAppsTabView: View {
     let staleApps: [StaleApp]
+    var staleThresholdDays: Int = 90
     @Environment(DismissedStaleAppStore.self) private var dismissedStore
 
     @State private var pendingSkipCandidate: StaleApp?
@@ -18,7 +19,7 @@ struct StaleAppsTabView: View {
             empty
         } else {
             VStack(alignment: .leading, spacing: 8) {
-                Text(String(localized: "Apps with active grants you haven't used in 90+ days"))
+                Text(String(localized: "Apps with active grants you haven't used in \(staleThresholdDays)+ days"))
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
                 VStack(spacing: 0) {

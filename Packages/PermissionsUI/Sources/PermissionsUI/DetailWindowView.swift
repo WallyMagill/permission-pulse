@@ -545,7 +545,7 @@ private struct StaleAppsDetailPage: View {
             if filteredApps.isEmpty && !searchText.isEmpty {
                 EmptySearchView(query: searchText)
             } else {
-                StaleAppsTabView(staleApps: filteredApps)
+                StaleAppsTabView(staleApps: filteredApps, staleThresholdDays: viewModel.staleThresholdDays)
             }
         }
     }
@@ -561,7 +561,7 @@ private struct StaleAppsDetailPage: View {
 
     private var subtitle: String? {
         if viewModel.staleApps.isEmpty { return nil }
-        return String(localized: "Apps with active grants you haven't used in 90+ days")
+        return String(localized: "Apps with active grants you haven't used in \(viewModel.staleThresholdDays)+ days")
     }
 }
 
