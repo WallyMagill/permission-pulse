@@ -6,8 +6,11 @@ import PermissionsStore
 public struct MenuBarContentView: View {
     @Environment(\.openWindow) private var openWindow
     @Environment(AppViewModel.self) private var viewModel
+    private let onShowWelcome: (() -> Void)?
 
-    public init() {}
+    public init(onShowWelcome: (() -> Void)? = nil) {
+        self.onShowWelcome = onShowWelcome
+    }
 
     public var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -318,6 +321,15 @@ public struct MenuBarContentView: View {
                 activateAndOpen("preferences")
             }
 
+            if let onShowWelcome {
+                MenuRowButton(
+                    icon: "info.circle",
+                    title: String(localized: "Welcome & About")
+                ) {
+                    onShowWelcome()
+                }
+            }
+
             Divider()
                 .padding(.horizontal, 8)
                 .padding(.vertical, 3)
@@ -535,8 +547,8 @@ private struct MenuRowButton: View {
     let icon: String
     var iconTint: Color = .secondary
     let title: String
-    let shortcutKey: KeyEquivalent
-    let shortcutDisplay: String
+    var shortcutKey: KeyEquivalent? = nil
+    var shortcutDisplay: String? = nil
     var showsChangeDot: Bool = false
     let action: () -> Void
 
@@ -557,10 +569,12 @@ private struct MenuRowButton: View {
                 if showsChangeDot {
                     PulseDot(tint: .orange)
                 }
-                Text(shortcutDisplay)
-                    .font(.system(size: 11))
-                    .foregroundStyle(.tertiary)
-                    .monospacedDigit()
+                if let shortcutDisplay {
+                    Text(shortcutDisplay)
+                        .font(.system(size: 11))
+                        .foregroundStyle(.tertiary)
+                        .monospacedDigit()
+                }
             }
             .padding(.horizontal, 8)
             .padding(.vertical, 6)
@@ -572,6 +586,20 @@ private struct MenuRowButton: View {
         }
         .buttonStyle(.plain)
         .onHover { isHovering = $0 }
-        .keyboardShortcut(shortcutKey, modifiers: [.command])
+        .modifier(OptionalShortcut(key: shortcutKey))
+    }
+}
+
+/// Applies `.keyboardShortcut` only when a key is present — `MenuRowButton`
+/// rows like Welcome & About have no shortcut.
+private struct OptionalShortcut: ViewModifier {
+    let key: KeyEquivalent?
+
+    func body(content: Content) -> some View {
+        if let key {
+            content.keyboardShortcut(key, modifiers: [.command])
+        } else {
+            content
+        }
     }
 }

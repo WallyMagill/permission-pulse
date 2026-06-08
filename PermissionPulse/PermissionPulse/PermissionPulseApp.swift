@@ -20,7 +20,9 @@ struct PermissionPulseApp: App {
         .defaultSize(width: 0, height: 0)
 
         MenuBarExtra {
-            MenuBarContentView()
+            MenuBarContentView(onShowWelcome: { [appDelegate] in
+                appDelegate.showWelcomeWindow()
+            })
                 .environment(appDelegate.viewModel)
         } label: {
             Image(systemName: appDelegate.viewModel.menuBarSymbolName)
@@ -271,7 +273,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private var resetConfirmationWindow: NSWindow?
 
-    private func showWelcomeWindow() {
+    func showWelcomeWindow() {
+        // Singleton: re-front the existing window instead of orphaning it. The
+        // menu-bar "Welcome & About" entry can call this repeatedly. (U5)
+        if let welcomeWindow {
+            welcomeWindow.makeKeyAndOrderFront(nil)
+            NSApp.activate(ignoringOtherApps: true)
+            return
+        }
         let view = WelcomeWindowView(onDismiss: { [weak self] in
             UserDefaults.standard.set(true, forKey: Self.hasSeenWelcomeKey)
             self?.welcomeWindow?.close()
