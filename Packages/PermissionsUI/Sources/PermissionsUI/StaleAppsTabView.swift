@@ -22,6 +22,9 @@ struct StaleAppsTabView: View {
                 Text(String(localized: "Apps with active grants you haven't used in \(staleThresholdDays)+ days"))
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
+                Text(String(localized: "Use the ⋯ menu on a row to skip an app you don't want flagged."))
+                    .font(.footnote)
+                    .foregroundStyle(.tertiary)
                 VStack(spacing: 0) {
                     ForEach(Array(visible.enumerated()), id: \.offset) { index, app in
                         StaleAppRow(

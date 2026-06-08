@@ -53,6 +53,9 @@ struct DiffTabView: View {
                     if !laVisible.isEmpty {
                         section(title: String(localized: "Launch Agents"), rows: laVisible)
                     }
+                    Text(String(localized: "Use the ⋯ menu on a row to snooze or dismiss a change."))
+                        .font(.footnote)
+                        .foregroundStyle(.tertiary)
                 }
                 .alert(
                     String(localized: "Dismiss this change forever?"),
