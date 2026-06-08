@@ -66,8 +66,9 @@ public struct LaunchAgentDetailSheet: View {
                     : item.programArguments.joined(separator: " "),
                 mono: true
             ),
-            SheetKVRow(String(localized: "Run at load"), item.runAtLoad ? "Yes" : "No"),
-            SheetKVRow(String(localized: "Keep alive"), item.keepAlive ? "Yes" : "No"),
+            SheetKVRow(String(localized: "Run at load"), item.runAtLoad ? String(localized: "Yes") : String(localized: "No")),
+            SheetKVRow(String(localized: "Keep alive"), item.keepAlive ? String(localized: "Yes") : String(localized: "No")),
+            SheetKVRow(String(localized: "Disabled"), item.isDisabled ? String(localized: "Yes") : String(localized: "No")),
         ]
     }
 

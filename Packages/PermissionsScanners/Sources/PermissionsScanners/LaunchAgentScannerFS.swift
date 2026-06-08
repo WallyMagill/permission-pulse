@@ -118,7 +118,8 @@ public struct LaunchAgentScannerFS: LaunchAgentScanner, Sendable {
                 programPath: decoded.program,
                 programArguments: decoded.programArguments,
                 runAtLoad: decoded.runAtLoad,
-                keepAlive: decoded.keepAlive
+                keepAlive: decoded.keepAlive,
+                isDisabled: decoded.isDisabled
             )
         } catch {
             Self.logger.debug("Skip malformed plist \(url.lastPathComponent, privacy: .public): \(error.localizedDescription, privacy: .public)")
@@ -133,6 +134,7 @@ private struct DecodedPlist: Decodable {
     let programArguments: [String]
     let runAtLoad: Bool
     let keepAlive: Bool
+    let isDisabled: Bool
 
     enum CodingKeys: String, CodingKey {
         case label = "Label"
@@ -140,6 +142,7 @@ private struct DecodedPlist: Decodable {
         case programArguments = "ProgramArguments"
         case runAtLoad = "RunAtLoad"
         case keepAlive = "KeepAlive"
+        case disabled = "Disabled"
     }
 
     init(from decoder: Decoder) throws {
@@ -148,6 +151,14 @@ private struct DecodedPlist: Decodable {
         self.program = try container.decodeIfPresent(String.self, forKey: .program)
         self.programArguments = (try? container.decode([String].self, forKey: .programArguments)) ?? []
         self.runAtLoad = (try? container.decode(Bool.self, forKey: .runAtLoad)) ?? false
-        self.keepAlive = (try? container.decode(Bool.self, forKey: .keepAlive)) ?? false
+        // KeepAlive is often a dictionary ({SuccessfulExit=false}, {Crashed=true}).
+        // A Bool decode fails on a dict; treat any present non-bool form as an
+        // active keep-alive policy rather than silently false. (D4)
+        if let b = try? container.decode(Bool.self, forKey: .keepAlive) {
+            self.keepAlive = b
+        } else {
+            self.keepAlive = container.contains(.keepAlive)
+        }
+        self.isDisabled = (try? container.decode(Bool.self, forKey: .disabled)) ?? false
     }
 }

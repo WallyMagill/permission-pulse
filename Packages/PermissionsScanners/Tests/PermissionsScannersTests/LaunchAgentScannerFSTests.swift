@@ -58,7 +58,24 @@ import PermissionsCore
         #expect(items.count == 1)
         let item = try #require(items.first)
         #expect(item.label == "com.test.dict")
-        #expect(item.keepAlive == false)
+        // A dict-valued KeepAlive (e.g. {NetworkState=true}) is an active
+        // keep-alive policy — not false. This assertion was wrong before D4. (D4)
+        #expect(item.keepAlive == true)
+    }
+
+    @Test func disabledKeyIsDecoded() async throws {
+        let dir = try TempDir()
+        try dir.write(
+            filename: "disabled.plist",
+            contents: PlistFixtures.disabled(label: "com.test.disabled")
+        )
+
+        let scanner = LaunchAgentScannerFS(sources: [dir.asSource(.userLaunchAgents)])
+        let items = try await scanner.scan()
+
+        #expect(items.count == 1)
+        let item = try #require(items.first)
+        #expect(item.isDisabled == true)
     }
 
     @Test func scanReturnsEmptyForMissingDirectory() async throws {
@@ -218,6 +235,22 @@ private enum PlistFixtures {
             <dict>
                 <key>NetworkState</key><true/>
             </dict>
+        </dict>
+        </plist>
+        """.utf8)
+    }
+
+    // Disabled = true: launchd does not load this job (it stays registered
+    // but unloaded). We surface it so a disabled agent isn't read as active.
+    static func disabled(label: String) -> Data {
+        Data("""
+        <?xml version="1.0" encoding="UTF-8"?>
+        <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+        <plist version="1.0">
+        <dict>
+            <key>Label</key><string>\(label)</string>
+            <key>Program</key><string>/usr/local/bin/foo</string>
+            <key>Disabled</key><true/>
         </dict>
         </plist>
         """.utf8)
