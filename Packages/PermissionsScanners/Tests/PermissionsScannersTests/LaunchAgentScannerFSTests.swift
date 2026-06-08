@@ -75,6 +75,58 @@ import PermissionsCore
         #expect(items.isEmpty)
     }
 
+    @Test(.disabled(if: ProcessInfo.processInfo.environment["CI"] != nil))
+    func scanThrowsPermissionDeniedWhenDirectoryUnreadable() async throws {
+        let dir = try TempDir()
+        try FileManager.default.setAttributes(
+            [.posixPermissions: 0o000],
+            ofItemAtPath: dir.url.path
+        )
+        defer {
+            try? FileManager.default.setAttributes(
+                [.posixPermissions: 0o755],
+                ofItemAtPath: dir.url.path
+            )
+        }
+
+        let scanner = LaunchAgentScannerFS(sources: [dir.asSource(.userLaunchAgents)])
+        do {
+            _ = try await scanner.scan()
+            Issue.record("Expected scan to throw")
+        } catch let error as ScannerError {
+            guard case .permissionDenied = error else {
+                Issue.record("Expected .permissionDenied, got \(error)")
+                return
+            }
+        }
+    }
+
+    @Test(.disabled(if: ProcessInfo.processInfo.environment["CI"] != nil))
+    func scanReturnsPartialResultsWhenOneSourceUnreadable() async throws {
+        let readable = try TempDir()
+        try readable.write(filename: "good.plist", contents: PlistFixtures.runAtLoad(label: "com.test.partial"))
+        let unreadable = try TempDir()
+        try FileManager.default.setAttributes(
+            [.posixPermissions: 0o000],
+            ofItemAtPath: unreadable.url.path
+        )
+        defer {
+            try? FileManager.default.setAttributes(
+                [.posixPermissions: 0o755],
+                ofItemAtPath: unreadable.url.path
+            )
+        }
+
+        let scanner = LaunchAgentScannerFS(sources: [
+            readable.asSource(.userLaunchAgents),
+            unreadable.asSource(.libraryLaunchAgents),
+        ])
+        let items = try await scanner.scan()
+
+        #expect(items.count == 1)
+        #expect(items.first?.label == "com.test.partial")
+    }
+
     @Test func scanAssignsCorrectSourceDirectory() async throws {
         let userDir = try TempDir()
         let daemonDir = try TempDir()

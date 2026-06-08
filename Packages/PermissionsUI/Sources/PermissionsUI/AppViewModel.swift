@@ -28,6 +28,7 @@ public final class AppViewModel {
     public var btmDataSource: DataSource
     public var tccScanError: ScannerError?
     public var btmScanError: ScannerError?
+    public var launchAgentScanError: ScannerError?
     public var micInUse: Bool
     public var cameraInUse: Bool
     public var mediaDataSource: DataSource
@@ -64,6 +65,7 @@ public final class AppViewModel {
         btmDataSource: DataSource = .mock,
         tccScanError: ScannerError? = nil,
         btmScanError: ScannerError? = nil,
+        launchAgentScanError: ScannerError? = nil,
         micInUse: Bool = false,
         cameraInUse: Bool = false,
         mediaDataSource: DataSource = .mock,
@@ -84,6 +86,7 @@ public final class AppViewModel {
         self.btmDataSource = btmDataSource
         self.tccScanError = tccScanError
         self.btmScanError = btmScanError
+        self.launchAgentScanError = launchAgentScanError
         self.micInUse = micInUse
         self.cameraInUse = cameraInUse
         self.mediaDataSource = mediaDataSource
@@ -106,7 +109,7 @@ public final class AppViewModel {
     }
 
     public var menuBarSymbolName: String {
-        if tccScanError != nil || btmScanError != nil {
+        if tccScanError != nil || btmScanError != nil || launchAgentScanError != nil {
             return "exclamationmark.shield.fill"
         }
         if hasUnreviewedChanges {

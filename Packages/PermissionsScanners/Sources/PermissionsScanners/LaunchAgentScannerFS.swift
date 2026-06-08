@@ -25,8 +25,20 @@ public struct LaunchAgentScannerFS: LaunchAgentScanner, Sendable {
 
     public func scan() async throws -> [LaunchAgentItem] {
         var items: [LaunchAgentItem] = []
+        var firstFailure: (any Error)?
+        var anyReadable = false
         for source in sources {
-            items.append(contentsOf: scanDirectory(source))
+            do {
+                items.append(contentsOf: try scanDirectory(source))
+                anyReadable = true
+            } catch {
+                if firstFailure == nil { firstFailure = error }
+            }
+        }
+        // Only surface an error if NO source was readable — a partial result
+        // is still useful (under-flag, never over-flag).
+        if !anyReadable, let firstFailure {
+            throw firstFailure
         }
         return items.sorted {
             if $0.sourceDirectory.rawValue == $1.sourceDirectory.rawValue {
@@ -54,7 +66,7 @@ public struct LaunchAgentScannerFS: LaunchAgentScanner, Sendable {
         ]
     }
 
-    private func scanDirectory(_ source: Source) -> [LaunchAgentItem] {
+    private func scanDirectory(_ source: Source) throws -> [LaunchAgentItem] {
         let fm = FileManager.default
         let contents: [URL]
         do {
@@ -64,7 +76,16 @@ public struct LaunchAgentScannerFS: LaunchAgentScanner, Sendable {
                 options: [.skipsHiddenFiles]
             )
         } catch {
-            Self.logger.debug("Skip directory \(source.url.path, privacy: .public): \(error.localizedDescription, privacy: .public)")
+            // A directory that doesn't exist is normal (not every Mac has all
+            // three). A directory that exists but can't be enumerated is a real
+            // failure worth surfacing. (C3)
+            if fm.fileExists(atPath: source.url.path(percentEncoded: false)) {
+                Self.logger.error("LaunchAgent directory unreadable \(source.url.path, privacy: .public): \(error.localizedDescription, privacy: .public)")
+                throw ScannerError.permissionDenied(
+                    reason: String(localized: "A LaunchAgents directory could not be read.")
+                )
+            }
+            Self.logger.debug("LaunchAgent directory absent \(source.url.path, privacy: .public)")
             return []
         }
 

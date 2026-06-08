@@ -221,12 +221,12 @@ private struct DetailSidebar: View {
     }
 
     private var footerColor: Color {
-        if viewModel.tccScanError != nil || viewModel.btmScanError != nil { return .orange }
+        if viewModel.tccScanError != nil || viewModel.btmScanError != nil || viewModel.launchAgentScanError != nil { return .orange }
         return .green
     }
 
     private var footerText: String {
-        if viewModel.tccScanError != nil || viewModel.btmScanError != nil {
+        if viewModel.tccScanError != nil || viewModel.btmScanError != nil || viewModel.launchAgentScanError != nil {
             return String(localized: "Needs attention")
         }
         return String(localized: "Up to date")
@@ -433,14 +433,30 @@ private struct LaunchAgentsDetailPage: View {
 
     var body: some View {
         DetailPageScaffold(title: String(localized: "Launch Agents"), subtitle: subtitle) {
-            if filteredItems.isEmpty && !searchText.isEmpty {
-                EmptySearchView(query: searchText)
+            if let error = viewModel.launchAgentScanError {
+                VStack(spacing: 8) {
+                    Image(systemName: "exclamationmark.triangle.fill")
+                        .font(.system(size: 36))
+                        .foregroundStyle(.orange)
+                    Text(String(localized: "Couldn't read Launch Agents"))
+                        .font(.headline)
+                    Text(error.errorDescription ?? String(localized: "An error occurred reading the LaunchAgents directories."))
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                        .multilineTextAlignment(.center)
+                }
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 36)
             } else {
-                LaunchAgentsSection(
-                    items: filteredItems,
-                    dataSource: viewModel.launchAgentsDataSource,
-                    showsHeader: false
-                )
+                if filteredItems.isEmpty && !searchText.isEmpty {
+                    EmptySearchView(query: searchText)
+                } else {
+                    LaunchAgentsSection(
+                        items: filteredItems,
+                        dataSource: viewModel.launchAgentsDataSource,
+                        showsHeader: false
+                    )
+                }
             }
         }
     }

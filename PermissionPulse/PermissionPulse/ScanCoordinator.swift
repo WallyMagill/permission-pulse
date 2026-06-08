@@ -62,6 +62,7 @@ final class ScanCoordinator {
 
     private struct LaunchAgentScanResult: Sendable {
         let items: [LaunchAgentItem]
+        let error: ScannerError?
     }
 
     private struct BTMScanResult: Sendable {
@@ -85,10 +86,13 @@ final class ScanCoordinator {
     private func runLaunchAgentScan() async -> LaunchAgentScanResult {
         do {
             let items = try await launchAgentScanner.scan()
-            return LaunchAgentScanResult(items: items)
+            return LaunchAgentScanResult(items: items, error: nil)
+        } catch let scannerError as ScannerError {
+            Self.logger.error("LaunchAgent scan failed: \(scannerError.localizedDescription, privacy: .public)")
+            return LaunchAgentScanResult(items: [], error: scannerError)
         } catch {
-            Self.logger.error("LaunchAgent scan failed: \(error.localizedDescription, privacy: .public)")
-            return LaunchAgentScanResult(items: [])
+            Self.logger.error("LaunchAgent scan failed with unexpected error: \(error.localizedDescription, privacy: .public)")
+            return LaunchAgentScanResult(items: [], error: .permissionDenied(reason: error.localizedDescription))
         }
     }
 
@@ -116,8 +120,13 @@ final class ScanCoordinator {
     }
 
     private func applyLaunchAgents(_ result: LaunchAgentScanResult) {
-        viewModel.launchAgents = result.items
-        viewModel.launchAgentsDataSource = launchAgentsDataSource
+        if let error = result.error {
+            viewModel.launchAgentScanError = error
+        } else {
+            viewModel.launchAgents = result.items
+            viewModel.launchAgentsDataSource = launchAgentsDataSource
+            viewModel.launchAgentScanError = nil
+        }
     }
 
     private func applyBTM(_ result: BTMScanResult) {

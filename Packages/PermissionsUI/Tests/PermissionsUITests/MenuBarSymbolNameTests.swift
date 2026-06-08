@@ -39,6 +39,11 @@ import PermissionsStore
         #expect(vm.menuBarSymbolName == "exclamationmark.shield.fill")
     }
 
+    @Test func launchAgentErrorAloneFlipsToError() {
+        let vm = AppViewModel(launchAgentScanError: .permissionDenied(reason: "x"))
+        #expect(vm.menuBarSymbolName == "exclamationmark.shield.fill")
+    }
+
     @Test func schemaMismatchAlsoFlipsToError() {
         let vm = AppViewModel(tccScanError: .schemaMismatch(detail: "missing column"))
         #expect(vm.menuBarSymbolName == "exclamationmark.shield.fill")
