@@ -6,7 +6,7 @@ import PermissionsCore
 @Suite struct TCCDiffTests {
     @Test func migrationV3CreatesTCCGrantsTable() async throws {
         let store = try SnapshotStore.inMemory()
-        #expect(try store.schemaVersion() == 3)
+        #expect(try store.schemaVersion() == 4)
         let id = try await store.writeTCCGrantsSnapshot([])
         let grants = try await store.readTCCGrants(snapshotID: id)
         #expect(grants.isEmpty)
@@ -99,6 +99,26 @@ import PermissionsCore
         let diff = try await store.diffTCCGrants(from: firstID, to: secondID)
         #expect(diff.added.count == 2, "two distinct identity keys: filesAndFolders|com.example.shared| and microphone|com.example.mic|")
         #expect(diff.removed.isEmpty)
+    }
+
+    @Test func authValueChangeLandsInChanged() async throws {
+        let store = try SnapshotStore.inMemory()
+        func grant(_ auth: Int) -> PermissionGrant {
+            PermissionGrant(
+                service: .photos,
+                app: AppIdentity(bundleID: "com.example.photoapp", displayName: "PhotoApp"),
+                lastModified: Date(timeIntervalSince1970: 0),
+                authValue: auth
+            )
+        }
+        let s1 = try await store.writeTCCGrantsSnapshot([grant(2)], at: Date(timeIntervalSince1970: 1))
+        let s2 = try await store.writeTCCGrantsSnapshot([grant(3)], at: Date(timeIntervalSince1970: 2))
+        let diff = try await store.diffTCCGrants(from: s1, to: s2)
+        // Same identity (auth_value isn't part of identity), value differs ->
+        // it lands in `changed`, not added/removed. (D2)
+        #expect(diff.added.isEmpty)
+        #expect(diff.removed.isEmpty)
+        #expect(diff.changed.count == 1)
     }
 
     @Test func distinctPathOnlyGrantsBothAppearInDiff() async throws {

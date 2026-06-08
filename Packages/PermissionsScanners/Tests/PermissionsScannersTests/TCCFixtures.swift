@@ -163,6 +163,22 @@ enum TCCFixtures {
         }
     }
 
+    // One limited-access Photos row (auth_value = 3) plus one standard
+    // allowed row. Used by the D2 scanner test to verify limited rows are
+    // returned with their auth_value preserved.
+    static func makeLimitedAccessFixture(url: URL) async throws {
+        try await makeFixture(url: url, schema: fullSchema) { db in
+            try db.execute(sql: insertSQL, arguments: [
+                "kTCCServicePhotos", "com.example.photoapp",
+                ClientType.bundleID, AuthValue.limited, 1_715_000_000,
+            ])
+            try db.execute(sql: insertSQL, arguments: [
+                "kTCCServiceCamera", "com.example.cameraapp",
+                ClientType.bundleID, AuthValue.allowed, 1_715_000_000,
+            ])
+        }
+    }
+
     private static func makeFixture(
         url: URL,
         schema: String,

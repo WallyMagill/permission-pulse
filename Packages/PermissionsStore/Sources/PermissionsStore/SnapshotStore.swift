@@ -76,6 +76,13 @@ public struct SnapshotStore: Sendable {
             try db.execute(sql: "UPDATE schema_version SET version = 3")
         }
 
+        migrator.registerMigration("v4") { db in
+            try db.alter(table: "tcc_grants") { t in
+                t.add(column: "auth_value", .integer).notNull().defaults(to: 2)
+            }
+            try db.execute(sql: "UPDATE schema_version SET version = 4")
+        }
+
         try migrator.migrate(queue)
     }
 
@@ -159,7 +166,7 @@ public struct SnapshotStore: Sendable {
         try await dbQueue.read { db in
             let rows = try Row.fetchAll(db, sql: """
                 SELECT service, bundle_id, display_name, bundle_path,
-                       last_modified, automation_target
+                       last_modified, automation_target, auth_value
                 FROM tcc_grants
                 WHERE snapshot_id = ?
                 ORDER BY service, bundle_id, automation_target
@@ -322,8 +329,8 @@ public struct SnapshotStore: Sendable {
             try db.execute(sql: """
                 INSERT INTO tcc_grants
                 (snapshot_id, service, bundle_id, display_name, bundle_path,
-                 last_modified, automation_target)
-                VALUES (?, ?, ?, ?, ?, ?, ?)
+                 last_modified, automation_target, auth_value)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
                 """, arguments: [
                     snapshotID,
                     grant.service.rawValue,
@@ -332,6 +339,7 @@ public struct SnapshotStore: Sendable {
                     grant.app.bundlePath?.path(percentEncoded: false),
                     grant.lastModified,
                     grant.automationTarget,
+                    grant.authValue,
                 ])
         }
     }
@@ -401,11 +409,13 @@ public struct SnapshotStore: Sendable {
         let bundlePath = bundlePathString.map { URL(fileURLWithPath: $0) }
         let lastModified: Date = row["last_modified"]
         let automationTarget: String? = row["automation_target"]
+        let authValue: Int = row["auth_value"] ?? 2
         return PermissionGrant(
             service: service,
             app: AppIdentity(bundleID: bundleID, displayName: displayName, bundlePath: bundlePath),
             lastModified: lastModified,
-            automationTarget: automationTarget
+            automationTarget: automationTarget,
+            authValue: authValue
         )
     }
 

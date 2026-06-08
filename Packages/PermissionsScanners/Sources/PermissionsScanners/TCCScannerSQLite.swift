@@ -172,7 +172,9 @@ public struct TCCScannerSQLite: TCCScanner, Sendable {
     }
 
     private static func mapRowToGrant(_ row: TCCRow) -> PermissionGrant? {
-        guard row.authValue == 2 else { return nil }
+        // Keep allowed (2), limited (3), and any future affirmative value; drop
+        // denied (0) and undetermined (1). (D2)
+        guard row.authValue >= 2 else { return nil }
 
         guard let service = PermissionService(tccServiceString: row.service) else {
             if PermissionService.knownSkipped.contains(row.service) {
@@ -195,7 +197,8 @@ public struct TCCScannerSQLite: TCCScanner, Sendable {
             service: service,
             app: identity,
             lastModified: lastModified,
-            automationTarget: automationTarget
+            automationTarget: automationTarget,
+            authValue: row.authValue
         )
     }
 

@@ -5,17 +5,24 @@ public struct PermissionGrant: Sendable, Hashable, Identifiable {
     public let app: AppIdentity
     public let lastModified: Date
     public let automationTarget: String?
+    // TCC auth_value: 2 = allowed, 3 = limited (e.g. Photos "Selected Photos").
+    // Captured so limited access surfaces. auth_value is NOT part of identity, so
+    // a 2<->3 change lands in TCCGrantsDiff.changed; RENDERING that change as a UI
+    // row is what's deferred to the v0.8.x model-fidelity slice. (D2)
+    public let authValue: Int
 
     public init(
         service: PermissionService,
         app: AppIdentity,
         lastModified: Date,
-        automationTarget: String? = nil
+        automationTarget: String? = nil,
+        authValue: Int = 2
     ) {
         self.service = service
         self.app = app
         self.lastModified = lastModified
         self.automationTarget = automationTarget
+        self.authValue = authValue
     }
 
     // Canonical app key. Path-only grants (TCC client_type == 1) carry an empty

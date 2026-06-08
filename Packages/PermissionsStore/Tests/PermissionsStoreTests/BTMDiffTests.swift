@@ -6,7 +6,7 @@ import PermissionsCore
 @Suite struct BTMDiffTests {
     @Test func migrationV3CreatesBTMItemsTable() async throws {
         let store = try SnapshotStore.inMemory()
-        #expect(try store.schemaVersion() == 3)
+        #expect(try store.schemaVersion() == 4)
         let id = try await store.writeBTMItemsSnapshot([])
         let items = try await store.readBTMItems(snapshotID: id)
         #expect(items.isEmpty)

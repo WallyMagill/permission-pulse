@@ -238,6 +238,24 @@ import PermissionsCore
         #expect(grant.lastModified.timeIntervalSince1970 == 1_800_000_000)
     }
 
+    @Test func limitedAccessRowIsReturnedWithAuthValue3() async throws {
+        // Verify that a row with auth_value = 3 (limited, e.g. Photos "Selected
+        // Photos") is no longer dropped and is returned with authValue == 3. (D2)
+        let dir = try TempDir()
+        let dbURL = dir.dbURL("limited.db")
+        try await TCCFixtures.makeLimitedAccessFixture(url: dbURL)
+
+        let scanner = TCCScannerSQLite(databaseURLs: [dbURL])
+        let grants = try await scanner.scan()
+
+        // Both the limited Photos row and the allowed Camera row should appear.
+        #expect(grants.count == 2)
+        let photosGrant = try #require(grants.first { $0.service == .photos })
+        #expect(photosGrant.authValue == 3)
+        let cameraGrant = try #require(grants.first { $0.service == .camera })
+        #expect(cameraGrant.authValue == 2)
+    }
+
     @Test func scanDoesNotCreateSidecarFiles() async throws {
         let dir = try TempDir()
         let dbURL = dir.dbURL("sidecars.db")
