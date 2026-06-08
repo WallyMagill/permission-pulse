@@ -80,29 +80,52 @@ import PermissionsCore
     }
 
     @Test func diffDoesNotTrapOnDuplicateIdentityKeys() async throws {
-        // Path-based TCC clients carry no bundle ID. Two Files-and-Folders
-        // grants for distinct paths both collapse to identity key
-        // "filesAndFolders||". The diff engine must collapse, not trap.
+        // Two grants that genuinely share the same identity (same service,
+        // same bundleID, same automationTarget) must not trap the diff engine.
+        // D1 unified the identity key so path-only grants now use the path
+        // instead of bundleID — but identical-identity bundle-ID grants can
+        // still occur (e.g. user + system TCC dbs both containing the same
+        // row). The diff engine must survive that via uniquingKeysWith.
         let store = try SnapshotStore.inMemory()
-        let dupeA = grant(
-            service: .filesAndFolders,
-            bundleID: "",
-            bundlePath: URL(fileURLWithPath: "/usr/local/bin/toolA")
-        )
-        let dupeB = grant(
-            service: .filesAndFolders,
-            bundleID: "",
-            bundlePath: URL(fileURLWithPath: "/usr/local/bin/toolB")
-        )
+        let dup = grant(service: .filesAndFolders, bundleID: "com.example.shared")
+        // Write the same grant twice to simulate a genuine key collision at
+        // the store layer (scanner dedupe already filters these, but the store
+        // must not trap even if fed duplicates).
         let other = grant(service: .microphone, bundleID: "com.example.mic")
 
         let firstID = try await store.writeTCCGrantsSnapshot([])
-        let secondID = try await store.writeTCCGrantsSnapshot([dupeA, dupeB, other])
+        let secondID = try await store.writeTCCGrantsSnapshot([dup, dup, other])
 
-        // Before the fix this trapped with "Duplicate values for key".
         let diff = try await store.diffTCCGrants(from: firstID, to: secondID)
-        #expect(diff.added.count == 2, "two distinct identity keys: filesAndFolders|| and microphone|com.example.mic|")
+        #expect(diff.added.count == 2, "two distinct identity keys: filesAndFolders|com.example.shared| and microphone|com.example.mic|")
         #expect(diff.removed.isEmpty)
+    }
+
+    @Test func distinctPathOnlyGrantsBothAppearInDiff() async throws {
+        let store = try SnapshotStore.inMemory()
+        let s1 = try await store.writeTCCGrantsSnapshot([], at: Date(timeIntervalSince1970: 0))
+        let toolA = PermissionGrant(
+            service: .filesAndFolders,
+            app: AppIdentity(
+                bundleID: "",
+                displayName: "tool-a",
+                bundlePath: URL(fileURLWithPath: "/usr/local/bin/tool-a")
+            ),
+            lastModified: Date(timeIntervalSince1970: 100)
+        )
+        let toolB = PermissionGrant(
+            service: .filesAndFolders,
+            app: AppIdentity(
+                bundleID: "",
+                displayName: "tool-b",
+                bundlePath: URL(fileURLWithPath: "/usr/local/bin/tool-b")
+            ),
+            lastModified: Date(timeIntervalSince1970: 100)
+        )
+        let s2 = try await store.writeTCCGrantsSnapshot([toolA, toolB], at: Date(timeIntervalSince1970: 200))
+        let diff = try await store.diffTCCGrants(from: s1, to: s2)
+        #expect(diff.added.count == 2)
+        #expect(Set(diff.added) == Set([toolA, toolB]))
     }
 
     private func grant(

@@ -15,9 +15,9 @@ enum DiffEntryKey {
     static func key(for kind: ChangeRow.Kind) -> String {
         switch kind {
         case .granted(let g):
-            return "tcc-granted|\(g.service.rawValue)|\(g.app.bundleID)|\(g.automationTarget ?? "")"
+            return "tcc-granted|\(g.identityKey)"
         case .revoked(let g):
-            return "tcc-revoked|\(g.service.rawValue)|\(g.app.bundleID)|\(g.automationTarget ?? "")"
+            return "tcc-revoked|\(g.identityKey)"
         case .btmAdded(let i):
             return "btm-added|\(i.identifier)"
         case .btmRemoved(let i):

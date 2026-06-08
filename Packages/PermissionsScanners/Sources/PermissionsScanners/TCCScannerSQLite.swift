@@ -77,22 +77,13 @@ public struct TCCScannerSQLite: TCCScanner, Sendable {
     private static func dedupe(_ grants: [PermissionGrant]) -> [PermissionGrant] {
         var byKey: [String: PermissionGrant] = [:]
         for grant in grants {
-            let key = identityKey(grant)
+            let key = grant.identityKey
             if let existing = byKey[key], existing.lastModified >= grant.lastModified {
                 continue
             }
             byKey[key] = grant
         }
         return Array(byKey.values)
-    }
-
-    private static func identityKey(_ grant: PermissionGrant) -> String {
-        // Path-only grants (client_type = 1) leave bundleID empty; fall
-        // back to the path so two distinct path-only apps don't collapse.
-        let appKey = grant.app.bundleID.isEmpty
-            ? (grant.app.bundlePath?.path ?? grant.app.displayName)
-            : grant.app.bundleID
-        return "\(grant.service.rawValue)|\(appKey)|\(grant.automationTarget ?? "")"
     }
 
     private func readAllDatabases() async -> [(URL, Result<[PermissionGrant], any Error>)] {

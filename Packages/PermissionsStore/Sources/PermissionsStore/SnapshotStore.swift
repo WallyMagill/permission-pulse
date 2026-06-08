@@ -479,7 +479,7 @@ public struct SnapshotStore: Sendable {
     }
 
     private static func tccGrantIdentityKey(_ grant: PermissionGrant) -> String {
-        "\(grant.service.rawValue)|\(grant.app.bundleID)|\(grant.automationTarget ?? "")"
+        grant.identityKey
     }
 
     private static func btmItemIdentityKey(_ item: BTMItem) -> String {
