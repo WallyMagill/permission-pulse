@@ -20,11 +20,13 @@ public enum AppRelauncher {
         Task { @MainActor in
             do {
                 _ = try await NSWorkspace.shared.openApplication(at: url, configuration: configuration)
+                // New instance is live — only now is it safe to drop this one.
+                NSApp.terminate(nil)
             } catch {
-                // The app still terminates below; the user must reopen manually.
-                logger.error("Relaunch failed: \(error.localizedDescription, privacy: .public)")
+                // Launch failed: keep the current instance running so the user
+                // isn't left with no app. They can retry or quit manually.
+                logger.error("Relaunch failed; keeping current instance: \(error.localizedDescription, privacy: .public)")
             }
-            NSApp.terminate(nil)
         }
     }
 }
