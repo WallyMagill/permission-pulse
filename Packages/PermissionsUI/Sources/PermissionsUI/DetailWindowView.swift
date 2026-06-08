@@ -211,6 +211,7 @@ private struct DetailSidebar: View {
                 Circle().fill(footerColor.opacity(0.22)).frame(width: 13, height: 13)
                 Circle().fill(footerColor).frame(width: 7, height: 7)
             }
+            .accessibilityHidden(true)
             Text(footerText)
                 .font(.system(size: 11))
                 .foregroundStyle(.secondary)
@@ -243,6 +244,7 @@ private struct SidebarSection<Content: View>: View {
                 .font(.system(size: 11, weight: .semibold))
                 .tracking(0.6)
                 .foregroundStyle(.secondary)
+                .accessibilityAddTraits(.isHeader)
                 .padding(.horizontal, 10)
                 .padding(.bottom, 2)
             content()
@@ -439,6 +441,7 @@ private struct LaunchAgentsDetailPage: View {
                     Image(systemName: "exclamationmark.triangle.fill")
                         .font(.system(size: 36))
                         .foregroundStyle(.orange)
+                        .accessibilityHidden(true)
                     Text(String(localized: "Couldn't read Launch Agents"))
                         .font(.headline)
                     Text(error.errorDescription ?? String(localized: "An error occurred reading the LaunchAgents directories."))

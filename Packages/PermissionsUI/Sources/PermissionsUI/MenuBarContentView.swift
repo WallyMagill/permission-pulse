@@ -373,6 +373,7 @@ private struct BrandBadge: View {
                 Image(systemName: "shield.lefthalf.filled")
                     .font(.system(size: 18, weight: .semibold))
                     .foregroundStyle(.white)
+                    .accessibilityHidden(true)
             }
             .shadow(color: Color.blue.opacity(0.35), radius: 5, y: 1)
     }
@@ -390,6 +391,7 @@ private struct PulseDot: View {
                 .fill(tint)
                 .frame(width: 7, height: 7)
         }
+        .accessibilityHidden(true)
     }
 }
 
@@ -405,6 +407,7 @@ private struct SectionLabel: View {
                 .font(.system(size: 11, weight: .semibold))
                 .tracking(0.6)
                 .foregroundStyle(.secondary)
+                .accessibilityAddTraits(.isHeader)
             Spacer(minLength: 8)
             if let trailing {
                 Text(trailing)
@@ -435,6 +438,7 @@ private struct StatRow: View {
                     .font(.system(size: 11, weight: .semibold))
                     .foregroundStyle(tint)
             }
+            .accessibilityHidden(true)
             Text(title)
                 .font(.system(size: 13))
             Spacer(minLength: 8)
@@ -443,6 +447,7 @@ private struct StatRow: View {
                 .foregroundStyle(.secondary)
                 .monospacedDigit()
         }
+        .accessibilityElement(children: .combine)
         .padding(.horizontal, 16)
         .padding(.vertical, 5)
     }
@@ -457,6 +462,7 @@ private struct ActivityRow: View {
                 .fill(event.markerColor)
                 .frame(width: 6, height: 6)
                 .padding(.top, 7)
+                .accessibilityHidden(true)
             (Text(event.strong).bold() + Text(" · \(event.descriptor)"))
                 .font(.system(size: 12.5))
                 .lineLimit(2)
@@ -464,6 +470,7 @@ private struct ActivityRow: View {
                 .fixedSize(horizontal: false, vertical: true)
             Spacer(minLength: 4)
         }
+        .accessibilityElement(children: .combine)
         .padding(.horizontal, 16)
         .padding(.vertical, 5)
     }
@@ -488,6 +495,7 @@ private struct AttentionBanner: View {
                             .fill(Color.orange)
                             .shadow(color: .orange.opacity(0.35), radius: 3, y: 1)
                     }
+                    .accessibilityHidden(true)
                 VStack(alignment: .leading, spacing: 1) {
                     Text(title)
                         .font(.system(size: 13, weight: .semibold))
@@ -500,6 +508,7 @@ private struct AttentionBanner: View {
                 Image(systemName: "chevron.right")
                     .font(.system(size: 11, weight: .semibold))
                     .foregroundStyle(Color.orange)
+                    .accessibilityHidden(true)
             }
             .padding(.horizontal, 12)
             .padding(.vertical, 10)

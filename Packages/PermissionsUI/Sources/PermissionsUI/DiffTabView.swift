@@ -105,6 +105,7 @@ struct DiffTabView: View {
             Image(systemName: "clock.arrow.circlepath")
                 .font(.system(size: 36))
                 .foregroundStyle(.secondary)
+                .accessibilityHidden(true)
             Text(emptyNoPriorHeadline).font(.headline)
             Text(String(localized: "Permission Pulse needs at least one prior snapshot. Come back tomorrow."))
                 .font(.body)
@@ -120,6 +121,7 @@ struct DiffTabView: View {
             Image(systemName: "checkmark.seal.fill")
                 .font(.system(size: 36))
                 .foregroundStyle(.green)
+                .accessibilityHidden(true)
             Text(emptyContentHeadline).font(.headline)
         }
         .padding(.vertical, 36)
@@ -131,6 +133,7 @@ struct DiffTabView: View {
             Image(systemName: "exclamationmark.triangle.fill")
                 .font(.system(size: 36))
                 .foregroundStyle(.orange)
+                .accessibilityHidden(true)
             Text(headline).font(.headline)
             Text(detail)
                 .font(.body)

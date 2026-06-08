@@ -25,6 +25,7 @@ struct TappableRow<Content: View, Trailing: View>: View {
                 Image(systemName: "chevron.right")
                     .font(.caption2.weight(.semibold))
                     .foregroundStyle(.tertiary)
+                    .accessibilityHidden(true)
             }
             .padding(.vertical, 8)
             .padding(.horizontal, 12)
@@ -32,6 +33,7 @@ struct TappableRow<Content: View, Trailing: View>: View {
             .background(isHovering ? Color.primary.opacity(0.06) : Color.clear)
         }
         .buttonStyle(.plain)
+        .accessibilityHint(String(localized: "Opens details"))
         .onHover { hovering in
             isHovering = hovering
             if hovering {

@@ -59,6 +59,7 @@ public struct WelcomeWindowView: View {
             Image(systemName: icon)
                 .frame(width: 16)
                 .foregroundStyle(.secondary)
+                .accessibilityHidden(true)
             Text(text)
                 .font(.body)
         }

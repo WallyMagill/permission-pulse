@@ -19,6 +19,7 @@ struct SheetSectionLabel: View {
             .font(.system(size: 11, weight: .semibold))
             .tracking(0.6)
             .foregroundStyle(.secondary)
+            .accessibilityAddTraits(.isHeader)
     }
 }
 
@@ -102,6 +103,7 @@ struct SheetGradientTile: View {
                 Image(systemName: symbol)
                     .font(.system(size: size * 0.42, weight: .semibold))
                     .foregroundStyle(.white)
+                    .accessibilityHidden(true)
             )
             .shadow(color: Color.blue.opacity(0.35), radius: 5, y: 1)
     }
@@ -153,6 +155,7 @@ struct ServicePillButton: View {
         }
         .buttonStyle(.plain)
         .onHover { isHovering = $0 }
+        .accessibilityHint(String(localized: "Opens \(service.displayName) in System Settings"))
     }
 }
 

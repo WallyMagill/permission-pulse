@@ -63,6 +63,7 @@ struct StaleAppsTabView: View {
             Image(systemName: "checkmark.seal.fill")
                 .font(.system(size: 36))
                 .foregroundStyle(.green)
+                .accessibilityHidden(true)
             Text(String(localized: "No stale apps")).font(.headline)
             Text(String(localized: "Every app with an active grant has been used recently."))
                 .font(.footnote)

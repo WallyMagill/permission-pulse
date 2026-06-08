@@ -30,6 +30,7 @@ struct PermissionsEmptyStateView: View {
             Image(systemName: "lock.shield")
                 .font(.system(size: 36))
                 .foregroundStyle(.secondary)
+                .accessibilityHidden(true)
             Text(String(localized: "Full Disk Access required"))
                 .font(.headline)
             Text(permissionDeniedBody)
@@ -42,6 +43,7 @@ struct PermissionsEmptyStateView: View {
             } label: {
                 HStack(spacing: 6) {
                     Image(systemName: "arrow.up.right.square")
+                        .accessibilityHidden(true)
                     Text(String(localized: "Grant Access in System Settings"))
                         .fontWeight(.semibold)
                 }
@@ -85,6 +87,7 @@ struct PermissionsEmptyStateView: View {
             Image(systemName: "clock.badge.exclamationmark")
                 .font(.system(size: 36))
                 .foregroundStyle(.secondary)
+                .accessibilityHidden(true)
             Text(String(localized: "Temporarily unavailable"))
                 .font(.headline)
             Text(String(localized: "The database is busy right now. Use Refresh to try again."))

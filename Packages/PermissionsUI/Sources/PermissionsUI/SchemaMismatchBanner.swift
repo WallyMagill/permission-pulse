@@ -19,6 +19,7 @@ struct SchemaMismatchBanner: View {
             Image(systemName: "exclamationmark.triangle.fill")
                 .font(.title3)
                 .foregroundStyle(.orange)
+                .accessibilityHidden(true)
             VStack(alignment: .leading, spacing: 4) {
                 Text(headline)
                     .font(.headline)
