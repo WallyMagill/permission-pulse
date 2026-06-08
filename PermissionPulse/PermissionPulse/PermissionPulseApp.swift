@@ -157,6 +157,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func rescan() async {
+        // Don't start a second scan while one is in flight (e.g. user hits
+        // Refresh during the initial launch scan). Concurrent scans can both
+        // pass SnapshotCoordinator's once-per-day write guard before the first
+        // persists lastSnapshotDate, producing duplicate snapshot rows. (R2)
+        guard !viewModel.scanInProgress else {
+            Self.logger.debug("Rescan ignored — a scan is already in progress")
+            return
+        }
         viewModel.scanInProgress = true
         viewModel.staleThresholdDays = preferencesStore.staleThresholdDays
         await coordinator?.rescan()
