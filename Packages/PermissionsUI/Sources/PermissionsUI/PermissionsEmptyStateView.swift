@@ -54,9 +54,23 @@ struct PermissionsEmptyStateView: View {
             .controlSize(.large)
             .tint(.blue)
             .padding(.vertical, 4)
-            Text(String(localized: "You'll need to relaunch Permission Pulse after granting."))
-                .font(.footnote)
-                .foregroundStyle(.tertiary)
+            VStack(spacing: 6) {
+                Text(String(localized: "You'll need to relaunch Permission Pulse after granting."))
+                    .font(.footnote)
+                    .foregroundStyle(.tertiary)
+                Button {
+                    AppRelauncher.relaunch()
+                } label: {
+                    HStack(spacing: 5) {
+                        Image(systemName: "arrow.clockwise")
+                            .accessibilityHidden(true)
+                        Text(String(localized: "Quit & Reopen"))
+                    }
+                    .font(.footnote.weight(.medium))
+                }
+                .buttonStyle(.link)
+                .accessibilityHint(String(localized: "Restarts Permission Pulse so a newly granted permission takes effect"))
+            }
             DisclosureGroup(String(localized: "Why does Permission Pulse need this?")) {
                 Text(disclosureBody)
                     .font(.footnote)
