@@ -395,6 +395,8 @@ public struct SnapshotStore: Sendable {
         }
         let argsJSON: String = row["program_arguments_json"]
         let arguments = try decodeArguments(argsJSON)
+        // isDisabled is intentionally not persisted (live-display only, D4),
+        // so store reads always default it to false.
         return LaunchAgentItem(
             label: label,
             sourceDirectory: source,
