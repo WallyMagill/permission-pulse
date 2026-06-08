@@ -14,6 +14,13 @@ public struct SnapshotStore: Sendable {
         try SnapshotStore(path: ":memory:")
     }
 
+    // INVARIANT: every `.double`-declared date column (created_at, last_modified,
+    // modification_date) actually stores a GRDB-encoded fixed-width TEXT date,
+    // NOT a numeric timestamp. Comparisons (ORDER BY created_at, created_at <= ?)
+    // rely on lexicographic ordering of that fixed format. Only ever write these
+    // via a Swift `Date` through GRDB — a raw numeric write would make SQLite sort
+    // all REALs before all TEXT and silently corrupt ordering/pruning. Pinned by
+    // SnapshotDateEncodingTests. (D5)
     private static func migrate(_ queue: DatabaseQueue) throws {
         var migrator = DatabaseMigrator()
 
