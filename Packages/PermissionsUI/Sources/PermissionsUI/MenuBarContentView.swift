@@ -60,15 +60,19 @@ public struct MenuBarContentView: View {
     }
 
     private var pulseTint: Color {
-        isCleanAttention ? .green : .orange
+        if viewModel.scanInProgress { return .blue }
+        return isCleanAttention ? .green : .orange
     }
 
     private var headerStatusText: String {
+        if viewModel.scanInProgress {
+            return String(localized: "Scanning…")
+        }
         switch attentionState {
-        case .clean: String(localized: "Watching for changes")
-        case .fdaDenied, .btmOnlyFDADenied: String(localized: "Action needed")
-        case .schemaMismatch: String(localized: "Schema mismatch")
-        case .launchAgentError: String(localized: "Action needed")
+        case .clean: return String(localized: "Watching for changes")
+        case .fdaDenied, .btmOnlyFDADenied: return String(localized: "Action needed")
+        case .schemaMismatch: return String(localized: "Schema mismatch")
+        case .launchAgentError: return String(localized: "Action needed")
         }
     }
 

@@ -398,7 +398,14 @@ private struct PermissionsDetailPage: View {
                 SchemaMismatchBanner(error: error, domain: .tcc)
             }
 
-            if filteredGrants.isEmpty && !searchText.isEmpty {
+            if ScanState.showsScanningPlaceholder(
+                isScanning: viewModel.scanInProgress,
+                isEmpty: viewModel.grants.isEmpty,
+                hasError: viewModel.tccScanError != nil,
+                isSearching: !searchText.isEmpty
+            ) {
+                ScanningPlaceholder()
+            } else if filteredGrants.isEmpty && !searchText.isEmpty {
                 EmptySearchView(query: searchText)
             } else {
                 PermissionsSection(
@@ -452,6 +459,13 @@ private struct LaunchAgentsDetailPage: View {
                 }
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 36)
+            } else if ScanState.showsScanningPlaceholder(
+                isScanning: viewModel.scanInProgress,
+                isEmpty: viewModel.launchAgents.isEmpty,
+                hasError: false, // the error block above already owns that surface
+                isSearching: !searchText.isEmpty
+            ) {
+                ScanningPlaceholder()
             } else {
                 if filteredItems.isEmpty && !searchText.isEmpty {
                     EmptySearchView(query: searchText)
@@ -493,7 +507,14 @@ private struct BackgroundItemsDetailPage: View {
                 SchemaMismatchBanner(error: error, domain: .btm)
             }
 
-            if filteredItems.isEmpty && !searchText.isEmpty {
+            if ScanState.showsScanningPlaceholder(
+                isScanning: viewModel.scanInProgress,
+                isEmpty: viewModel.btmItems.isEmpty,
+                hasError: viewModel.btmScanError != nil,
+                isSearching: !searchText.isEmpty
+            ) {
+                ScanningPlaceholder()
+            } else if filteredItems.isEmpty && !searchText.isEmpty {
                 EmptySearchView(query: searchText)
             } else {
                 BackgroundItemsSection(
