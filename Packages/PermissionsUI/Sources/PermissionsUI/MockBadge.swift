@@ -5,11 +5,11 @@ public struct MockBadge: View {
 
     public var body: some View {
         Text(String(localized: "Mock"))
-            .font(.caption2.weight(.semibold))
-            .foregroundStyle(Color.white)
-            .padding(.horizontal, 6)
-            .padding(.vertical, 2)
-            .background(Color.orange, in: .capsule)
+            .ppFont(.badge)
+            .foregroundStyle(PPBadgeStyle.mock.foreground)
+            .padding(.horizontal, PPSpacing.xs)
+            .padding(.vertical, PPSpacing.xxs)
+            .background(PPBadgeStyle.mock.background, in: .capsule)
             .accessibilityLabel(String(localized: "Mock data"))
     }
 }

@@ -5,11 +5,11 @@ public struct LiveBadge: View {
 
     public var body: some View {
         Text(String(localized: "Live"))
-            .font(.caption2.weight(.semibold))
-            .foregroundStyle(Color.white)
-            .padding(.horizontal, 6)
-            .padding(.vertical, 2)
-            .background(Color.green, in: .capsule)
+            .ppFont(.badge)
+            .foregroundStyle(PPBadgeStyle.live.foreground)
+            .padding(.horizontal, PPSpacing.xs)
+            .padding(.vertical, PPSpacing.xxs)
+            .background(PPBadgeStyle.live.background, in: .capsule)
             .accessibilityLabel(String(localized: "Live data"))
     }
 }
