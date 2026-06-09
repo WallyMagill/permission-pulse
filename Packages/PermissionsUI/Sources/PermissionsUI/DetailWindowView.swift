@@ -56,8 +56,8 @@ public struct DetailWindowView: View {
             FDAGrantSheet()
         }
         .frame(minWidth: 720, minHeight: 480)
-        .onAppear { applyPendingModeIfAny() }
-        .onChange(of: viewModel.pendingDetailMode) { _, _ in applyPendingModeIfAny() }
+        .onAppear { applyPendingRouteIfAny() }
+        .onChange(of: viewModel.pendingRoute) { _, _ in applyPendingRouteIfAny() }
         .onChange(of: selection) { _, newSelection in
             // Each time the user lands on Recent Changes — sidebar nav OR menu
             // bar bounce-back — mark the latest snapshot as reviewed so the
@@ -97,13 +97,16 @@ public struct DetailWindowView: View {
         }
     }
 
-    private func applyPendingModeIfAny() {
-        guard let pending = viewModel.pendingDetailMode else { return }
-        switch pending {
-        case .current: selection = .permissions
-        case .whatChanged: selection = .recentChanges
+    private func applyPendingRouteIfAny() {
+        guard let route = viewModel.pendingRoute else { return }
+        switch route.sidebarItem {
+        case .permissions, .overview: selection = .permissions
+        case .launchAgents: selection = .launchAgents
+        case .backgroundItems: selection = .backgroundItems
+        case .recentChanges: selection = .recentChanges
+        case .staleApps: selection = .staleApps
         }
-        viewModel.pendingDetailMode = nil
+        viewModel.pendingRoute = nil
     }
 }
 
@@ -185,7 +188,7 @@ private struct DetailSidebar: View {
     }
 
     private var recentTrailing: SidebarButton.Trailing {
-        let total = recentEventCount
+        let total = viewModel.recentChangeEventCount
         if viewModel.hasUnreviewedChanges && total > 0 {
             return .newBadge(total)
         }
@@ -193,19 +196,6 @@ private struct DetailSidebar: View {
             return .count(total)
         }
         return .none
-    }
-
-    private var recentEventCount: Int {
-        let primary = viewModel.latestDiffYesterday
-        let fallback = viewModel.latestDiffWeek
-        let diff: SnapshotDiffs? = {
-            if let primary, primary.hasContent { return primary }
-            return fallback
-        }()
-        guard let diff else { return 0 }
-        return diff.tcc.added.count + diff.tcc.removed.count
-            + diff.btm.added.count + diff.btm.removed.count
-            + diff.launchAgents.added.count + diff.launchAgents.removed.count
     }
 
     private var sidebarFooter: some View {

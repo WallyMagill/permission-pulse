@@ -15,11 +15,6 @@ public final class AppViewModel {
         case live
     }
 
-    public enum DetailMode: Sendable, Hashable {
-        case current
-        case whatChanged
-    }
-
     public var grants: [PermissionGrant]
     public var launchAgents: [LaunchAgentItem]
     public var btmItems: [BTMItem]
@@ -41,10 +36,12 @@ public final class AppViewModel {
     public var latestDiffWeek: SnapshotDiffs?
     public var staleApps: [StaleApp]
 
-    // Set by the menu-bar buttons before opening the detail window. The
-    // window observes this and applies it on appear or via onChange, then
-    // clears it back to nil.
-    public var pendingDetailMode: DetailMode?
+    // Set by glance surfaces (dropdown rows) before opening the detail
+    // window. The window consumes it on appear / onChange, then clears it.
+    public var pendingRoute: AppRoute?
+
+    // Stamped by AppDelegate after each completed scan; Overview displays it.
+    public var lastScanDate: Date?
 
     // True while a scan is in flight. Preferences disables the "Reset all
     // data" button when this is true to avoid racing the snapshot writer.
@@ -81,7 +78,6 @@ public final class AppViewModel {
         latestDiffYesterday: SnapshotDiffs? = nil,
         latestDiffWeek: SnapshotDiffs? = nil,
         staleApps: [StaleApp] = [],
-        pendingDetailMode: DetailMode? = nil,
         staleThresholdDays: Int = 90
     ) {
         self.grants = grants
@@ -102,7 +98,6 @@ public final class AppViewModel {
         self.latestDiffYesterday = latestDiffYesterday
         self.latestDiffWeek = latestDiffWeek
         self.staleApps = staleApps
-        self.pendingDetailMode = pendingDetailMode
         self.staleThresholdDays = staleThresholdDays
     }
 
@@ -112,6 +107,21 @@ public final class AppViewModel {
         let anyContent = (latestDiffYesterday?.hasContent ?? false)
             || (latestDiffWeek?.hasContent ?? false)
         return unreviewed && anyContent
+    }
+
+    /// The diff window glance surfaces summarize: yesterday when it has
+    /// content, otherwise the 7-day fallback. (Single source of truth — the
+    /// dropdown and sidebar previously each re-derived this.)
+    public var activeDiff: SnapshotDiffs? {
+        if let primary = latestDiffYesterday, primary.hasContent { return primary }
+        return latestDiffWeek
+    }
+
+    public var recentChangeEventCount: Int {
+        guard let diff = activeDiff else { return 0 }
+        return diff.tcc.added.count + diff.tcc.removed.count
+            + diff.btm.added.count + diff.btm.removed.count
+            + diff.launchAgents.added.count + diff.launchAgents.removed.count
     }
 
     public var menuBarSymbolName: String {

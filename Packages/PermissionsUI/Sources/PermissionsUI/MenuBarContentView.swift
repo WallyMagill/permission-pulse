@@ -333,7 +333,7 @@ public struct MenuBarContentView: View {
                 shortcutDisplay: "⌘W",
                 showsChangeDot: viewModel.hasUnreviewedChanges
             ) {
-                viewModel.pendingDetailMode = .whatChanged
+                viewModel.pendingRoute = .recentChanges
                 activateAndOpen("detail")
             }
 
@@ -343,7 +343,7 @@ public struct MenuBarContentView: View {
                 shortcutKey: "o",
                 shortcutDisplay: "⌘O"
             ) {
-                viewModel.pendingDetailMode = .current
+                viewModel.pendingRoute = .permissions(selectAppKey: nil)
                 activateAndOpen("detail")
             }
 
