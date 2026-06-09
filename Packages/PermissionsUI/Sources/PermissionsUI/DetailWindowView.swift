@@ -1,9 +1,11 @@
+import AppKit // AppKit: NSApp.activate before openWindow so the Preferences window actually fronts.
 import SwiftUI
 import PermissionsCore
 import PermissionsStore
 
 public struct DetailWindowView: View {
     @Environment(AppViewModel.self) private var viewModel
+    @Environment(\.openWindow) private var openWindow
     private let onRefresh: (() async -> Void)?
     private let onWhatChangedSelected: (() -> Void)?
 
@@ -12,6 +14,7 @@ public struct DetailWindowView: View {
     @State private var isInspectorPresented = false
     @State private var searchText = ""
     @State private var isRefreshing = false
+    @State private var isApplyingRoute = false
 
     public init(
         onRefresh: (() async -> Void)? = nil,
@@ -38,7 +41,7 @@ public struct DetailWindowView: View {
                 .toolbar { toolbarContent }
         }
         .frame(minWidth: 760, minHeight: 480)
-        .background(sectionShortcuts)
+        .background(windowShortcuts)
         // KEPT until Task 9: the menu-bar FDA prompt routes through this sheet.
         .sheet(isPresented: $bindableViewModel.showFDASheetOnDetail) {
             FDAGrantSheet()
@@ -52,7 +55,12 @@ public struct DetailWindowView: View {
             // Reset per-context state: the search field and any inspector
             // selection would otherwise dangle into a section that can't show them.
             searchText = ""
-            inspectorSelection = nil
+            if isApplyingRoute {
+                // Route-driven change: keep the pre-selected inspector item.
+                isApplyingRoute = false
+            } else {
+                inspectorSelection = nil
+            }
         }
         .onChange(of: inspectorSelection) { _, newValue in
             if newValue != nil { isInspectorPresented = true }
@@ -90,13 +98,19 @@ public struct DetailWindowView: View {
         }
     }
 
-    // Hidden buttons give the window ⌘1–⌘6 section switching without a menu bar.
-    private var sectionShortcuts: some View {
+    // Hidden buttons give the window ⌘1–⌘6 section switching and ⌘, Preferences
+    // access without requiring a menu bar.
+    private var windowShortcuts: some View {
         Group {
             ForEach(Array(SidebarItem.allCases.enumerated()), id: \.element) { index, item in
                 Button("") { section = item }
                     .keyboardShortcut(KeyEquivalent(Character("\(index + 1)")), modifiers: [.command])
             }
+            Button("") {
+                NSApp.activate(ignoringOtherApps: true)
+                openWindow(id: "preferences")
+            }
+            .keyboardShortcut(",", modifiers: [.command])
         }
         .opacity(0)
         .accessibilityHidden(true)
@@ -132,6 +146,9 @@ public struct DetailWindowView: View {
 
     private func applyPendingRouteIfAny() {
         guard let route = viewModel.pendingRoute else { return }
+        // Suppress the section-change reset only when the section actually
+        // changes (onChange won't fire otherwise, so the flag must not stick).
+        isApplyingRoute = section != route.sidebarItem
         section = route.sidebarItem
         if let preselect = route.inspectorSelection {
             inspectorSelection = preselect
