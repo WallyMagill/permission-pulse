@@ -92,13 +92,13 @@ struct ChangeRow: View {
 
     private static func launchAgentFlipDescription(_ change: DomainChange<LaunchAgentItem>) -> String {
         if change.before.runAtLoad != change.after.runAtLoad {
-            let from = change.before.runAtLoad ? "on" : "off"
-            let to = change.after.runAtLoad ? "on" : "off"
+            let from = change.before.runAtLoad ? String(localized: "on") : String(localized: "off")
+            let to = change.after.runAtLoad ? String(localized: "on") : String(localized: "off")
             return String(localized: "runAtLoad flipped: \(change.after.label) (\(from) → \(to))")
         }
         if change.before.keepAlive != change.after.keepAlive {
-            let from = change.before.keepAlive ? "on" : "off"
-            let to = change.after.keepAlive ? "on" : "off"
+            let from = change.before.keepAlive ? String(localized: "on") : String(localized: "off")
+            let to = change.after.keepAlive ? String(localized: "on") : String(localized: "off")
             return String(localized: "keepAlive flipped: \(change.after.label) (\(from) → \(to))")
         }
         return String(localized: "Modified: \(change.after.label)")

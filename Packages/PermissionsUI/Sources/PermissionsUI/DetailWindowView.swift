@@ -358,7 +358,6 @@ private struct DetailPageScaffold<Content: View>: View {
                     .accessibilityAddTraits(.isHeader)
                 if dataSource == .mock {
                     MockBadge()
-                        .accessibilityLabel(String(localized: "Mock data"))
                 }
                 if let inlineMeta {
                     Text(inlineMeta)

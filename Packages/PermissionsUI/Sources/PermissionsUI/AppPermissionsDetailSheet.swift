@@ -108,7 +108,7 @@ public struct AppPermissionsDetailSheet: View {
     private func automationRow(grant: PermissionGrant) -> some View {
         HStack(alignment: .firstTextBaseline) {
             VStack(alignment: .leading, spacing: 2) {
-                Text(grant.automationTarget ?? "(unset)")
+                Text(grant.automationTarget ?? String(localized: "(unset)"))
                     .font(.system(size: 12.5).monospaced())
                     .textSelection(.enabled)
                 Text(String(localized: "Granted \(sheetFormattedDate(grant.lastModified))"))
