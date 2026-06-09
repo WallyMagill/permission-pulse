@@ -1,18 +1,17 @@
-// AppKit: NSApp.activate(ignoringOtherApps:) from the Preferences toolbar
-// button — SwiftUI does not expose an app-activation primitive.
-import AppKit
 import SwiftUI
 import PermissionsCore
 import PermissionsStore
 
 public struct DetailWindowView: View {
-    @Environment(\.openWindow) private var openWindow
     @Environment(AppViewModel.self) private var viewModel
     private let onRefresh: (() async -> Void)?
     private let onWhatChangedSelected: (() -> Void)?
 
-    @State private var selection: DetailSidebarSelection = .permissions
-    @State private var searchText: String = ""
+    @State private var section: SidebarItem? = .overview
+    @State private var inspectorSelection: InspectorSelection?
+    @State private var isInspectorPresented = false
+    @State private var searchText = ""
+    @State private var isRefreshing = false
 
     public init(
         onRefresh: (() async -> Void)? = nil,
@@ -26,70 +25,104 @@ public struct DetailWindowView: View {
         @Bindable var bindableViewModel = viewModel
 
         NavigationSplitView {
-            DetailSidebar(selection: $selection)
-                .navigationSplitViewColumnWidth(min: 200, ideal: 224, max: 280)
+            DetailSidebar(selection: $section)
+                .navigationSplitViewColumnWidth(min: 200, ideal: 220, max: 280)
+                .searchable(text: $searchText, placement: .sidebar, prompt: searchPrompt)
         } detail: {
             detailPage
-                .toolbar {
-                    if let onRefresh {
-                        ToolbarItem(placement: .primaryAction) {
-                            RefreshToolbarButton {
-                                await onRefresh()
-                            }
-                        }
-                    }
-                    ToolbarItem(placement: .primaryAction) {
-                        ExportToolbarMenu()
-                    }
-                    ToolbarItem(placement: .primaryAction) {
-                        PreferencesToolbarButton {
-                            NSApp.activate(ignoringOtherApps: true)
-                            openWindow(id: "preferences")
-                        }
-                    }
+                .navigationTitle(String(localized: "Permission Pulse"))
+                .inspector(isPresented: $isInspectorPresented) {
+                    InspectorPanel(selection: inspectorSelection)
+                        .inspectorColumnWidth(min: 260, ideal: 300, max: 380)
                 }
-                .searchable(text: $searchText, placement: .toolbar, prompt: searchPrompt)
-                .toolbarBackground(.hidden, for: .windowToolbar)
+                .toolbar { toolbarContent }
         }
-        .navigationTitle(String(localized: "Permission Pulse"))
+        .frame(minWidth: 760, minHeight: 480)
+        .background(sectionShortcuts)
+        // KEPT until Task 9: the menu-bar FDA prompt routes through this sheet.
         .sheet(isPresented: $bindableViewModel.showFDASheetOnDetail) {
             FDAGrantSheet()
         }
-        .frame(minWidth: 720, minHeight: 480)
         .onAppear { applyPendingRouteIfAny() }
         .onChange(of: viewModel.pendingRoute) { _, _ in applyPendingRouteIfAny() }
-        .onChange(of: selection) { _, newSelection in
-            // Each time the user lands on Recent Changes — sidebar nav OR menu
-            // bar bounce-back — mark the latest snapshot as reviewed so the
-            // unreviewed badge clears.
-            if newSelection == .recentChanges {
-                onWhatChangedSelected?()
-            }
-            // Reset the search field when changing context; it'd otherwise
-            // filter a list the user no longer sees.
+        .onChange(of: section) { _, newSection in
+            // Landing on Recent Changes — via sidebar or a menu-bar route —
+            // marks the latest snapshot reviewed so the unreviewed badge clears.
+            if newSection == .recentChanges { onWhatChangedSelected?() }
+            // Reset per-context state: the search field and any inspector
+            // selection would otherwise dangle into a section that can't show them.
             searchText = ""
+            inspectorSelection = nil
         }
+        .onChange(of: inspectorSelection) { _, newValue in
+            if newValue != nil { isInspectorPresented = true }
+        }
+    }
+
+    @ToolbarContentBuilder
+    private var toolbarContent: some ToolbarContent {
+        if viewModel.tccDataSource == .mock || viewModel.btmDataSource == .mock
+            || viewModel.launchAgentsDataSource == .mock {
+            ToolbarItem(placement: .navigation) { MockBadge() }
+        }
+        if let onRefresh {
+            ToolbarItem(placement: .primaryAction) {
+                Button {
+                    guard !isRefreshing else { return }
+                    Task { isRefreshing = true; await onRefresh(); isRefreshing = false }
+                } label: {
+                    Label(String(localized: "Rescan"), systemImage: "arrow.clockwise")
+                }
+                .disabled(isRefreshing)
+                .help(String(localized: "Rescan Now"))
+                .keyboardShortcut("r", modifiers: [.command])
+            }
+        }
+        ToolbarItem(placement: .primaryAction) { ExportToolbarMenu() }
+        ToolbarItem(placement: .primaryAction) {
+            Button {
+                isInspectorPresented.toggle()
+            } label: {
+                Label(String(localized: "Inspector"), systemImage: "sidebar.trailing")
+            }
+            .help(String(localized: "Show or hide the inspector"))
+            .keyboardShortcut("i", modifiers: [.command, .option])
+        }
+    }
+
+    // Hidden buttons give the window ⌘1–⌘6 section switching without a menu bar.
+    private var sectionShortcuts: some View {
+        Group {
+            ForEach(Array(SidebarItem.allCases.enumerated()), id: \.element) { index, item in
+                Button("") { section = item }
+                    .keyboardShortcut(KeyEquivalent(Character("\(index + 1)")), modifiers: [.command])
+            }
+        }
+        .opacity(0)
+        .accessibilityHidden(true)
     }
 
     @ViewBuilder
     private var detailPage: some View {
-        switch selection {
-        case .permissions:
-            PermissionsDetailPage(searchText: searchText)
-        case .launchAgents:
-            LaunchAgentsDetailPage(searchText: searchText)
-        case .backgroundItems:
-            BackgroundItemsDetailPage(searchText: searchText)
-        case .recentChanges:
-            RecentChangesDetailPage()
-        case .staleApps:
-            StaleAppsDetailPage(searchText: searchText)
+        switch section ?? .overview {
+        case .overview:
+            // Placeholder until Task 6 lands OverviewPage.
+            ContentUnavailableView(
+                String(localized: "Overview"),
+                systemImage: "gauge.with.needle",
+                description: Text(String(localized: "Coming in Task 6"))
+            )
+        case .permissions: PermissionsDetailPage(searchText: searchText)
+        case .launchAgents: LaunchAgentsDetailPage(searchText: searchText)
+        case .backgroundItems: BackgroundItemsDetailPage(searchText: searchText)
+        case .recentChanges: RecentChangesDetailPage()
+        case .staleApps: StaleAppsDetailPage(searchText: searchText)
         }
     }
 
     private var searchPrompt: String {
-        switch selection {
-        case .permissions: String(localized: "Search permissions")
+        switch section ?? .overview {
+        case .overview, .permissions: String(localized: "Search permissions")
         case .launchAgents: String(localized: "Search launch agents")
         case .backgroundItems: String(localized: "Search background items")
         case .recentChanges: String(localized: "Search recent changes")
@@ -99,234 +132,45 @@ public struct DetailWindowView: View {
 
     private func applyPendingRouteIfAny() {
         guard let route = viewModel.pendingRoute else { return }
-        switch route.sidebarItem {
-        case .permissions, .overview: selection = .permissions
-        case .launchAgents: selection = .launchAgents
-        case .backgroundItems: selection = .backgroundItems
-        case .recentChanges: selection = .recentChanges
-        case .staleApps: selection = .staleApps
+        section = route.sidebarItem
+        if let preselect = route.inspectorSelection {
+            inspectorSelection = preselect
+            isInspectorPresented = true
         }
         viewModel.pendingRoute = nil
     }
 }
 
-// MARK: - Sidebar selection
+// MARK: - Sidebar (native source list)
 
-// TODO(Thread C T3): collapse DetailSidebarSelection into SidebarItem
-enum DetailSidebarSelection: Hashable, Sendable {
-    case permissions
-    case launchAgents
-    case backgroundItems
-    case recentChanges
-    case staleApps
-}
-
-// MARK: - Sidebar
-
-// Custom sidebar (not List) so the selected row can render the exact SOLID
-// accent-blue rounded rect from the V2 mockup. macOS's default .sidebar list
-// selection is too muted and fights the tinted chips.
 private struct DetailSidebar: View {
     @Environment(AppViewModel.self) private var viewModel
-    @Binding var selection: DetailSidebarSelection
+    @Binding var selection: SidebarItem?
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            ScrollView {
-                VStack(alignment: .leading, spacing: PPSpacing.lg) {
-                    SidebarSection(header: String(localized: "Inventory")) {
-                        SidebarButton(
-                            target: .permissions,
-                            currentSelection: $selection,
-                            icon: "lock.fill",
-                            tint: PPColor.permissions,
-                            title: String(localized: "Permissions"),
-                            trailing: .count(viewModel.grants.count)
-                        )
-                        SidebarButton(
-                            target: .launchAgents,
-                            currentSelection: $selection,
-                            icon: "clock.fill",
-                            tint: PPColor.launchAgents,
-                            title: String(localized: "Launch Agents"),
-                            trailing: .count(viewModel.launchAgents.count)
-                        )
-                        SidebarButton(
-                            target: .backgroundItems,
-                            currentSelection: $selection,
-                            icon: "square.stack.3d.up.fill",
-                            tint: PPColor.backgroundItems,
-                            title: String(localized: "Background Items"),
-                            trailing: .count(viewModel.btmItems.count)
-                        )
-                    }
-                    SidebarSection(header: String(localized: "Activity")) {
-                        SidebarButton(
-                            target: .recentChanges,
-                            currentSelection: $selection,
-                            icon: "clock.arrow.circlepath",
-                            tint: PPColor.recentChanges,
-                            title: String(localized: "Recent Changes"),
-                            trailing: recentTrailing
-                        )
-                        SidebarButton(
-                            target: .staleApps,
-                            currentSelection: $selection,
-                            icon: "hourglass",
-                            tint: PPColor.staleApps,
-                            title: String(localized: "Stale Apps"),
-                            trailing: .count(viewModel.staleApps.count)
-                        )
-                    }
-                }
-                .padding(.horizontal, PPSpacing.sm)
-                .padding(.vertical, PPSpacing.lg)
-                .frame(maxWidth: .infinity, alignment: .leading)
+        List(selection: $selection) {
+            Label(String(localized: "Overview"), systemImage: "gauge.with.needle")
+                .tag(SidebarItem.overview)
+
+            Section(String(localized: "Privacy")) {
+                Label(String(localized: "Permissions"), systemImage: "lock.shield")
+                    .tag(SidebarItem.permissions)
+                Label(String(localized: "Launch Agents"), systemImage: "clock")
+                    .tag(SidebarItem.launchAgents)
+                Label(String(localized: "Background Items"), systemImage: "square.stack.3d.up")
+                    .tag(SidebarItem.backgroundItems)
             }
 
-            sidebarFooter
-        }
-    }
-
-    private var recentTrailing: SidebarButton.Trailing {
-        let total = viewModel.recentChangeEventCount
-        if viewModel.hasUnreviewedChanges && total > 0 {
-            return .newBadge(total)
-        }
-        if total > 0 {
-            return .count(total)
-        }
-        return .none
-    }
-
-    private var sidebarFooter: some View {
-        HStack(spacing: PPSpacing.sm) {
-            ZStack {
-                Circle().fill(footerColor.opacity(0.22)).frame(width: 13, height: 13)
-                Circle().fill(footerColor).frame(width: 7, height: 7)
+            Section(String(localized: "Activity")) {
+                Label(String(localized: "Recent Changes"), systemImage: "clock.arrow.circlepath")
+                    .badge(viewModel.hasUnreviewedChanges ? viewModel.recentChangeEventCount : 0)
+                    .tag(SidebarItem.recentChanges)
+                Label(String(localized: "Stale Apps"), systemImage: "hourglass")
+                    .badge(viewModel.staleApps.count)
+                    .tag(SidebarItem.staleApps)
             }
-            .accessibilityHidden(true)
-            Text(footerText)
-                .ppFont(.metadata)
-                .foregroundStyle(.secondary)
-            Spacer(minLength: 0)
         }
-        .padding(.horizontal, PPSpacing.lg)
-        .padding(.vertical, PPSpacing.sm)
-    }
-
-    private var footerColor: Color {
-        if viewModel.tccScanError != nil || viewModel.btmScanError != nil || viewModel.launchAgentScanError != nil { return PPColor.warning }
-        return PPColor.success
-    }
-
-    private var footerText: String {
-        if viewModel.tccScanError != nil || viewModel.btmScanError != nil || viewModel.launchAgentScanError != nil {
-            return String(localized: "Needs attention")
-        }
-        return String(localized: "Up to date")
-    }
-}
-
-private struct SidebarSection<Content: View>: View {
-    let header: String
-    @ViewBuilder let content: () -> Content
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: PPSpacing.xs) {
-            Text(header)
-                .ppSectionLabel()
-                .padding(.horizontal, PPSpacing.md)
-                .padding(.bottom, PPSpacing.xxs)
-            content()
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-    }
-}
-
-private struct SidebarButton: View {
-    enum Trailing {
-        case count(Int)
-        case newBadge(Int)
-        case none
-    }
-
-    let target: DetailSidebarSelection
-    @Binding var currentSelection: DetailSidebarSelection
-    let icon: String
-    let tint: Color
-    let title: String
-    let trailing: Trailing
-
-    @State private var isHovering = false
-
-    private var isSelected: Bool { currentSelection == target }
-
-    var body: some View {
-        Button {
-            currentSelection = target
-        } label: {
-            HStack(spacing: PPSpacing.sm) {
-                ZStack {
-                    RoundedRectangle(cornerRadius: PPRadius.small, style: .continuous)
-                        .fill(isSelected ? Color.white.opacity(0.24) : tint.opacity(0.16))
-                        .frame(width: 20, height: 20)
-                    Image(systemName: icon)
-                        // Decorative icon inside fixed 20×20 tile — keep fixed size (rule 1)
-                        .font(.system(size: 10, weight: .semibold))
-                        .foregroundStyle(isSelected ? Color.white : tint)
-                        .accessibilityHidden(true)
-                }
-                Text(title)
-                    .ppFont(.secondary)
-                    .foregroundStyle(isSelected ? Color.white : .primary)
-                Spacer(minLength: PPSpacing.xs)
-                trailingView
-            }
-            .padding(.horizontal, PPSpacing.sm)
-            .padding(.vertical, PPSpacing.xs)
-            .background(rowBackground)
-            .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-        .onHover { isHovering = $0 }
-        .accessibilityAddTraits(isSelected ? [.isSelected] : [])
-    }
-
-    @ViewBuilder
-    private var rowBackground: some View {
-        if isSelected {
-            RoundedRectangle(cornerRadius: PPRadius.small, style: .continuous)
-                .fill(Color.accentColor)
-        } else if isHovering {
-            RoundedRectangle(cornerRadius: PPRadius.small, style: .continuous)
-                .fill(Color.primary.opacity(0.05))
-        } else {
-            Color.clear
-        }
-    }
-
-    @ViewBuilder
-    private var trailingView: some View {
-        switch trailing {
-        case .count(let n):
-            Text("\(n)")
-                .ppFont(.metadata)
-                .foregroundStyle(isSelected ? Color.white.opacity(0.78) : .secondary)
-                .monospacedDigit()
-        case .newBadge(let n):
-            Text("\(n)")
-                .ppFont(.badge)
-                .foregroundStyle(isSelected ? Color.orange : Color.white)
-                .padding(.horizontal, PPSpacing.sm)
-                .padding(.vertical, PPSpacing.xxs)
-                .background(
-                    Capsule().fill(isSelected ? Color.white : Color.orange)
-                )
-                .monospacedDigit()
-        case .none:
-            EmptyView()
-        }
+        .listStyle(.sidebar)
     }
 }
 
@@ -641,73 +485,5 @@ private func isSchemaIssue(_ error: ScannerError) -> Bool {
     switch error {
     case .schemaMismatch, .unsupportedOnThisOS: true
     default: false
-    }
-}
-
-// Borderless toolbar refresh button — replaces the default pill-shaped button
-// macOS would render. Subtle hover background and a quarter-turn nudge while
-// the refresh task is running.
-private struct RefreshToolbarButton: View {
-    let action: () async -> Void
-
-    @State private var isHovering = false
-    @State private var isRefreshing = false
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
-
-    var body: some View {
-        Button {
-            guard !isRefreshing else { return }
-            Task {
-                isRefreshing = true
-                await action()
-                isRefreshing = false
-            }
-        } label: {
-            Image(systemName: "arrow.clockwise")
-                .font(.system(size: 13, weight: .semibold))
-                .foregroundStyle(.secondary)
-                .frame(width: 26, height: 26)
-                .background(
-                    Circle()
-                        .fill(isHovering ? Color.primary.opacity(0.08) : Color.clear)
-                )
-                .rotationEffect(.degrees(isRefreshing && !reduceMotion ? 360 : 0))
-                .animation(
-                    isRefreshing && !reduceMotion
-                        ? .linear(duration: 0.9).repeatForever(autoreverses: false)
-                        : .default,
-                    value: isRefreshing
-                )
-                .opacity(reduceMotion && isRefreshing ? 0.45 : 1.0)
-                .accessibilityLabel(isRefreshing ? String(localized: "Refreshing") : String(localized: "Refresh"))
-                .contentShape(Circle())
-        }
-        .buttonStyle(.plain)
-        .onHover { isHovering = $0 }
-        .help(String(localized: "Refresh"))
-    }
-}
-
-private struct PreferencesToolbarButton: View {
-    let action: () -> Void
-
-    @State private var isHovering = false
-
-    var body: some View {
-        Button(action: action) {
-            Image(systemName: "gearshape")
-                .font(.system(size: 13, weight: .semibold))
-                .foregroundStyle(.secondary)
-                .frame(width: 26, height: 26)
-                .background(
-                    Circle()
-                        .fill(isHovering ? Color.primary.opacity(0.08) : Color.clear)
-                )
-                .contentShape(Circle())
-        }
-        .buttonStyle(.plain)
-        .onHover { isHovering = $0 }
-        .help(String(localized: "Preferences"))
-        .keyboardShortcut(",", modifiers: [.command])
     }
 }
