@@ -105,7 +105,9 @@ private struct StaleAppRow: View {
                 .menuIndicator(.hidden)
                 .fixedSize()
                 .accessibilityLabel(String(localized: "Options"))
-                .accessibilityHint(String(localized: "Reveal in Finder or skip this app"))
+                .accessibilityHint(app.app.bundlePath != nil
+                    ? String(localized: "Reveal in Finder or skip this app")
+                    : String(localized: "Skip this app"))
             }
         }
     }

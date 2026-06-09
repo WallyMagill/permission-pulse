@@ -75,6 +75,9 @@ public enum PermissionsExport {
         return try encoder.encode(report)
     }
 
+    // The Markdown scaffold (headings, table columns, preamble) is intentionally
+    // English and NOT routed through String(localized:): it is the export's stable
+    // schema — a machine-readable artifact users share/diff — not in-app prose.
     public static func makeMarkdown(report: ExportReport) -> String {
         var out = "# Permission Pulse export\n\n"
         out += "_Generated \(Self.iso(report.generatedAt)) · read-only snapshot of current state._\n\n"
