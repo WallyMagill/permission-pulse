@@ -15,6 +15,7 @@ import PermissionsCore
 public struct AppPermissionsDetailSheet: View {
     private let app: AppIdentity
     private let grants: [PermissionGrant]
+    @Environment(\.dismiss) private var dismiss
 
     public init(app: AppIdentity, grants: [PermissionGrant]) {
         self.app = app
@@ -53,7 +54,7 @@ public struct AppPermissionsDetailSheet: View {
                     .padding(.bottom, 16)
             }
 
-            SheetCloseFooter()
+            actionFooter
         }
         .padding(22)
         .frame(width: 460)
@@ -150,5 +151,46 @@ public struct AppPermissionsDetailSheet: View {
             .filter { $0.service == service }
             .map(\.lastModified)
             .max()
+    }
+
+    private var resetCommands: [String] {
+        PermissionService.tccutilResetCommands(bundleID: app.bundleID, services: distinctServices)
+    }
+
+    @ViewBuilder
+    private var actionFooter: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            if !resetCommands.isEmpty {
+                Text(String(localized: "Permission Pulse won't run these — paste them into Terminal yourself."))
+                    .font(.system(size: 11))
+                    .foregroundStyle(.tertiary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            HStack(spacing: 8) {
+                Spacer()
+                if app.bundlePath != nil {
+                    Button(String(localized: "Reveal in Finder")) { revealInFinder() }
+                }
+                if !resetCommands.isEmpty {
+                    Button(String(localized: "Copy Reset Commands")) { copyResetCommands() }
+                }
+                Button(String(localized: "Close")) { dismiss() }
+                    .keyboardShortcut(.cancelAction)
+            }
+        }
+    }
+
+    // AppKit: NSPasteboard is the system clipboard; we only copy text the user
+    // pastes into Terminal themselves. Permission Pulse never executes it.
+    private func copyResetCommands() {
+        let pasteboard = NSPasteboard.general
+        pasteboard.clearContents()
+        pasteboard.setString(resetCommands.joined(separator: "\n"), forType: .string)
+    }
+
+    // AppKit: NSWorkspace reveals an existing bundle in Finder (read-only).
+    private func revealInFinder() {
+        guard let url = app.bundlePath else { return }
+        NSWorkspace.shared.activateFileViewerSelecting([url])
     }
 }

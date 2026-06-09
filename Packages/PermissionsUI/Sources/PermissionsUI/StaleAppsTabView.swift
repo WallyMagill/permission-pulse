@@ -93,6 +93,9 @@ private struct StaleAppRow: View {
             Spacer(minLength: 0)
             if let onSkipForever {
                 Menu {
+                    if app.app.bundlePath != nil {
+                        Button(String(localized: "Reveal in Finder")) { revealInFinder() }
+                    }
                     Button(String(localized: "Skip forever")) { onSkipForever() }
                 } label: {
                     Image(systemName: "ellipsis.circle")
@@ -102,7 +105,7 @@ private struct StaleAppRow: View {
                 .menuIndicator(.hidden)
                 .fixedSize()
                 .accessibilityLabel(String(localized: "Options"))
-                .accessibilityHint(String(localized: "Skip this app forever"))
+                .accessibilityHint(String(localized: "Reveal in Finder or skip this app"))
             }
         }
     }
@@ -126,5 +129,11 @@ private struct StaleAppRow: View {
             ? String(localized: "via Spotlight")
             : String(localized: "via file modified")
         return String(localized: "Last used \(dateString) · \(source) · \(app.daysSinceUsed) days ago")
+    }
+
+    // AppKit: NSWorkspace reveals the app bundle in Finder (read-only).
+    private func revealInFinder() {
+        guard let url = app.app.bundlePath else { return }
+        NSWorkspace.shared.activateFileViewerSelecting([url])
     }
 }

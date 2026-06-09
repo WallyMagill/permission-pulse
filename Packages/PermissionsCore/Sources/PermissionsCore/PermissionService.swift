@@ -48,6 +48,30 @@ public enum PermissionService: String, Sendable, CaseIterable, Hashable {
         "kTCCServicePostEvent",
     ]
 
+    /// The `tccutil reset <name>` service argument (the `kTCCService` prefix
+    /// stripped). `nil` for `.filesAndFolders`, whose grant comes from five
+    /// distinct sub-services with no single canonical reset target. (F2)
+    public var tccutilServiceName: String? {
+        switch self {
+        case .accessibility:   "Accessibility"
+        case .screenRecording: "ScreenCapture"
+        case .fullDiskAccess:  "SystemPolicyAllFiles"
+        case .microphone:      "Microphone"
+        case .camera:          "Camera"
+        case .automation:      "AppleEvents"
+        case .filesAndFolders: nil
+        case .photos:          "Photos"
+        case .calendar:        "Calendar"
+        case .contacts:        "AddressBook"
+        case .reminders:       "Reminders"
+        case .bluetooth:       "BluetoothAlways"
+        case .mediaLibrary:    "MediaLibrary"
+        case .appManagement:   "SystemPolicyAppBundles"
+        case .inputMonitoring: "ListenEvent"
+        case .developerTool:   "DeveloperTool"
+        }
+    }
+
     public init?(tccServiceString: String) {
         if Self.knownSkipped.contains(tccServiceString) {
             return nil
@@ -78,5 +102,16 @@ public enum PermissionService: String, Sendable, CaseIterable, Hashable {
         case "kTCCServiceDeveloperTool":              self = .developerTool
         default:                                      return nil
         }
+    }
+}
+
+extension PermissionService {
+    /// `tccutil reset` commands for an app, one per mappable service, sorted and
+    /// de-duplicated. Empty when the app has no bundle ID (the command needs one).
+    /// Display/copy only — Permission Pulse never runs these. (F2)
+    public static func tccutilResetCommands(bundleID: String, services: [PermissionService]) -> [String] {
+        guard !bundleID.isEmpty else { return [] }
+        let names = Set(services.compactMap(\.tccutilServiceName)).sorted()
+        return names.map { "tccutil reset \($0) \(bundleID)" }
     }
 }
