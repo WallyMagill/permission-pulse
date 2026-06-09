@@ -19,7 +19,7 @@ public struct LaunchAgentsSection: View {
     }
 
     public var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: PPSpacing.sm) {
             if showsHeader {
                 SectionHeader(
                     title: String(localized: "Launch Agents"),
@@ -32,7 +32,7 @@ public struct LaunchAgentsSection: View {
                 Text(String(localized: "No launch agents"))
                     .foregroundStyle(.secondary)
                     .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(12)
+                    .padding(PPSpacing.md)
                     .vibrancyCard()
             } else {
                 VStack(spacing: 0) {
@@ -41,7 +41,7 @@ public struct LaunchAgentsSection: View {
                             LaunchAgentRow(item: item)
                         }
                         if index < items.count - 1 {
-                            Divider().padding(.leading, 12)
+                            Divider().padding(.leading, PPSpacing.md)
                         }
                     }
                 }
@@ -58,10 +58,10 @@ private struct LaunchAgentRow: View {
     let item: LaunchAgentItem
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 2) {
+        VStack(alignment: .leading, spacing: PPSpacing.xxs) {
             Text(item.label)
             Text(item.sourceDirectory.path)
-                .font(.caption)
+                .ppFont(.metadata)
                 .foregroundStyle(.secondary)
         }
         .frame(maxWidth: .infinity, alignment: .leading)

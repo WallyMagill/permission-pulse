@@ -24,7 +24,7 @@ public struct PermissionsSection: View {
     public var body: some View {
         let displayItems = PermissionsDisplayItem.make(from: grants)
 
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: PPSpacing.sm) {
             if showsHeader {
                 SectionHeader(
                     title: String(localized: "Permissions"),
@@ -40,7 +40,7 @@ public struct PermissionsSection: View {
                     ForEach(Array(displayItems.enumerated()), id: \.element.id) { index, item in
                         rowView(for: item)
                         if index < displayItems.count - 1 {
-                            Divider().padding(.leading, 12)
+                            Divider().padding(.leading, PPSpacing.md)
                         }
                     }
                 }
@@ -85,23 +85,24 @@ private struct AppGroupRow: View {
     let grants: [PermissionGrant]
 
     var body: some View {
-        HStack(spacing: 12) {
+        HStack(spacing: PPSpacing.md) {
             AppIconResolver.iconView(for: app, size: 28)
-            VStack(alignment: .leading, spacing: 2) {
+            VStack(alignment: .leading, spacing: PPSpacing.xxs) {
                 Text(app.displayName)
-                    .font(.system(size: 13, weight: .medium))
+                    .ppFont(.body)
+                    .fontWeight(.medium)
                 Text(serviceLine)
-                    .font(.system(size: 11.5))
+                    .ppFont(.metadata)
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
                     .truncationMode(.tail)
             }
-            Spacer(minLength: 8)
+            Spacer(minLength: PPSpacing.sm)
             Text(serviceCountLabel)
-                .font(.system(size: 11))
+                .ppFont(.metadata)
                 .foregroundStyle(.secondary)
-                .padding(.horizontal, 8)
-                .padding(.vertical, 2)
+                .padding(.horizontal, PPSpacing.sm)
+                .padding(.vertical, PPSpacing.xxs)
                 .background(Color.primary.opacity(0.06), in: Capsule())
         }
     }

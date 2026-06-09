@@ -18,17 +18,17 @@ struct TappableRow<Content: View, Trailing: View>: View {
 
     var body: some View {
         Button(action: action) {
-            HStack(spacing: 8) {
+            HStack(spacing: PPSpacing.sm) {
                 content()
                     .frame(maxWidth: .infinity, alignment: .leading)
                 trailing()
                 Image(systemName: "chevron.right")
-                    .font(.caption2.weight(.semibold))
+                    .ppFont(.badge)
                     .foregroundStyle(.tertiary)
                     .accessibilityHidden(true)
             }
-            .padding(.vertical, 8)
-            .padding(.horizontal, 12)
+            .padding(.vertical, PPSpacing.sm)
+            .padding(.horizontal, PPSpacing.md)
             .contentShape(Rectangle())
             .background(isHovering ? Color.primary.opacity(0.06) : Color.clear)
         }

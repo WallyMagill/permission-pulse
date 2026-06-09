@@ -8,6 +8,9 @@ public enum PPFont {
     case body
     case secondary
     case metadata
+    /// Smallest tier — caption2 regular weight. Use for parenthetical or
+    /// deeply subordinate text that is distinct from `.badge` (caption2 semibold).
+    case tertiary
     case badge
 
     public var font: Font {
@@ -17,6 +20,7 @@ public enum PPFont {
         case .body:       .system(.body)
         case .secondary:  .system(.subheadline)
         case .metadata:   .system(.caption)
+        case .tertiary:   .system(.caption2)
         case .badge:      .system(.caption2, weight: .semibold)
         }
     }

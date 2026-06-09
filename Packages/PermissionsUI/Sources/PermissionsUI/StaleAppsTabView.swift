@@ -18,12 +18,12 @@ struct StaleAppsTabView: View {
         if visible.isEmpty {
             empty
         } else {
-            VStack(alignment: .leading, spacing: 8) {
+            VStack(alignment: .leading, spacing: PPSpacing.sm) {
                 Text(String(localized: "Apps with active grants you haven't used in \(staleThresholdDays)+ days"))
-                    .font(.subheadline)
+                    .ppFont(.secondary)
                     .foregroundStyle(.secondary)
                 Text(String(localized: "Use the ⋯ menu on a row to skip an app you don't want flagged."))
-                    .font(.footnote)
+                    .ppFont(.metadata)
                     .foregroundStyle(.tertiary)
                 VStack(spacing: 0) {
                     ForEach(Array(visible.enumerated()), id: \.offset) { index, app in
@@ -31,14 +31,14 @@ struct StaleAppsTabView: View {
                             app: app,
                             onSkipForever: { pendingSkipCandidate = app }
                         )
-                        .padding(.vertical, 8)
-                        .padding(.horizontal, 12)
+                        .padding(.vertical, PPSpacing.sm)
+                        .padding(.horizontal, PPSpacing.md)
                         if index < visible.count - 1 {
                             Divider().padding(.leading, 56)
                         }
                     }
                 }
-                .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 8))
+                .vibrancyCard()
             }
             .alert(
                 String(localized: "Skip this app forever?"),
@@ -67,9 +67,9 @@ struct StaleAppsTabView: View {
                 .font(.system(size: 36))
                 .foregroundStyle(.green)
                 .accessibilityHidden(true)
-            Text(String(localized: "No stale apps")).font(.headline)
+            Text(String(localized: "No stale apps")).ppFont(.cardHeader)
             Text(String(localized: "Every app with an active grant has been used recently."))
-                .font(.footnote)
+                .ppFont(.metadata)
                 .foregroundStyle(.secondary)
         }
         .padding(.vertical, 36)
@@ -82,13 +82,13 @@ private struct StaleAppRow: View {
     var onSkipForever: (() -> Void)? = nil
 
     var body: some View {
-        HStack(alignment: .top, spacing: 12) {
+        HStack(alignment: .top, spacing: PPSpacing.md) {
             icon
-            VStack(alignment: .leading, spacing: 2) {
-                Text(app.app.displayName).font(.body.weight(.medium))
-                Text(app.app.bundleID).font(.caption).foregroundStyle(.secondary)
-                Text(servicesLine).font(.caption).foregroundStyle(.tertiary)
-                Text(lastUsedLine).font(.caption2).foregroundStyle(.secondary)
+            VStack(alignment: .leading, spacing: PPSpacing.xxs) {
+                Text(app.app.displayName).ppFont(.body).fontWeight(.medium)
+                Text(app.app.bundleID).ppFont(.metadata).foregroundStyle(.secondary)
+                Text(servicesLine).ppFont(.metadata).foregroundStyle(.tertiary)
+                Text(lastUsedLine).ppFont(.tertiary).foregroundStyle(.secondary)
             }
             Spacer(minLength: 0)
             if let onSkipForever {
@@ -99,6 +99,7 @@ private struct StaleAppRow: View {
                     Button(String(localized: "Skip forever")) { onSkipForever() }
                 } label: {
                     Image(systemName: "ellipsis.circle")
+                        .ppFont(.body)
                         .foregroundStyle(.tertiary)
                 }
                 .menuStyle(.borderlessButton)

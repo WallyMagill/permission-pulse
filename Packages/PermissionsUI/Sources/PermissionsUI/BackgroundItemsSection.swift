@@ -22,7 +22,7 @@ public struct BackgroundItemsSection: View {
     }
 
     public var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: PPSpacing.sm) {
             if showsHeader {
                 SectionHeader(
                     title: String(localized: "Background Items"),
@@ -42,7 +42,7 @@ public struct BackgroundItemsSection: View {
                             DispositionBadge(disposition: item.disposition)
                         }
                         if index < items.count - 1 {
-                            Divider().padding(.leading, 12)
+                            Divider().padding(.leading, PPSpacing.md)
                         }
                     }
                 }
@@ -59,16 +59,16 @@ private struct BTMItemRow: View {
     let item: BTMItem
 
     var body: some View {
-        HStack(spacing: 12) {
+        HStack(spacing: PPSpacing.md) {
             iconView
-            VStack(alignment: .leading, spacing: 2) {
+            VStack(alignment: .leading, spacing: PPSpacing.xxs) {
                 Text(item.name)
                 Text(secondaryLine)
-                    .font(.caption)
+                    .ppFont(.metadata)
                     .foregroundStyle(.secondary)
                 if let parent = item.parentIdentifier, !parent.isEmpty {
                     Text(String(localized: "under \(parent)"))
-                        .font(.caption2)
+                        .ppFont(.tertiary)
                         .foregroundStyle(.tertiary)
                 }
             }
@@ -140,10 +140,10 @@ private struct DispositionBadge: View {
 
     var body: some View {
         Text(label)
-            .font(.caption2.weight(.semibold))
+            .ppFont(.badge)
             .foregroundStyle(Color.white)
             .padding(.horizontal, 6)
-            .padding(.vertical, 2)
+            .padding(.vertical, PPSpacing.xxs)
             .background(color, in: .capsule)
     }
 

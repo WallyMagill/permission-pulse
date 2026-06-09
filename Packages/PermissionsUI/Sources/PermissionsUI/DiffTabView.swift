@@ -43,7 +43,7 @@ struct DiffTabView: View {
             let totalVisible = tccVisible.count + btmVisible.count + laVisible.count
 
             if totalVisible > 0 {
-                VStack(alignment: .leading, spacing: 16) {
+                VStack(alignment: .leading, spacing: PPSpacing.lg) {
                     if !tccVisible.isEmpty {
                         section(title: String(localized: "Permissions"), rows: tccVisible)
                     }
@@ -54,7 +54,7 @@ struct DiffTabView: View {
                         section(title: String(localized: "Launch Agents"), rows: laVisible)
                     }
                     Text(String(localized: "Use the ⋯ menu on a row to snooze or dismiss a change."))
-                        .font(.footnote)
+                        .ppFont(.metadata)
                         .foregroundStyle(.tertiary)
                 }
                 .alert(
@@ -84,8 +84,8 @@ struct DiffTabView: View {
     }
 
     private func section(title: String, rows: [ChangeRow.Kind]) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text(title).font(.headline)
+        VStack(alignment: .leading, spacing: PPSpacing.sm) {
+            Text(title).ppFont(.cardHeader)
                 .accessibilityAddTraits(.isHeader)
             VStack(spacing: 0) {
                 ForEach(Array(rows.enumerated()), id: \.offset) { _, kind in
@@ -105,11 +105,11 @@ struct DiffTabView: View {
                             )
                         }
                     )
-                    .padding(.vertical, 8)
-                    .padding(.horizontal, 12)
+                    .padding(.vertical, PPSpacing.sm)
+                    .padding(.horizontal, PPSpacing.md)
                 }
             }
-            .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 8))
+            .vibrancyCard()
         }
     }
 
@@ -135,14 +135,14 @@ struct DiffTabView: View {
     }
 
     private var emptyNoPriorState: some View {
-        VStack(spacing: 12) {
+        VStack(spacing: PPSpacing.md) {
             Image(systemName: "clock.arrow.circlepath")
                 .font(.system(size: 36))
                 .foregroundStyle(.secondary)
                 .accessibilityHidden(true)
-            Text(emptyNoPriorHeadline).font(.headline)
+            Text(emptyNoPriorHeadline).ppFont(.cardHeader)
             Text(String(localized: "Permission Pulse needs at least one prior snapshot. Come back tomorrow."))
-                .font(.body)
+                .ppFont(.body)
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
         }
@@ -156,21 +156,21 @@ struct DiffTabView: View {
                 .font(.system(size: 36))
                 .foregroundStyle(.green)
                 .accessibilityHidden(true)
-            Text(emptyContentHeadline).font(.headline)
+            Text(emptyContentHeadline).ppFont(.cardHeader)
         }
         .padding(.vertical, 36)
         .frame(maxWidth: .infinity)
     }
 
     private func unavailableState(headline: String, detail: String) -> some View {
-        VStack(spacing: 12) {
+        VStack(spacing: PPSpacing.md) {
             Image(systemName: "exclamationmark.triangle.fill")
                 .font(.system(size: 36))
                 .foregroundStyle(.orange)
                 .accessibilityHidden(true)
-            Text(headline).font(.headline)
+            Text(headline).ppFont(.cardHeader)
             Text(detail)
-                .font(.body)
+                .ppFont(.body)
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
         }

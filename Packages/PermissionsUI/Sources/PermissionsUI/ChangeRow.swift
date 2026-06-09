@@ -24,6 +24,7 @@ struct ChangeRow: View {
         HStack(spacing: 10) {
             indicator
             Text(description)
+                .ppFont(.body)
                 .lineLimit(2)
                 .frame(maxWidth: .infinity, alignment: .leading)
             if onDismissForever != nil || onSnooze != nil {
@@ -36,6 +37,7 @@ struct ChangeRow: View {
                     }
                 } label: {
                     Image(systemName: "ellipsis.circle")
+                        .ppFont(.body)
                         .foregroundStyle(.tertiary)
                 }
                 .menuStyle(.borderlessButton)
@@ -51,13 +53,18 @@ struct ChangeRow: View {
     private var indicator: some View {
         switch kind {
         case .granted, .btmAdded, .launchAgentAdded:
-            Image(systemName: "plus.circle.fill").foregroundStyle(.green)
+            Image(systemName: "plus.circle.fill")
+                .ppFont(.body)
+                .foregroundStyle(.green)
                 .accessibilityHidden(true)
         case .revoked, .btmRemoved, .launchAgentRemoved:
-            Image(systemName: "minus.circle.fill").foregroundStyle(.red)
+            Image(systemName: "minus.circle.fill")
+                .ppFont(.body)
+                .foregroundStyle(.red)
                 .accessibilityHidden(true)
         case .btmDispositionFlipped, .launchAgentFlipped:
             Image(systemName: "arrow.triangle.2.circlepath.circle.fill")
+                .ppFont(.body)
                 .foregroundStyle(.orange)
                 .accessibilityHidden(true)
         }
