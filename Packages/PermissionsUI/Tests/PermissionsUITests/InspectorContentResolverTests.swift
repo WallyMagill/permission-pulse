@@ -46,16 +46,44 @@ struct InspectorContentResolverTests {
         #expect(appGrants.count == 2)
     }
 
-    @Test("Resolves launch agent and background item by ID")
-    func resolvesByID() {
+    @Test("Resolves launch agent selection by ID")
+    func resolvesByLaunchAgentID() {
         let la = InspectorContentResolver.resolve(
             .launchAgent(id: agent.id), grants: [], launchAgents: [agent], btmItems: []
         )
         #expect(la == .launchAgent(agent))
+    }
+
+    @Test("Resolves background item selection by ID")
+    func resolvesByBackgroundItemID() {
         let bg = InspectorContentResolver.resolve(
-            .backgroundItem(id: "btm-1"), grants: [], launchAgents: [], btmItems: [btm]
+            .backgroundItem(id: btm.id), grants: [], launchAgents: [], btmItems: [btm]
         )
         #expect(bg == .backgroundItem(btm))
+    }
+
+    @Test("App identity comes from the most recently modified grant")
+    func freshestIdentityWins() {
+        let old = PermissionGrant(
+            service: .camera,
+            app: AppIdentity(bundleID: "com.a", displayName: "Old Name", bundlePath: nil),
+            lastModified: Date(timeIntervalSince1970: 0),
+            automationTarget: nil, authValue: 2
+        )
+        let new = PermissionGrant(
+            service: .microphone,
+            app: AppIdentity(bundleID: "com.a", displayName: "New Name", bundlePath: nil),
+            lastModified: Date(timeIntervalSince1970: 1000),
+            automationTarget: nil, authValue: 2
+        )
+        let content = InspectorContentResolver.resolve(
+            .app(appKey: "com.a"), grants: [old, new], launchAgents: [], btmItems: []
+        )
+        guard case .app(let app, let appGrants) = content else {
+            Issue.record("Expected .app content"); return
+        }
+        #expect(app.displayName == "New Name")
+        #expect(appGrants.count == 2)
     }
 
     @Test("Returns nil for nil selection or items no longer present")

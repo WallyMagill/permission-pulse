@@ -30,8 +30,11 @@ public enum InspectorContentResolver {
         switch selection {
         case .app(let appKey):
             let matching = grants.filter { $0.appKey == appKey }
-            guard let first = matching.first else { return nil }
-            return .app(first.app, grants: matching)
+            // Representative identity comes from the most recently modified
+            // grant — if sources ever disagree on display name, newest wins.
+            // `grants` in the result is never empty by this guard.
+            guard let freshest = matching.max(by: { $0.lastModified < $1.lastModified }) else { return nil }
+            return .app(freshest.app, grants: matching)
         case .launchAgent(let id):
             guard let item = launchAgents.first(where: { $0.id == id }) else { return nil }
             return .launchAgent(item)
