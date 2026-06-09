@@ -39,6 +39,9 @@ public struct DetailWindowView: View {
                         }
                     }
                     ToolbarItem(placement: .primaryAction) {
+                        ExportToolbarMenu()
+                    }
+                    ToolbarItem(placement: .primaryAction) {
                         PreferencesToolbarButton {
                             NSApp.activate(ignoringOtherApps: true)
                             openWindow(id: "preferences")
