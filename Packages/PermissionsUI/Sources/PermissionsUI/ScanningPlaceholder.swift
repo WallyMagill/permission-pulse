@@ -4,15 +4,15 @@ import SwiftUI
 /// is nothing to display yet. (U1)
 struct ScanningPlaceholder: View {
     var body: some View {
-        VStack(spacing: 12) {
+        VStack(spacing: PPSpacing.md) {
             ProgressView()
                 .controlSize(.small)
             Text(String(localized: "Scanning…"))
-                .font(.headline)
+                .ppFont(.cardHeader)
                 .foregroundStyle(.secondary)
         }
         .frame(maxWidth: .infinity)
-        .padding(.vertical, 36)
+        .padding(.vertical, PPSpacing.xxl)
         .accessibilityElement(children: .combine)
         .accessibilityLabel(String(localized: "Scanning"))
     }

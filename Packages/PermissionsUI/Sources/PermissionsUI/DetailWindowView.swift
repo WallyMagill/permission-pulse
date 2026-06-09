@@ -129,13 +129,13 @@ private struct DetailSidebar: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             ScrollView {
-                VStack(alignment: .leading, spacing: 16) {
+                VStack(alignment: .leading, spacing: PPSpacing.lg) {
                     SidebarSection(header: String(localized: "Inventory")) {
                         SidebarButton(
                             target: .permissions,
                             currentSelection: $selection,
                             icon: "lock.fill",
-                            tint: .blue,
+                            tint: PPColor.permissions,
                             title: String(localized: "Permissions"),
                             trailing: .count(viewModel.grants.count)
                         )
@@ -143,7 +143,7 @@ private struct DetailSidebar: View {
                             target: .launchAgents,
                             currentSelection: $selection,
                             icon: "clock.fill",
-                            tint: .purple,
+                            tint: PPColor.launchAgents,
                             title: String(localized: "Launch Agents"),
                             trailing: .count(viewModel.launchAgents.count)
                         )
@@ -151,7 +151,7 @@ private struct DetailSidebar: View {
                             target: .backgroundItems,
                             currentSelection: $selection,
                             icon: "square.stack.3d.up.fill",
-                            tint: .teal,
+                            tint: PPColor.backgroundItems,
                             title: String(localized: "Background Items"),
                             trailing: .count(viewModel.btmItems.count)
                         )
@@ -161,7 +161,7 @@ private struct DetailSidebar: View {
                             target: .recentChanges,
                             currentSelection: $selection,
                             icon: "clock.arrow.circlepath",
-                            tint: .orange,
+                            tint: PPColor.recentChanges,
                             title: String(localized: "Recent Changes"),
                             trailing: recentTrailing
                         )
@@ -169,14 +169,14 @@ private struct DetailSidebar: View {
                             target: .staleApps,
                             currentSelection: $selection,
                             icon: "hourglass",
-                            tint: .pink,
+                            tint: PPColor.staleApps,
                             title: String(localized: "Stale Apps"),
                             trailing: .count(viewModel.staleApps.count)
                         )
                     }
                 }
-                .padding(.horizontal, 8)
-                .padding(.vertical, 14)
+                .padding(.horizontal, PPSpacing.sm)
+                .padding(.vertical, PPSpacing.lg)
                 .frame(maxWidth: .infinity, alignment: .leading)
             }
 
@@ -209,19 +209,19 @@ private struct DetailSidebar: View {
     }
 
     private var sidebarFooter: some View {
-        HStack(spacing: 6) {
+        HStack(spacing: PPSpacing.sm) {
             ZStack {
                 Circle().fill(footerColor.opacity(0.22)).frame(width: 13, height: 13)
                 Circle().fill(footerColor).frame(width: 7, height: 7)
             }
             .accessibilityHidden(true)
             Text(footerText)
-                .font(.system(size: 11))
+                .ppFont(.metadata)
                 .foregroundStyle(.secondary)
             Spacer(minLength: 0)
         }
-        .padding(.horizontal, 14)
-        .padding(.vertical, 8)
+        .padding(.horizontal, PPSpacing.lg)
+        .padding(.vertical, PPSpacing.sm)
     }
 
     private var footerColor: Color {
@@ -242,14 +242,11 @@ private struct SidebarSection<Content: View>: View {
     @ViewBuilder let content: () -> Content
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            Text(header.uppercased())
-                .font(.system(size: 11, weight: .semibold))
-                .tracking(0.6)
-                .foregroundStyle(.secondary)
-                .accessibilityAddTraits(.isHeader)
-                .padding(.horizontal, 10)
-                .padding(.bottom, 2)
+        VStack(alignment: .leading, spacing: PPSpacing.xs) {
+            Text(header)
+                .ppSectionLabel()
+                .padding(.horizontal, PPSpacing.md)
+                .padding(.bottom, PPSpacing.xxs)
             content()
         }
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -278,24 +275,25 @@ private struct SidebarButton: View {
         Button {
             currentSelection = target
         } label: {
-            HStack(spacing: 8) {
+            HStack(spacing: PPSpacing.sm) {
                 ZStack {
-                    RoundedRectangle(cornerRadius: 5, style: .continuous)
+                    RoundedRectangle(cornerRadius: PPRadius.small, style: .continuous)
                         .fill(isSelected ? Color.white.opacity(0.24) : tint.opacity(0.16))
                         .frame(width: 20, height: 20)
                     Image(systemName: icon)
+                        // Decorative icon inside fixed 20×20 tile — keep fixed size (rule 1)
                         .font(.system(size: 10, weight: .semibold))
                         .foregroundStyle(isSelected ? Color.white : tint)
                         .accessibilityHidden(true)
                 }
                 Text(title)
-                    .font(.system(size: 12))
+                    .ppFont(.secondary)
                     .foregroundStyle(isSelected ? Color.white : .primary)
-                Spacer(minLength: 4)
+                Spacer(minLength: PPSpacing.xs)
                 trailingView
             }
-            .padding(.horizontal, 9)
-            .padding(.vertical, 5)
+            .padding(.horizontal, PPSpacing.sm)
+            .padding(.vertical, PPSpacing.xs)
             .background(rowBackground)
             .contentShape(Rectangle())
         }
@@ -307,10 +305,10 @@ private struct SidebarButton: View {
     @ViewBuilder
     private var rowBackground: some View {
         if isSelected {
-            RoundedRectangle(cornerRadius: 6, style: .continuous)
+            RoundedRectangle(cornerRadius: PPRadius.small, style: .continuous)
                 .fill(Color.accentColor)
         } else if isHovering {
-            RoundedRectangle(cornerRadius: 6, style: .continuous)
+            RoundedRectangle(cornerRadius: PPRadius.small, style: .continuous)
                 .fill(Color.primary.opacity(0.05))
         } else {
             Color.clear
@@ -322,15 +320,15 @@ private struct SidebarButton: View {
         switch trailing {
         case .count(let n):
             Text("\(n)")
-                .font(.system(size: 11))
+                .ppFont(.metadata)
                 .foregroundStyle(isSelected ? Color.white.opacity(0.78) : .secondary)
                 .monospacedDigit()
         case .newBadge(let n):
             Text("\(n)")
-                .font(.system(size: 10, weight: .semibold))
+                .ppFont(.badge)
                 .foregroundStyle(isSelected ? Color.orange : Color.white)
-                .padding(.horizontal, 6)
-                .padding(.vertical, 1)
+                .padding(.horizontal, PPSpacing.sm)
+                .padding(.vertical, PPSpacing.xxs)
                 .background(
                     Capsule().fill(isSelected ? Color.white : Color.orange)
                 )
@@ -352,35 +350,35 @@ private struct DetailPageScaffold<Content: View>: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            HStack(alignment: .firstTextBaseline, spacing: 12) {
+            HStack(alignment: .firstTextBaseline, spacing: PPSpacing.md) {
                 Text(title)
-                    .font(.system(size: 22, weight: .semibold))
+                    .ppFont(.pageTitle)
                     .accessibilityAddTraits(.isHeader)
                 if dataSource == .mock {
                     MockBadge()
                 }
                 if let inlineMeta {
                     Text(inlineMeta)
-                        .font(.system(size: 12.5))
+                        .ppFont(.secondary)
                         .foregroundStyle(.secondary)
                 }
                 Spacer(minLength: 0)
             }
-            .padding(.horizontal, 24)
-            .padding(.top, 18)
-            .padding(.bottom, 12)
+            .padding(.horizontal, PPSpacing.xl)
+            .padding(.top, PPSpacing.lg)
+            .padding(.bottom, PPSpacing.md)
 
             ScrollView {
-                VStack(alignment: .leading, spacing: 12) {
+                VStack(alignment: .leading, spacing: PPSpacing.md) {
                     if let subtitle {
                         Text(subtitle)
-                            .font(.system(size: 12.5))
+                            .ppFont(.secondary)
                             .foregroundStyle(.secondary)
                     }
                     content()
                 }
-                .padding(.horizontal, 24)
-                .padding(.bottom, 24)
+                .padding(.horizontal, PPSpacing.xl)
+                .padding(.bottom, PPSpacing.xl)
                 .frame(maxWidth: .infinity, alignment: .leading)
             }
         }
@@ -453,20 +451,21 @@ private struct LaunchAgentsDetailPage: View {
     var body: some View {
         DetailPageScaffold(title: String(localized: "Launch Agents"), subtitle: subtitle, dataSource: viewModel.launchAgentsDataSource) {
             if let error = viewModel.launchAgentScanError {
-                VStack(spacing: 8) {
+                VStack(spacing: PPSpacing.sm) {
                     Image(systemName: "exclamationmark.triangle.fill")
+                        // Decorative hero icon — keep fixed size (rule 1)
                         .font(.system(size: 36))
-                        .foregroundStyle(.orange)
+                        .foregroundStyle(PPColor.warning)
                         .accessibilityHidden(true)
                     Text(String(localized: "Couldn't read Launch Agents"))
-                        .font(.headline)
+                        .ppFont(.cardHeader)
                     Text(error.errorDescription ?? String(localized: "An error occurred reading the LaunchAgents directories."))
-                        .font(.footnote)
+                        .ppFont(.metadata)
                         .foregroundStyle(.secondary)
                         .multilineTextAlignment(.center)
                 }
                 .frame(maxWidth: .infinity)
-                .padding(.vertical, 36)
+                .padding(.vertical, PPSpacing.xxl)
             } else if ScanState.showsScanningPlaceholder(
                 isScanning: viewModel.scanInProgress,
                 isEmpty: viewModel.launchAgents.isEmpty,
@@ -632,17 +631,18 @@ private struct EmptySearchView: View {
     let query: String
 
     var body: some View {
-        VStack(spacing: 6) {
+        VStack(spacing: PPSpacing.sm) {
             Image(systemName: "magnifyingglass")
+                // Decorative hero icon — keep fixed size (rule 1)
                 .font(.system(size: 28))
                 .foregroundStyle(.tertiary)
                 .accessibilityHidden(true)
             Text(String(localized: "No matches for \"\(query)\""))
-                .font(.headline)
+                .ppFont(.cardHeader)
                 .foregroundStyle(.secondary)
         }
         .frame(maxWidth: .infinity)
-        .padding(.vertical, 36)
+        .padding(.vertical, PPSpacing.xxl)
     }
 }
 

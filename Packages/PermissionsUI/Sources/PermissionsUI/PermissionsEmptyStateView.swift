@@ -26,90 +26,93 @@ struct PermissionsEmptyStateView: View {
     }
 
     private var permissionDeniedView: some View {
-        VStack(spacing: 12) {
+        VStack(spacing: PPSpacing.md) {
             Image(systemName: "lock.shield")
+                // Decorative hero icon — keep fixed size (rule 1)
                 .font(.system(size: 36))
                 .foregroundStyle(.secondary)
                 .accessibilityHidden(true)
             Text(String(localized: "Full Disk Access required"))
-                .font(.headline)
+                .ppFont(.cardHeader)
             Text(permissionDeniedBody)
-                .font(.body)
+                .ppFont(.body)
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
                 .fixedSize(horizontal: false, vertical: true)
             Button {
                 viewModel.showFDASheetOnDetail = true
             } label: {
-                HStack(spacing: 6) {
+                HStack(spacing: PPSpacing.sm) {
                     Image(systemName: "arrow.up.right.square")
                         .accessibilityHidden(true)
                     Text(String(localized: "Grant Access in System Settings"))
                         .fontWeight(.semibold)
                 }
-                .padding(.horizontal, 16)
-                .padding(.vertical, 8)
+                .padding(.horizontal, PPSpacing.lg)
+                .padding(.vertical, PPSpacing.sm)
             }
             .buttonStyle(.borderedProminent)
             .controlSize(.large)
             .tint(.blue)
-            .padding(.vertical, 4)
-            VStack(spacing: 6) {
+            .padding(.vertical, PPSpacing.xs)
+            VStack(spacing: PPSpacing.sm) {
                 Text(String(localized: "You'll need to relaunch Permission Pulse after granting."))
-                    .font(.footnote)
+                    .ppFont(.metadata)
                     .foregroundStyle(.tertiary)
                 Button {
                     AppRelauncher.relaunch()
                 } label: {
-                    HStack(spacing: 5) {
+                    HStack(spacing: PPSpacing.xs) {
                         Image(systemName: "arrow.clockwise")
                             .accessibilityHidden(true)
                         Text(String(localized: "Quit & Reopen"))
                     }
-                    .font(.footnote.weight(.medium))
+                    .ppFont(.metadata)
+                    .fontWeight(.medium)
                 }
                 .buttonStyle(.link)
                 .accessibilityHint(String(localized: "Restarts Permission Pulse so a newly granted permission takes effect"))
             }
             DisclosureGroup(String(localized: "Why does Permission Pulse need this?")) {
                 Text(disclosureBody)
-                    .font(.footnote)
+                    .ppFont(.metadata)
                     .foregroundStyle(.secondary)
-                    .padding(.top, 4)
+                    .padding(.top, PPSpacing.xs)
             }
-            .font(.footnote)
+            .ppFont(.metadata)
         }
-        .padding(.vertical, 24)
+        .padding(.vertical, PPSpacing.xl)
         .frame(maxWidth: .infinity)
     }
 
     private var schemaMismatchView: some View {
-        VStack(spacing: 8) {
+        VStack(spacing: PPSpacing.sm) {
             Text(unavailableHeadline)
-                .font(.headline)
+                .ppFont(.cardHeader)
                 .foregroundStyle(.secondary)
             Text(String(localized: "See the banner above for details."))
-                .font(.footnote)
+                .ppFont(.metadata)
                 .foregroundStyle(.tertiary)
         }
-        .padding(.vertical, 16)
+        .padding(.vertical, PPSpacing.lg)
         .frame(maxWidth: .infinity)
     }
 
     private var temporarilyUnavailableView: some View {
-        VStack(spacing: 8) {
+        VStack(spacing: PPSpacing.sm) {
             Image(systemName: "clock.badge.exclamationmark")
+                // Decorative hero icon — keep fixed size (rule 1)
                 .font(.system(size: 36))
                 .foregroundStyle(.secondary)
                 .accessibilityHidden(true)
             Text(String(localized: "Temporarily unavailable"))
-                .font(.headline)
+                .ppFont(.cardHeader)
             Text(String(localized: "The database is busy right now. Use Refresh to try again."))
-                .font(.footnote)
+                .ppFont(.metadata)
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
         }
-        .padding(.vertical, 24)
+        .padding(.vertical, PPSpacing.xl)
         .frame(maxWidth: .infinity)
     }
 

@@ -15,24 +15,24 @@ struct SchemaMismatchBanner: View {
     )!
 
     var body: some View {
-        HStack(alignment: .top, spacing: 12) {
+        HStack(alignment: .top, spacing: PPSpacing.md) {
             Image(systemName: "exclamationmark.triangle.fill")
                 .font(.title3)
-                .foregroundStyle(.orange)
+                .foregroundStyle(PPColor.warning)
                 .accessibilityHidden(true)
-            VStack(alignment: .leading, spacing: 4) {
+            VStack(alignment: .leading, spacing: PPSpacing.xs) {
                 Text(headline)
-                    .font(.headline)
+                    .ppFont(.cardHeader)
                 Text(bodyText)
-                    .font(.footnote)
+                    .ppFont(.metadata)
                     .foregroundStyle(.secondary)
             }
             Spacer()
             Link(String(localized: "Report"), destination: Self.reportURL)
                 .buttonStyle(.borderless)
         }
-        .padding(12)
-        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 8))
+        .padding(PPSpacing.md)
+        .vibrancyCard()
     }
 
     private var headline: String {
