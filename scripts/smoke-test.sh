@@ -309,6 +309,35 @@ passed --no-launch). Run through them and report any deviations.
      Headings); overview rows read as one phrase ("Permissions, 12"); and
      empty-state / hero icons (Welcome, FDA sheet, empty diffs) stay silent.
 
+  ─── Visual / design system (Thread B) ───
+
+  O. Type scale & Dynamic Type. System Settings → Accessibility → Display →
+     larger text (or Displays → Larger Text). Detail window, sheets,
+     Preferences, Welcome all scale and reflow cleanly. The menu-bar dropdown
+     scales only modestly (clamped at xLarge) and never blows past its 320pt
+     width.
+
+  P. Light & dark. Toggle System Settings → Appearance. Every surface —
+     dropdown, detail window, sidebar, each sheet, Preferences, Welcome —
+     looks intentional in BOTH; no washed-out or unreadable text.
+
+  Q. Reduce Transparency. Accessibility → Display → Reduce Transparency ON.
+     Cards/panels stay solid and legible (the app's cards are solid by
+     design); the dropdown popover background stays readable. OFF looks normal.
+
+  R. Accent color. System Settings → Appearance → Accent color → pick a
+     non-blue (e.g. Pink). Interactive elements (sidebar selection, buttons,
+     pickers, service pills) follow it; the brand badge stays blue; category
+     and status colors (green/red/orange) are unchanged.
+
+  S. Badge contrast. The Mock / Live badges and the background-item
+     disposition badges read clearly (dark text on a pale tint) in both light
+     and dark — no white-on-color low-contrast text.
+
+  T. Consistency sweep. Scan all surfaces side by side: section labels,
+     spacing rhythm, card depth (hairline + soft shadow), and type sizes match
+     everywhere. Nothing looks like a one-off.
+
 EOF
 
 if [[ ${#FAILED[@]} -gt 0 ]]; then
