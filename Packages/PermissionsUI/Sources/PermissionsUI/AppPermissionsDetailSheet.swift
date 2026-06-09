@@ -34,7 +34,7 @@ public struct AppPermissionsDetailSheet: View {
                     SheetRiskPanel(text: highest.riskDescription)
                     if distinctServices.count > 1 {
                         Text(String(localized: "Highest-risk service shown."))
-                            .font(.system(size: 11))
+                            .ppFont(.metadata)
                             .foregroundStyle(.tertiary)
                             .padding(.leading, 2)
                     }
@@ -67,9 +67,9 @@ public struct AppPermissionsDetailSheet: View {
             AppIconResolver.iconView(for: app, size: 44)
             VStack(alignment: .leading, spacing: 2) {
                 Text(app.displayName)
-                    .font(.system(size: 17, weight: .semibold))
+                    .ppFont(.cardHeader)
                 Text(app.bundleID)
-                    .font(.system(size: 11.5))
+                    .ppFont(.metadata)
                     .foregroundStyle(.secondary)
                     .textSelection(.enabled)
             }
@@ -109,10 +109,10 @@ public struct AppPermissionsDetailSheet: View {
         HStack(alignment: .firstTextBaseline) {
             VStack(alignment: .leading, spacing: 2) {
                 Text(grant.automationTarget ?? String(localized: "(unset)"))
-                    .font(.system(size: 12.5).monospaced())
+                    .font(Font.system(.subheadline).monospaced())
                     .textSelection(.enabled)
                 Text(String(localized: "Granted \(sheetFormattedDate(grant.lastModified))"))
-                    .font(.system(size: 11))
+                    .ppFont(.metadata)
                     .foregroundStyle(.secondary)
             }
             Spacer()
@@ -162,7 +162,7 @@ public struct AppPermissionsDetailSheet: View {
         VStack(alignment: .leading, spacing: 8) {
             if !resetCommands.isEmpty {
                 Text(String(localized: "Permission Pulse won't run these — paste them into Terminal yourself."))
-                    .font(.system(size: 11))
+                    .ppFont(.metadata)
                     .foregroundStyle(.tertiary)
                     .fixedSize(horizontal: false, vertical: true)
             }

@@ -7,7 +7,7 @@ import PermissionsCore
 struct DesignSystemTests {
     @Test("every badge style passes WCAG AA (>= 4.5:1)")
     func badgeContrast() {
-        for style in [PPBadgeStyle.mock, .live] {
+        for style in [PPBadgeStyle.mock, .live, .enabled, .disabled, .dispositionUnknown] {
             let ratio = WCAGContrast.ratio(
                 foreground: style.foregroundRGB,
                 background: style.backgroundRGB

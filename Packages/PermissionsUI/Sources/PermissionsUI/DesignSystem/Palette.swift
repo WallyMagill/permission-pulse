@@ -34,18 +34,30 @@ public enum PPColor {
 public enum PPBadgeStyle {
     case mock
     case live
+    /// BTMItem.Disposition.enabled — green family
+    case enabled
+    /// BTMItem.Disposition.disabled — slate-gray family
+    case disabled
+    /// BTMItem.Disposition.unknown — amber/gray family
+    case dispositionUnknown
 
     public var foregroundRGB: (Double, Double, Double) {
         switch self {
-        case .mock: (0.45, 0.22, 0.0)
-        case .live: (0.0, 0.33, 0.13)
+        case .mock:                (0.45, 0.22, 0.0)
+        case .live:                (0.0, 0.33, 0.13)
+        case .enabled:             (0.0, 0.33, 0.13)
+        case .disabled:            (0.28, 0.30, 0.33)
+        case .dispositionUnknown:  (0.45, 0.22, 0.0)
         }
     }
 
     public var backgroundRGB: (Double, Double, Double) {
         switch self {
-        case .mock: (0.99, 0.92, 0.82)
-        case .live: (0.86, 0.96, 0.89)
+        case .mock:                (0.99, 0.92, 0.82)
+        case .live:                (0.86, 0.96, 0.89)
+        case .enabled:             (0.86, 0.96, 0.89)
+        case .disabled:            (0.90, 0.91, 0.93)
+        case .dispositionUnknown:  (0.99, 0.92, 0.82)
         }
     }
 

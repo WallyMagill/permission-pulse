@@ -15,11 +15,8 @@ struct SheetSectionLabel: View {
     }
 
     var body: some View {
-        Text(title.uppercased())
-            .font(.system(size: 11, weight: .semibold))
-            .tracking(0.6)
-            .foregroundStyle(.secondary)
-            .accessibilityAddTraits(.isHeader)
+        Text(title)
+            .ppSectionLabel()
     }
 }
 
@@ -51,13 +48,13 @@ struct SheetKVCard: View {
     }
 
     private func kvRow(_ row: SheetKVRow) -> some View {
-        HStack(alignment: .firstTextBaseline, spacing: 12) {
+        HStack(alignment: .firstTextBaseline, spacing: PPSpacing.md) {
             Text(row.key)
-                .font(.system(size: 12))
+                .ppFont(.secondary)
                 .foregroundStyle(.secondary)
                 .frame(width: 96, alignment: .leading)
             Text(row.value)
-                .font(row.monospaced ? .system(size: 12.5).monospaced() : .system(size: 12.5))
+                .font(row.monospaced ? Font.system(.subheadline).monospaced() : .system(.subheadline))
                 .fontWeight(row.monospaced ? .regular : .medium)
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .textSelection(.enabled)
@@ -73,7 +70,7 @@ struct SheetRiskPanel: View {
 
     var body: some View {
         Text(text)
-            .font(.system(size: 12.5))
+            .ppFont(.secondary)
             .lineSpacing(2)
             .fixedSize(horizontal: false, vertical: true)
             .frame(maxWidth: .infinity, alignment: .leading)
@@ -88,19 +85,11 @@ struct SheetGradientTile: View {
 
     var body: some View {
         RoundedRectangle(cornerRadius: 11, style: .continuous)
-            .fill(
-                LinearGradient(
-                    colors: [
-                        Color(red: 0.37, green: 0.55, blue: 1.0),
-                        Color(red: 0.04, green: 0.52, blue: 1.0),
-                    ],
-                    startPoint: .topLeading,
-                    endPoint: .bottomTrailing
-                )
-            )
+            .fill(PPColor.brandGradient)
             .frame(width: size, height: size)
             .overlay(
                 Image(systemName: symbol)
+                    // Decorative symbol scaled to tile — KEEP fixed font size (Rule 1)
                     .font(.system(size: size * 0.42, weight: .semibold))
                     .foregroundStyle(.white)
                     .accessibilityHidden(true)
@@ -134,13 +123,14 @@ struct ServicePillButton: View {
         Button(action: action) {
             HStack(spacing: 5) {
                 Text(service.displayName)
-                    .font(.system(size: 11.5, weight: .medium))
+                    .ppFont(.metadata)
+                    .fontWeight(.medium)
                 if let date {
                     Text("·")
-                        .font(.system(size: 11.5))
+                        .ppFont(.metadata)
                         .opacity(0.5)
                     Text(sheetShortDate(date))
-                        .font(.system(size: 11.5))
+                        .ppFont(.metadata)
                 }
             }
             .padding(.horizontal, 10)

@@ -42,10 +42,10 @@ public struct LaunchAgentDetailSheet: View {
             SheetGradientTile(symbol: "gearshape.fill")
             VStack(alignment: .leading, spacing: 2) {
                 Text(item.label)
-                    .font(.system(size: 17, weight: .semibold))
+                    .ppFont(.cardHeader)
                     .lineLimit(2)
                 Text(scopeLabel)
-                    .font(.system(size: 11.5))
+                    .ppFont(.metadata)
                     .foregroundStyle(.secondary)
             }
             Spacer(minLength: 0)
@@ -74,7 +74,7 @@ public struct LaunchAgentDetailSheet: View {
 
     private var sourcePathLine: some View {
         Text(item.sourceDirectory.path)
-            .font(.system(size: 12).monospaced())
+            .font(Font.system(.subheadline).monospaced())
             .foregroundStyle(.secondary)
             .textSelection(.enabled)
             .frame(maxWidth: .infinity, alignment: .leading)

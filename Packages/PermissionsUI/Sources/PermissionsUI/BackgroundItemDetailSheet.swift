@@ -36,11 +36,11 @@ public struct BackgroundItemDetailSheet: View {
             iconView
             VStack(alignment: .leading, spacing: 2) {
                 Text(item.name)
-                    .font(.system(size: 17, weight: .semibold))
+                    .ppFont(.cardHeader)
                     .lineLimit(2)
                 if let subtitle {
                     Text(subtitle)
-                        .font(.system(size: 11.5))
+                        .ppFont(.metadata)
                         .foregroundStyle(.secondary)
                 }
             }
@@ -131,17 +131,18 @@ public struct BackgroundItemDetailSheet: View {
 }
 
 // Re-declared here because the version in BackgroundItemsSection is private.
-// Kept identical so visual treatment matches the row badge.
+// Uses contrast-safe PPBadgeStyle tokens so text passes WCAG AA (>= 4.5:1) on
+// any surface — identical pattern to the Mock/Live data-source badges.
 private struct DispositionBadge: View {
     let disposition: BTMItem.Disposition
 
     var body: some View {
         Text(label)
-            .font(.caption2.weight(.semibold))
-            .foregroundStyle(Color.white)
+            .ppFont(.badge)
+            .foregroundStyle(style.foreground)
             .padding(.horizontal, 6)
             .padding(.vertical, 2)
-            .background(color, in: .capsule)
+            .background(style.background, in: .capsule)
     }
 
     private var label: String {
@@ -152,11 +153,11 @@ private struct DispositionBadge: View {
         }
     }
 
-    private var color: Color {
+    private var style: PPBadgeStyle {
         switch disposition {
-        case .enabled:  .green
-        case .disabled: .gray
-        case .unknown:  .orange
+        case .enabled:  .enabled
+        case .disabled: .disabled
+        case .unknown:  .dispositionUnknown
         }
     }
 }

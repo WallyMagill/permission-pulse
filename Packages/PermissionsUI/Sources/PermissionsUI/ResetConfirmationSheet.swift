@@ -23,13 +23,13 @@ public struct ResetConfirmationSheet: View {
                     .accessibilityHidden(true)
                 VStack(alignment: .leading, spacing: 4) {
                     Text(String(localized: "Reset Permission Pulse?"))
-                        .font(.headline)
+                        .ppFont(.cardHeader)
                     Text(String(localized: "This deletes all saved snapshots, dismissed items, snoozes, and preferences. Permission Pulse will rescan immediately."))
-                        .font(.body)
+                        .ppFont(.body)
                         .foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
                     Text(String(localized: "This cannot be undone."))
-                        .font(.body)
+                        .ppFont(.body)
                         .foregroundStyle(.primary)
                 }
             }
