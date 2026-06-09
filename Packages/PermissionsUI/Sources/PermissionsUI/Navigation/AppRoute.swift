@@ -32,4 +32,14 @@ public enum AppRoute: Hashable, Sendable {
         case .staleApps: .staleApps
         }
     }
+
+    /// The pre-selection carried by this route, if any.
+    public var inspectorSelection: InspectorSelection? {
+        switch self {
+        case .permissions(let key?): .app(appKey: key)
+        case .launchAgents(let id?): .launchAgent(id: id)
+        case .backgroundItems(let id?): .backgroundItem(id: id)
+        default: nil
+        }
+    }
 }
