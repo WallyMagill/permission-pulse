@@ -105,6 +105,23 @@ public struct MenuBarContentView: View {
                 title: String(localized: "Background Items"),
                 count: viewModel.btmItems.count
             )
+            if let risk = PermissionRiskSummary.line(for: viewModel.grants) {
+                HStack(spacing: 6) {
+                    Image(systemName: "exclamationmark.shield")
+                        .font(.system(size: 10, weight: .semibold))
+                        .foregroundStyle(.orange)
+                        .accessibilityHidden(true)
+                    Text(risk)
+                        .font(.system(size: 11))
+                        .foregroundStyle(.secondary)
+                        .lineLimit(2)
+                    Spacer(minLength: 0)
+                }
+                .accessibilityElement(children: .combine)
+                .accessibilityLabel(String(localized: "Elevated access: \(risk)"))
+                .padding(.horizontal, 16)
+                .padding(.top, 4)
+            }
         }
     }
 

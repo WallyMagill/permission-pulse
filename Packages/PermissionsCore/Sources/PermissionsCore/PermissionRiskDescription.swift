@@ -57,3 +57,48 @@ extension PermissionService {
         }
     }
 }
+
+extension PermissionService {
+    /// Severity rank for risk panels and summaries. Higher = more privileged.
+    /// FDA is the most privileged TCC scope, then UI/event-hijack, then capture,
+    /// then automation, then everything else. (moved from PermissionsUI for reuse)
+    public var riskSeverity: Int {
+        switch self {
+        case .fullDiskAccess:  100
+        case .accessibility:    90
+        case .inputMonitoring:  80
+        case .screenRecording:  70
+        case .camera:           60
+        case .microphone:       60
+        case .automation:       50
+        case .appManagement:    40
+        case .developerTool:    35
+        case .filesAndFolders:  30
+        case .photos:           20
+        case .contacts:         15
+        case .calendar:         10
+        case .reminders:        10
+        case .mediaLibrary:      8
+        case .bluetooth:         5
+        }
+    }
+}
+
+/// One-line menu-bar hygiene signal counting distinct apps that hold each
+/// surfaced high-risk service. (F4)
+public enum PermissionRiskSummary {
+    /// High-risk services worth surfacing, in display order.
+    private static let surfaced: [PermissionService] = [
+        .fullDiskAccess, .accessibility, .inputMonitoring, .screenRecording,
+    ]
+
+    /// e.g. "3 Full Disk Access · 1 Accessibility". `nil` when none are held.
+    public static func line(for grants: [PermissionGrant]) -> String? {
+        let parts: [String] = surfaced.compactMap { service in
+            let apps = Set(grants.filter { $0.service == service }.map(\.appKey))
+            guard !apps.isEmpty else { return nil }
+            return String(localized: "\(apps.count) \(service.displayName)")
+        }
+        return parts.isEmpty ? nil : parts.joined(separator: " · ")
+    }
+}

@@ -234,29 +234,3 @@ struct FlowLayout: Layout {
         return (positions, y + lineHeight, widestLine)
     }
 }
-
-// Severity rank for the multi-service Risk panel. Higher rank = shown first.
-// Order is intentional: FDA is the most privileged TCC scope, then UI/event
-// hijack capabilities, then capture, then automation, then everything else.
-extension PermissionService {
-    var riskSeverity: Int {
-        switch self {
-        case .fullDiskAccess:  100
-        case .accessibility:    90
-        case .inputMonitoring:  80
-        case .screenRecording:  70
-        case .camera:           60
-        case .microphone:       60
-        case .automation:       50
-        case .appManagement:    40
-        case .developerTool:    35
-        case .filesAndFolders:  30
-        case .photos:           20
-        case .contacts:         15
-        case .calendar:         10
-        case .reminders:        10
-        case .mediaLibrary:      8
-        case .bluetooth:         5
-        }
-    }
-}
