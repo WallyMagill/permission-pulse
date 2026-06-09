@@ -7,9 +7,14 @@ public struct MenuBarContentView: View {
     @Environment(\.openWindow) private var openWindow
     @Environment(AppViewModel.self) private var viewModel
     private let onShowWelcome: (() -> Void)?
+    private let onRescan: (() -> Void)?
 
-    public init(onShowWelcome: (() -> Void)? = nil) {
+    public init(
+        onShowWelcome: (() -> Void)? = nil,
+        onRescan: (() -> Void)? = nil
+    ) {
         self.onShowWelcome = onShowWelcome
+        self.onRescan = onRescan
     }
 
     public var body: some View {
@@ -307,6 +312,18 @@ public struct MenuBarContentView: View {
 
     private var footer: some View {
         VStack(alignment: .leading, spacing: 1) {
+            if let onRescan {
+                MenuRowButton(
+                    icon: "arrow.clockwise",
+                    title: String(localized: "Rescan Now"),
+                    shortcutKey: "r",
+                    shortcutDisplay: "⌘R"
+                ) {
+                    onRescan()
+                }
+                .disabled(viewModel.scanInProgress)
+            }
+
             MenuRowButton(
                 icon: "clock.arrow.circlepath",
                 iconTint: .accentColor,

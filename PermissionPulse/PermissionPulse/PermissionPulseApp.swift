@@ -20,9 +20,14 @@ struct PermissionPulseApp: App {
         .defaultSize(width: 0, height: 0)
 
         MenuBarExtra {
-            MenuBarContentView(onShowWelcome: { [appDelegate] in
-                appDelegate.showWelcomeWindow()
-            })
+            MenuBarContentView(
+                onShowWelcome: { [appDelegate] in
+                    appDelegate.showWelcomeWindow()
+                },
+                onRescan: { [appDelegate] in
+                    Task { await appDelegate.rescan() }
+                }
+            )
                 .environment(appDelegate.viewModel)
         } label: {
             Image(systemName: appDelegate.viewModel.menuBarSymbolName)
