@@ -30,7 +30,7 @@ public struct PreferencesWindowView: View {
         VStack(spacing: 0) {
             tabBar
                 .padding(.horizontal, 22)
-                .padding(.top, 16)
+                .padding(.top, PPSpacing.lg)
                 .padding(.bottom, 14)
 
             ScrollView {
@@ -55,7 +55,7 @@ public struct PreferencesWindowView: View {
     }
 
     private var tabBar: some View {
-        HStack(spacing: 4) {
+        HStack(spacing: PPSpacing.xs) {
             tabButton(.snapshots, title: String(localized: "Snapshots"), symbol: "clock.fill")
             tabButton(.notifications, title: String(localized: "Notifications"), symbol: "bell.fill")
             Spacer()
@@ -69,12 +69,15 @@ public struct PreferencesWindowView: View {
         } label: {
             HStack(spacing: 6) {
                 Image(systemName: symbol)
-                    .font(.system(size: 12, weight: .semibold))
+                    // Inline icon next to tab title text (Rule 2) — ppFont ok
+                    .ppFont(.metadata)
+                    .fontWeight(.semibold)
                     .accessibilityHidden(true)
                 Text(title)
-                    .font(.system(size: 12.5, weight: .medium))
+                    .ppFont(.metadata)
+                    .fontWeight(.medium)
             }
-            .padding(.horizontal, 12)
+            .padding(.horizontal, PPSpacing.md)
             .padding(.vertical, 7)
             .foregroundStyle(isSelected ? Color.accentColor : Color.secondary)
             .background(
@@ -157,21 +160,23 @@ private struct SnapshotsPreferencesTab: View {
         currentDays: Int,
         footnote: String
     ) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: PPSpacing.sm) {
             SheetSectionLabel(label)
 
             VStack(alignment: .leading, spacing: 10) {
                 HStack(alignment: .firstTextBaseline) {
                     Text(title)
-                        .font(.system(size: 13))
+                        .ppFont(.body)
                     Spacer()
                     Text(daysLabel(currentDays))
-                        .font(.system(size: 12.5, weight: .semibold).monospacedDigit())
+                        .ppFont(.metadata)
+                        .fontWeight(.semibold)
+                        .monospacedDigit()
                         .foregroundStyle(Color.accentColor)
                 }
                 Slider(value: value, in: range, step: 1)
                 Text(footnote)
-                    .font(.system(size: 11))
+                    .ppFont(.metadata)
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
             }
@@ -181,12 +186,12 @@ private struct SnapshotsPreferencesTab: View {
     }
 
     private var resetSection: some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: PPSpacing.sm) {
             SheetSectionLabel(String(localized: "Reset"))
 
             VStack(alignment: .leading, spacing: 10) {
                 Text(String(localized: "Deletes all saved snapshots, dismissals, snoozes, and preferences. Permission Pulse will rescan immediately. This cannot be undone."))
-                    .font(.system(size: 12))
+                    .ppFont(.metadata)
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
 
@@ -202,7 +207,7 @@ private struct SnapshotsPreferencesTab: View {
 
                 if resetDisabled {
                     Text(String(localized: "Reset is disabled while a scan is in progress."))
-                        .font(.system(size: 11))
+                        .ppFont(.metadata)
                         .foregroundStyle(.orange)
                 }
             }
@@ -237,7 +242,7 @@ private struct NotificationsPreferencesTab: View {
         @Bindable var vm = viewModel
 
         VStack(alignment: .leading, spacing: 22) {
-            VStack(alignment: .leading, spacing: 8) {
+            VStack(alignment: .leading, spacing: PPSpacing.sm) {
                 SheetSectionLabel(String(localized: "Weekly Digest"))
 
                 VStack(alignment: .leading, spacing: 14) {
@@ -247,11 +252,11 @@ private struct NotificationsPreferencesTab: View {
                             Task { await vm.handleDigestToggle(to: newValue) }
                         }
                     )) {
-                        VStack(alignment: .leading, spacing: 2) {
+                        VStack(alignment: .leading, spacing: PPSpacing.xxs) {
                             Text(String(localized: "Send weekly digest"))
-                                .font(.system(size: 13))
+                                .ppFont(.body)
                             Text(String(localized: "A local notification summarizing this week's changes. macOS will ask for permission the first time you turn this on."))
-                                .font(.system(size: 11))
+                                .ppFont(.metadata)
                                 .foregroundStyle(.secondary)
                                 .fixedSize(horizontal: false, vertical: true)
                         }
@@ -263,7 +268,7 @@ private struct NotificationsPreferencesTab: View {
 
                     HStack(alignment: .firstTextBaseline) {
                         Text(String(localized: "Day"))
-                            .font(.system(size: 13))
+                            .ppFont(.body)
                             .frame(width: 90, alignment: .leading)
                         Picker("", selection: $vm.store.digestWeekday) {
                             ForEach(Self.weekdayLabels, id: \.value) { entry in
@@ -277,7 +282,7 @@ private struct NotificationsPreferencesTab: View {
 
                     HStack(alignment: .firstTextBaseline) {
                         Text(String(localized: "Time"))
-                            .font(.system(size: 13))
+                            .ppFont(.body)
                             .frame(width: 90, alignment: .leading)
                         DatePicker(
                             "",
@@ -344,15 +349,16 @@ private struct NotificationsPreferencesTab: View {
     private func diagnosticsCard(vm: PreferencesViewModel) -> some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack(alignment: .firstTextBaseline) {
-                VStack(alignment: .leading, spacing: 2) {
+                VStack(alignment: .leading, spacing: PPSpacing.xxs) {
                     Text(String(localized: "Send test notification"))
-                        .font(.system(size: 13, weight: .medium))
+                        .ppFont(.body)
+                        .fontWeight(.medium)
                     Text(String(localized: "Fires a one-off banner in 5 seconds. Useful for verifying delivery without waiting for the scheduled day."))
-                        .font(.system(size: 11))
+                        .ppFont(.metadata)
                         .foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
                 }
-                Spacer(minLength: 12)
+                Spacer(minLength: PPSpacing.md)
                 Button {
                     Task {
                         await vm.sendTestNotification()
@@ -372,7 +378,7 @@ private struct NotificationsPreferencesTab: View {
 
             if let resultText = testResultText(vm.testNotificationResult) {
                 Text(resultText)
-                    .font(.system(size: 11.5))
+                    .ppFont(.metadata)
                     .foregroundStyle(testResultColor(vm.testNotificationResult))
                     .fixedSize(horizontal: false, vertical: true)
             }
@@ -414,30 +420,33 @@ private struct NotificationsPreferencesTab: View {
     ) -> some View {
         HStack(alignment: .top, spacing: 10) {
             Image(systemName: icon)
-                .font(.system(size: 14))
+                // Inline status icon next to text content (Rule 2) — ppFont ok
+                .ppFont(.secondary)
                 .foregroundStyle(tint)
                 .padding(.top, 1)
                 .accessibilityHidden(true)
-            VStack(alignment: .leading, spacing: 4) {
+            VStack(alignment: .leading, spacing: PPSpacing.xs) {
                 Text(primary)
-                    .font(.system(size: 12.5, weight: .medium))
+                    .ppFont(.metadata)
+                    .fontWeight(.medium)
                 if let secondary {
                     Text(secondary)
-                        .font(.system(size: 11.5))
+                        .ppFont(.metadata)
                         .foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
                 }
                 if let action {
                     Button(action: action.perform) {
                         Text(action.title)
-                            .font(.system(size: 11.5, weight: .medium))
+                            .ppFont(.metadata)
+                            .fontWeight(.medium)
                     }
                     .buttonStyle(.link)
                 }
             }
             Spacer(minLength: 0)
         }
-        .padding(12)
+        .padding(PPSpacing.md)
         .vibrancyCard()
     }
 }

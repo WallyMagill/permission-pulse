@@ -8,24 +8,26 @@ public struct WelcomeWindowView: View {
     }
 
     public var body: some View {
-        VStack(spacing: 20) {
+        VStack(spacing: PPSpacing.xl) {
             Image(systemName: "shield.lefthalf.filled")
+                // Decorative hero icon in a fixed visual tile — KEEP fixed size (Rule 1)
                 .font(.system(size: 56))
                 .foregroundStyle(.tint)
                 .accessibilityHidden(true)
 
             Text(String(localized: "Welcome to Permission Pulse"))
-                .font(.title2.bold())
+                .ppFont(.pageTitle)
+                .fontWeight(.bold)
 
             Text(String(
                 localized: "Permission Pulse helps you audit which apps have access to TCC permissions like Camera, Microphone, Accessibility, and Full Disk Access on your Mac."
             ))
-                .font(.body)
+                .ppFont(.body)
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
                 .fixedSize(horizontal: false, vertical: true)
 
-            VStack(alignment: .leading, spacing: 8) {
+            VStack(alignment: .leading, spacing: PPSpacing.sm) {
                 bulletRow(icon: "lock.shield", text: String(localized: "Reads TCC databases read-only"))
                 bulletRow(icon: "hand.raised", text: String(localized: "Never modifies any file"))
                 bulletRow(icon: "wifi.slash", text: String(localized: "No network requests, no telemetry"))
@@ -34,7 +36,7 @@ public struct WelcomeWindowView: View {
             Spacer()
 
             Text(String(localized: "You'll need to relaunch Permission Pulse after granting access."))
-                .font(.footnote)
+                .ppFont(.metadata)
                 .foregroundStyle(.tertiary)
 
             HStack {
@@ -51,18 +53,19 @@ public struct WelcomeWindowView: View {
                 .buttonStyle(.borderedProminent)
             }
         }
-        .padding(32)
+        .padding(PPSpacing.xxl)
         .frame(width: 480, height: 420)
     }
 
     private func bulletRow(icon: String, text: String) -> some View {
-        HStack(spacing: 8) {
+        HStack(spacing: PPSpacing.sm) {
             Image(systemName: icon)
+                // Decorative icon in fixed 16-pt-wide frame — KEEP fixed sizing (Rule 1)
                 .frame(width: 16)
                 .foregroundStyle(.secondary)
                 .accessibilityHidden(true)
             Text(text)
-                .font(.body)
+                .ppFont(.body)
         }
     }
 }
