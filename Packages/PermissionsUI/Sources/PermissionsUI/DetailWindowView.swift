@@ -112,6 +112,7 @@ public struct DetailWindowView: View {
 
 // MARK: - Sidebar selection
 
+// TODO(Thread C T3): collapse DetailSidebarSelection into SidebarItem
 enum DetailSidebarSelection: Hashable, Sendable {
     case permissions
     case launchAgents

@@ -117,11 +117,16 @@ public final class AppViewModel {
         return latestDiffWeek
     }
 
+    // TCC `changed` (auth-value flips) is intentionally excluded: DiffTabView does
+    // not render TCC changed rows today (deferred to the v0.8.x model-fidelity slice).
+    // BTM and LaunchAgent `changed` ARE included because DiffTabView renders those
+    // rows (disposition flips, state flips) — a flips-only diff must show a non-zero
+    // badge/count.
     public var recentChangeEventCount: Int {
         guard let diff = activeDiff else { return 0 }
         return diff.tcc.added.count + diff.tcc.removed.count
-            + diff.btm.added.count + diff.btm.removed.count
-            + diff.launchAgents.added.count + diff.launchAgents.removed.count
+            + diff.btm.added.count + diff.btm.removed.count + diff.btm.changed.count
+            + diff.launchAgents.added.count + diff.launchAgents.removed.count + diff.launchAgents.changed.count
     }
 
     public var menuBarSymbolName: String {

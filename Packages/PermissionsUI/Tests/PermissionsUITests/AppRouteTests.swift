@@ -37,7 +37,18 @@ struct AppViewModelRoutingTests {
             toID: SnapshotID(rawValue: to),
             tcc: TCCGrantsDiff(added: addedGrants, removed: [], changed: []),
             btm: BTMItemsDiff(added: [], removed: [], changed: []),
-            launchAgents: LaunchAgentsDiff(added: [], removed: [])
+            launchAgents: LaunchAgentsDiff(added: [], removed: [], changed: [])
+        )
+    }
+
+    private func btmItem(identifier: String, disposition: BTMItem.Disposition) -> BTMItem {
+        BTMItem(
+            identifier: identifier,
+            name: identifier,
+            type: .app,
+            disposition: disposition,
+            scope: .user,
+            modificationDate: Date(timeIntervalSince1970: 0)
         )
     }
 
@@ -62,5 +73,28 @@ struct AppViewModelRoutingTests {
     @Test("recentChangeEventCount is zero with no diffs")
     func countZeroWithNoDiffs() {
         #expect(AppViewModel().recentChangeEventCount == 0)
+    }
+
+    @Test("recentChangeEventCount counts BTM disposition flip as one event")
+    func countBTMFlip() {
+        // BTMItemsDiff.hasContent includes `changed`, so a flips-only diff has
+        // content and activeDiff selects it. recentChangeEventCount must reflect
+        // the one changed entry so the badge/count isn't 0 while the page shows a row.
+        let before = btmItem(identifier: "com.example.app", disposition: .enabled)
+        let after = btmItem(identifier: "com.example.app", disposition: .disabled)
+        let diffsWithFlip = SnapshotDiffs(
+            fromID: SnapshotID(rawValue: 41),
+            toID: SnapshotID(rawValue: 42),
+            tcc: TCCGrantsDiff(added: [], removed: [], changed: []),
+            btm: BTMItemsDiff(added: [], removed: [], changed: [DomainChange(before: before, after: after)]),
+            launchAgents: LaunchAgentsDiff(added: [], removed: [], changed: [])
+        )
+        let vm = AppViewModel(latestDiffYesterday: diffsWithFlip)
+        #expect(vm.recentChangeEventCount == 1)
+    }
+
+    @Test("lastScanDate is nil by default")
+    func lastScanDateNilByDefault() {
+        #expect(AppViewModel().lastScanDate == nil)
     }
 }

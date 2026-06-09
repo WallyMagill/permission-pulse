@@ -1,5 +1,6 @@
 import Foundation
 
+// TODO(Thread C T3): collapse DetailSidebarSelection into SidebarItem
 /// Sidebar destinations in the detail window, in display order.
 public enum SidebarItem: Hashable, Sendable, CaseIterable {
     case overview
