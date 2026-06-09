@@ -8,7 +8,7 @@ struct SectionHeader: View {
     var body: some View {
         HStack {
             Text(title)
-                .font(.headline)
+                .ppFont(.cardHeader)
             Spacer()
             if showsBadge {
                 switch dataSource {

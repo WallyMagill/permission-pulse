@@ -94,7 +94,7 @@ struct SheetGradientTile: View {
                     .foregroundStyle(.white)
                     .accessibilityHidden(true)
             )
-            .shadow(color: Color.blue.opacity(0.35), radius: 5, y: 1)
+            .shadow(color: PPColor.permissions.opacity(0.35), radius: 5, y: 1)
     }
 }
 

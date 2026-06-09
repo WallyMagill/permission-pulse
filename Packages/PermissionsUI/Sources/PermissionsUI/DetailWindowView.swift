@@ -225,8 +225,8 @@ private struct DetailSidebar: View {
     }
 
     private var footerColor: Color {
-        if viewModel.tccScanError != nil || viewModel.btmScanError != nil || viewModel.launchAgentScanError != nil { return .orange }
-        return .green
+        if viewModel.tccScanError != nil || viewModel.btmScanError != nil || viewModel.launchAgentScanError != nil { return PPColor.warning }
+        return PPColor.success
     }
 
     private var footerText: String {

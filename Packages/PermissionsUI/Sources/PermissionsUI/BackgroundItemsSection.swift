@@ -135,31 +135,33 @@ private struct BTMItemRow: View {
     }
 }
 
+// Uses contrast-safe PPBadgeStyle tokens so text passes WCAG AA (>= 4.5:1) on
+// any surface — matches the DispositionBadge in BackgroundItemDetailSheet.
 private struct DispositionBadge: View {
     let disposition: BTMItem.Disposition
 
     var body: some View {
         Text(label)
             .ppFont(.badge)
-            .foregroundStyle(Color.white)
+            .foregroundStyle(style.foreground)
             .padding(.horizontal, 6)
             .padding(.vertical, PPSpacing.xxs)
-            .background(color, in: .capsule)
+            .background(style.background, in: .capsule)
     }
 
     private var label: String {
         switch disposition {
-        case .enabled: String(localized: "Enabled")
+        case .enabled:  String(localized: "Enabled")
         case .disabled: String(localized: "Disabled")
-        case .unknown: String(localized: "Unknown")
+        case .unknown:  String(localized: "Unknown")
         }
     }
 
-    private var color: Color {
+    private var style: PPBadgeStyle {
         switch disposition {
-        case .enabled: .green
-        case .disabled: .gray
-        case .unknown: .orange
+        case .enabled:  .enabled
+        case .disabled: .disabled
+        case .unknown:  .dispositionUnknown
         }
     }
 }

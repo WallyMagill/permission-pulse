@@ -69,8 +69,8 @@ public struct MenuBarContentView: View {
     }
 
     private var pulseTint: Color {
-        if viewModel.scanInProgress { return .blue }
-        return isCleanAttention ? .green : .orange
+        if viewModel.scanInProgress { return PPColor.permissions }
+        return isCleanAttention ? PPColor.success : PPColor.warning
     }
 
     private var headerStatusText: String {
@@ -419,7 +419,7 @@ private struct BrandBadge: View {
                     .foregroundStyle(.white)
                     .accessibilityHidden(true)
             }
-            .shadow(color: Color.blue.opacity(0.35), radius: 5, y: 1)
+            .shadow(color: PPColor.permissions.opacity(0.35), radius: 5, y: 1)
     }
 }
 

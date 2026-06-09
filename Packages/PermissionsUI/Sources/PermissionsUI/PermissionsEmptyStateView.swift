@@ -53,7 +53,7 @@ struct PermissionsEmptyStateView: View {
             }
             .buttonStyle(.borderedProminent)
             .controlSize(.large)
-            .tint(.blue)
+            .tint(.accentColor)
             .padding(.vertical, PPSpacing.xs)
             VStack(spacing: PPSpacing.sm) {
                 Text(String(localized: "You'll need to relaunch Permission Pulse after granting."))
