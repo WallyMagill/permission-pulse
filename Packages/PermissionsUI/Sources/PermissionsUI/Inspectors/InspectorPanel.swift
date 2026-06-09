@@ -10,8 +10,8 @@ struct InspectorPanel: View {
     var body: some View {
         Group {
             switch resolvedContent {
-            case .app(let app, _):
-                placeholder(title: app.displayName) // Task 4: AppPermissionsInspector
+            case .app(let app, let grants):
+                AppPermissionsInspector(app: app, grants: grants)
             case .launchAgent(let item):
                 placeholder(title: item.label)      // Task 5: LaunchAgentInspector
             case .backgroundItem(let item):

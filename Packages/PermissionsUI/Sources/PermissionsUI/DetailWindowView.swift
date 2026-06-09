@@ -126,7 +126,7 @@ public struct DetailWindowView: View {
                 systemImage: "gauge.with.needle",
                 description: Text(String(localized: "Coming in Task 6"))
             )
-        case .permissions: PermissionsDetailPage(searchText: searchText)
+        case .permissions: PermissionsDetailPage(searchText: searchText, selection: $inspectorSelection)
         case .launchAgents: LaunchAgentsDetailPage(searchText: searchText)
         case .backgroundItems: BackgroundItemsDetailPage(searchText: searchText)
         case .recentChanges: RecentChangesDetailPage()
@@ -242,55 +242,105 @@ private struct DetailPageScaffold<Content: View>: View {
 private struct PermissionsDetailPage: View {
     @Environment(AppViewModel.self) private var viewModel
     let searchText: String
+    @Binding var selection: InspectorSelection?
 
     var body: some View {
-        DetailPageScaffold(
-            title: String(localized: "Permissions"),
-            inlineMeta: inlineMeta,
-            subtitle: viewModel.grants.isEmpty
-                ? nil
-                : String(localized: "Tap a row to see what each grant unlocks and how it was given."),
-            dataSource: viewModel.tccDataSource
-        ) {
+        Group {
             if let error = viewModel.tccScanError, isSchemaIssue(error) {
-                SchemaMismatchBanner(error: error, domain: .tcc)
-            }
-
-            if ScanState.showsScanningPlaceholder(
+                VStack(spacing: 0) {
+                    SchemaMismatchBanner(error: error, domain: .tcc)
+                        .padding(PPSpacing.lg)
+                    grantList
+                }
+            } else if ScanState.showsScanningPlaceholder(
                 isScanning: viewModel.scanInProgress,
                 isEmpty: viewModel.grants.isEmpty,
                 hasError: viewModel.tccScanError != nil,
                 isSearching: !searchText.isEmpty
             ) {
                 ScanningPlaceholder()
-            } else if filteredGrants.isEmpty && !searchText.isEmpty {
-                EmptySearchView(query: searchText)
+            } else if viewModel.grants.isEmpty {
+                PermissionsEmptyStateView(error: viewModel.tccScanError, domain: .tcc)
+            } else if groups.isEmpty {
+                ContentUnavailableView.search(text: searchText)
             } else {
-                PermissionsSection(
-                    grants: filteredGrants,
-                    dataSource: viewModel.tccDataSource,
-                    error: viewModel.tccScanError,
-                    showsHeader: false
-                )
+                grantList
             }
         }
+        .navigationTitle(String(localized: "Permissions"))
+        .navigationSubtitle(subtitle)
     }
 
-    private var filteredGrants: [PermissionGrant] {
-        if searchText.isEmpty { return viewModel.grants }
-        let q = searchText.lowercased()
-        return viewModel.grants.filter { grant in
-            grant.app.displayName.lowercased().contains(q)
-                || grant.app.bundleID.lowercased().contains(q)
-                || grant.service.displayName.lowercased().contains(q)
+    private var grantList: some View {
+        List(selection: $selection) {
+            ForEach(groups) { group in
+                AppGrantRow(group: group)
+                    .tag(InspectorSelection.app(appKey: group.appKey))
+            }
         }
+        .listStyle(.inset)
     }
 
-    private var inlineMeta: String? {
-        if viewModel.grants.isEmpty { return nil }
-        let appCount = Set(viewModel.grants.map(\.app.bundleID)).count
+    struct AppGrantGroup: Identifiable {
+        let appKey: String
+        let app: AppIdentity
+        let grants: [PermissionGrant]
+        var id: String { appKey }
+    }
+
+    private var groups: [AppGrantGroup] {
+        let filtered: [PermissionGrant]
+        if searchText.isEmpty {
+            filtered = viewModel.grants
+        } else {
+            let q = searchText.lowercased()
+            filtered = viewModel.grants.filter { grant in
+                grant.app.displayName.lowercased().contains(q)
+                    || grant.app.bundleID.lowercased().contains(q)
+                    || grant.service.displayName.lowercased().contains(q)
+            }
+        }
+        return Dictionary(grouping: filtered, by: \.appKey)
+            .map { key, grants in AppGrantGroup(appKey: key, app: grants[0].app, grants: grants) }
+            .sorted { $0.app.displayName.localizedCaseInsensitiveCompare($1.app.displayName) == .orderedAscending }
+    }
+
+    private var subtitle: String {
+        guard !viewModel.grants.isEmpty else { return "" }
+        let appCount = Set(viewModel.grants.map(\.appKey)).count
         let serviceCount = Set(viewModel.grants.map(\.service)).count
         return String(localized: "\(appCount) apps · \(serviceCount) services")
+    }
+
+    private struct AppGrantRow: View {
+        let group: AppGrantGroup
+
+        var body: some View {
+            HStack(spacing: PPSpacing.md) {
+                AppIconResolver.iconView(for: group.app, size: 28)
+                VStack(alignment: .leading, spacing: PPSpacing.xxs) {
+                    Text(group.app.displayName).ppFont(.body)
+                    Text(serviceLine)
+                        .ppFont(.metadata)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                }
+                Spacer(minLength: PPSpacing.sm)
+                Text("\(group.grants.count)")
+                    .ppFont(.metadata)
+                    .foregroundStyle(.secondary)
+                    .monospacedDigit()
+            }
+            .padding(.vertical, PPSpacing.xxs)
+            .accessibilityElement(children: .combine)
+        }
+
+        private var serviceLine: String {
+            Set(group.grants.map(\.service))
+                .map(\.displayName)
+                .sorted()
+                .joined(separator: " · ")
+        }
     }
 }
 
