@@ -20,14 +20,14 @@ public struct MenuBarContentView: View {
     public var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             header
-                .padding(.horizontal, 14)
-                .padding(.top, 14)
-                .padding(.bottom, 10)
+                .padding(.horizontal, PPSpacing.lg)
+                .padding(.top, PPSpacing.lg)
+                .padding(.bottom, PPSpacing.md)
 
             if !isCleanAttention {
                 attentionBanner
-                    .padding(.horizontal, 12)
-                    .padding(.bottom, 6)
+                    .padding(.horizontal, PPSpacing.md)
+                    .padding(.bottom, PPSpacing.sm)
             }
 
             overviewSection
@@ -37,29 +37,30 @@ public struct MenuBarContentView: View {
             }
 
             Divider()
-                .padding(.horizontal, 8)
-                .padding(.top, 8)
-                .padding(.bottom, 4)
+                .padding(.horizontal, PPSpacing.sm)
+                .padding(.top, PPSpacing.sm)
+                .padding(.bottom, PPSpacing.xs)
 
             footer
-                .padding(.horizontal, 4)
-                .padding(.bottom, 6)
+                .padding(.horizontal, PPSpacing.xs)
+                .padding(.bottom, PPSpacing.sm)
         }
         .frame(width: 320)
+        .ppDropdownDynamicTypeClamp()
     }
 
     // MARK: - Header
 
     private var header: some View {
-        HStack(spacing: 11) {
+        HStack(spacing: PPSpacing.md) {
             BrandBadge()
-            VStack(alignment: .leading, spacing: 2) {
+            VStack(alignment: .leading, spacing: PPSpacing.xxs) {
                 Text(String(localized: "Permission Pulse"))
-                    .font(.system(size: 14, weight: .semibold))
-                HStack(spacing: 6) {
+                    .ppFont(.cardHeader)
+                HStack(spacing: PPSpacing.sm) {
                     PulseDot(tint: pulseTint)
                     Text(headerStatusText)
-                        .font(.system(size: 11))
+                        .ppFont(.metadata)
                         .foregroundStyle(.secondary)
                 }
             }
@@ -94,38 +95,38 @@ public struct MenuBarContentView: View {
             )
             StatRow(
                 icon: "lock.fill",
-                tint: .blue,
+                tint: PPColor.permissions,
                 title: String(localized: "Permissions"),
                 count: viewModel.grants.count
             )
             StatRow(
                 icon: "clock.fill",
-                tint: .purple,
+                tint: PPColor.launchAgents,
                 title: String(localized: "Launch Agents"),
                 count: viewModel.launchAgents.count
             )
             StatRow(
                 icon: "square.stack.3d.up.fill",
-                tint: .teal,
+                tint: PPColor.backgroundItems,
                 title: String(localized: "Background Items"),
                 count: viewModel.btmItems.count
             )
             if let risk = PermissionRiskSummary.line(for: viewModel.grants) {
-                HStack(spacing: 6) {
+                HStack(spacing: PPSpacing.sm) {
                     Image(systemName: "exclamationmark.shield")
-                        .font(.system(size: 10, weight: .semibold))
-                        .foregroundStyle(.orange)
+                        .ppFont(.badge)
+                        .foregroundStyle(PPColor.warning)
                         .accessibilityHidden(true)
                     Text(risk)
-                        .font(.system(size: 11))
+                        .ppFont(.metadata)
                         .foregroundStyle(.secondary)
                         .lineLimit(2)
                     Spacer(minLength: 0)
                 }
                 .accessibilityElement(children: .combine)
                 .accessibilityLabel(String(localized: "Elevated access: \(risk)"))
-                .padding(.horizontal, 16)
-                .padding(.top, 4)
+                .padding(.horizontal, PPSpacing.lg)
+                .padding(.top, PPSpacing.xs)
             }
         }
     }
@@ -141,7 +142,7 @@ public struct MenuBarContentView: View {
             SectionLabel(
                 title: String(localized: "Recent"),
                 trailing: String(localized: "\(recentEvents.count) new"),
-                trailingTint: .orange,
+                trailingTint: PPColor.recentChanges,
                 trailingBold: true
             )
             ForEach(recentEvents.prefix(2)) { event in
@@ -364,8 +365,9 @@ public struct MenuBarContentView: View {
                 }
             }
 
+            // tight divider inset (between tokens)
             Divider()
-                .padding(.horizontal, 8)
+                .padding(.horizontal, PPSpacing.sm)
                 .padding(.vertical, 3)
 
             MenuRowButton(
@@ -396,9 +398,9 @@ private struct RecentEvent: Identifiable {
 
     var markerColor: Color {
         switch kind {
-        case .added:   .green
-        case .removed: .red
-        case .changed: .orange
+        case .added:   PPColor.success
+        case .removed: PPColor.danger
+        case .changed: PPColor.warning
         }
     }
 }
@@ -407,19 +409,11 @@ private struct RecentEvent: Identifiable {
 
 private struct BrandBadge: View {
     var body: some View {
-        RoundedRectangle(cornerRadius: 10, style: .continuous)
-            .fill(
-                LinearGradient(
-                    colors: [
-                        Color(red: 0.37, green: 0.55, blue: 1.0),
-                        Color(red: 0.04, green: 0.52, blue: 1.0),
-                    ],
-                    startPoint: .topLeading,
-                    endPoint: .bottomTrailing
-                )
-            )
+        RoundedRectangle(cornerRadius: PPRadius.medium, style: .continuous)
+            .fill(PPColor.brandGradient)
             .frame(width: 36, height: 36)
             .overlay {
+                // Fixed size: brand mark sized to its 36×36 tile, not a text role.
                 Image(systemName: "shield.lefthalf.filled")
                     .font(.system(size: 18, weight: .semibold))
                     .foregroundStyle(.white)
@@ -452,23 +446,20 @@ private struct SectionLabel: View {
     var trailingBold: Bool = false
 
     var body: some View {
-        HStack(spacing: 8) {
-            Text(title.uppercased())
-                .font(.system(size: 11, weight: .semibold))
-                .tracking(0.6)
-                .foregroundStyle(.secondary)
-                .accessibilityAddTraits(.isHeader)
-            Spacer(minLength: 8)
+        HStack(spacing: PPSpacing.sm) {
+            Text(title)
+                .ppSectionLabel()
+            Spacer(minLength: PPSpacing.sm)
             if let trailing {
                 Text(trailing)
-                    .font(.system(size: 11, weight: trailingBold ? .semibold : .regular))
+                    .ppFont(trailingBold ? .badge : .metadata)
                     .foregroundStyle(trailingTint)
                     .monospacedDigit()
             }
         }
-        .padding(.horizontal, 16)
-        .padding(.top, 10)
-        .padding(.bottom, 4)
+        .padding(.horizontal, PPSpacing.lg)
+        .padding(.top, PPSpacing.md)
+        .padding(.bottom, PPSpacing.xs)
     }
 }
 
@@ -479,9 +470,9 @@ private struct StatRow: View {
     let count: Int
 
     var body: some View {
-        HStack(spacing: 11) {
+        HStack(spacing: PPSpacing.md) {
             ZStack {
-                RoundedRectangle(cornerRadius: 6, style: .continuous)
+                RoundedRectangle(cornerRadius: PPRadius.small, style: .continuous)
                     .fill(tint.opacity(0.16))
                     .frame(width: 22, height: 22)
                 Image(systemName: icon)
@@ -490,16 +481,17 @@ private struct StatRow: View {
             }
             .accessibilityHidden(true)
             Text(title)
-                .font(.system(size: 13))
-            Spacer(minLength: 8)
+                .ppFont(.body)
+            Spacer(minLength: PPSpacing.sm)
             Text("\(count)")
-                .font(.system(size: 13, weight: .medium))
+                .ppFont(.body)
+                .fontWeight(.medium)
                 .foregroundStyle(.secondary)
                 .monospacedDigit()
         }
         .accessibilityElement(children: .combine)
-        .padding(.horizontal, 16)
-        .padding(.vertical, 5)
+        .padding(.horizontal, PPSpacing.lg)
+        .padding(.vertical, PPSpacing.xs)
     }
 }
 
@@ -507,22 +499,23 @@ private struct ActivityRow: View {
     let event: RecentEvent
 
     var body: some View {
-        HStack(alignment: .top, spacing: 11) {
+        HStack(alignment: .top, spacing: PPSpacing.md) {
             Circle()
                 .fill(event.markerColor)
                 .frame(width: 6, height: 6)
+                // optical baseline alignment with the first text line
                 .padding(.top, 7)
                 .accessibilityHidden(true)
             (Text(event.strong).bold() + Text(" · \(event.descriptor)"))
-                .font(.system(size: 12.5))
+                .ppFont(.secondary)
                 .lineLimit(2)
                 .foregroundStyle(.primary)
                 .fixedSize(horizontal: false, vertical: true)
-            Spacer(minLength: 4)
+            Spacer(minLength: PPSpacing.xs)
         }
         .accessibilityElement(children: .combine)
-        .padding(.horizontal, 16)
-        .padding(.vertical, 5)
+        .padding(.horizontal, PPSpacing.lg)
+        .padding(.vertical, PPSpacing.xs)
     }
 }
 
@@ -535,40 +528,40 @@ private struct AttentionBanner: View {
 
     var body: some View {
         Button(action: action) {
-            HStack(spacing: 11) {
+            HStack(spacing: PPSpacing.md) {
                 Image(systemName: "exclamationmark.triangle.fill")
                     .font(.system(size: 12, weight: .semibold))
                     .foregroundStyle(.white)
                     .frame(width: 24, height: 24)
                     .background {
-                        RoundedRectangle(cornerRadius: 6, style: .continuous)
-                            .fill(Color.orange)
-                            .shadow(color: .orange.opacity(0.35), radius: 3, y: 1)
+                        RoundedRectangle(cornerRadius: PPRadius.small, style: .continuous)
+                            .fill(PPColor.warning)
+                            .shadow(color: PPColor.warning.opacity(0.35), radius: 3, y: 1)
                     }
                     .accessibilityHidden(true)
                 VStack(alignment: .leading, spacing: 1) {
                     Text(title)
-                        .font(.system(size: 13, weight: .semibold))
+                        .ppFont(.cardHeader)
                         .foregroundStyle(.primary)
                     Text(subtitle)
-                        .font(.system(size: 11))
+                        .ppFont(.metadata)
                         .foregroundStyle(.secondary)
                 }
-                Spacer(minLength: 4)
+                Spacer(minLength: PPSpacing.xs)
                 Image(systemName: "chevron.right")
-                    .font(.system(size: 11, weight: .semibold))
-                    .foregroundStyle(Color.orange)
+                    .ppFont(.badge)
+                    .foregroundStyle(PPColor.warning)
                     .accessibilityHidden(true)
             }
-            .padding(.horizontal, 12)
-            .padding(.vertical, 10)
+            .padding(.horizontal, PPSpacing.md)
+            .padding(.vertical, PPSpacing.md)
             .background {
-                RoundedRectangle(cornerRadius: 10, style: .continuous)
-                    .fill(Color.orange.opacity(isHovering ? 0.22 : 0.14))
+                RoundedRectangle(cornerRadius: PPRadius.medium, style: .continuous)
+                    .fill(PPColor.warning.opacity(isHovering ? 0.22 : 0.14))
             }
             .overlay {
-                RoundedRectangle(cornerRadius: 10, style: .continuous)
-                    .strokeBorder(Color.orange.opacity(0.22), lineWidth: 1)
+                RoundedRectangle(cornerRadius: PPRadius.medium, style: .continuous)
+                    .strokeBorder(PPColor.warning.opacity(0.22), lineWidth: 1)
             }
             .contentShape(Rectangle())
         }
@@ -590,30 +583,30 @@ private struct MenuRowButton: View {
 
     var body: some View {
         Button(action: action) {
-            HStack(spacing: 10) {
+            HStack(spacing: PPSpacing.sm) {
                 Image(systemName: icon)
                     .font(.system(size: 13, weight: .medium))
                     .frame(width: 22, height: 22)
                     .foregroundStyle(iconTint)
                     .accessibilityHidden(true)
                 Text(title)
-                    .font(.system(size: 13))
+                    .ppFont(.body)
                     .foregroundStyle(.primary)
-                Spacer(minLength: 8)
+                Spacer(minLength: PPSpacing.sm)
                 if showsChangeDot {
-                    PulseDot(tint: .orange)
+                    PulseDot(tint: PPColor.warning)
                 }
                 if let shortcutDisplay {
                     Text(shortcutDisplay)
-                        .font(.system(size: 11))
+                        .ppFont(.metadata)
                         .foregroundStyle(.tertiary)
                         .monospacedDigit()
                 }
             }
-            .padding(.horizontal, 8)
-            .padding(.vertical, 6)
+            .padding(.horizontal, PPSpacing.sm)
+            .padding(.vertical, PPSpacing.sm)
             .background {
-                RoundedRectangle(cornerRadius: 7, style: .continuous)
+                RoundedRectangle(cornerRadius: PPRadius.small, style: .continuous)
                     .fill(isHovering ? Color.primary.opacity(0.06) : .clear)
             }
             .contentShape(Rectangle())

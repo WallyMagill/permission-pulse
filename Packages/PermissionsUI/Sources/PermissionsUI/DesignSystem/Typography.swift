@@ -42,6 +42,7 @@ extension View {
     /// replacing the per-view inline cluster). (Thread B)
     public func ppSectionLabel() -> some View {
         ppFont(.metadata)
+            .fontWeight(.semibold)
             .textCase(.uppercase)
             .tracking(0.6)
             .foregroundStyle(.secondary)
