@@ -38,6 +38,13 @@ final class ScanCoordinator {
     }
 
     func runScan() async {
+        // DataSource reflects which scanner is wired up, not whether the last
+        // scan succeeded — a failed live scan (e.g. no FDA) must not leave the
+        // UI claiming the data on screen is mock.
+        viewModel.tccDataSource = tccDataSource
+        viewModel.launchAgentsDataSource = launchAgentsDataSource
+        viewModel.btmDataSource = btmDataSource
+
         async let tccResultTask = runTCCScan()
         async let launchAgentResultTask = runLaunchAgentScan()
         async let btmResultTask = runBTMScan()
@@ -114,7 +121,6 @@ final class ScanCoordinator {
             viewModel.tccScanError = error
         } else {
             viewModel.grants = result.grants
-            viewModel.tccDataSource = tccDataSource
             viewModel.tccScanError = nil
         }
     }
@@ -124,7 +130,6 @@ final class ScanCoordinator {
             viewModel.launchAgentScanError = error
         } else {
             viewModel.launchAgents = result.items
-            viewModel.launchAgentsDataSource = launchAgentsDataSource
             viewModel.launchAgentScanError = nil
         }
     }
@@ -134,7 +139,6 @@ final class ScanCoordinator {
             viewModel.btmScanError = error
         } else {
             viewModel.btmItems = result.items
-            viewModel.btmDataSource = btmDataSource
             viewModel.btmScanError = nil
         }
     }
