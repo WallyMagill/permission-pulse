@@ -52,7 +52,13 @@ struct OverviewPage: View {
     }
 
     private var hasAttentionContent: Bool {
-        viewModel.attentionState != .clean || viewModel.hasUnreviewedChanges
+        viewModel.attentionState != .clean || hasCountedUnreviewedChanges
+    }
+
+    // Matches the dropdown's gate: a TCC-only auth flip sets hasUnreviewedChanges
+    // but contributes no rendered change rows, so suppress the row at count 0.
+    private var hasCountedUnreviewedChanges: Bool {
+        viewModel.hasUnreviewedChanges && viewModel.recentChangeEventCount > 0
     }
 
     @ViewBuilder
@@ -81,7 +87,7 @@ struct OverviewPage: View {
         case .clean:
             EmptyView()
         }
-        if viewModel.hasUnreviewedChanges {
+        if hasCountedUnreviewedChanges {
             attentionRow(
                 String(localized: "\(viewModel.recentChangeEventCount) unreviewed changes"),
                 target: .recentChanges
