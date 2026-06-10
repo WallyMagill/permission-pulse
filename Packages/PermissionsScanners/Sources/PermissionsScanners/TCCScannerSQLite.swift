@@ -278,13 +278,28 @@ public struct TCCScannerSQLite: TCCScanner, Sendable {
         let indirectObjectIdentifier: String
 
         init?(row: Row) {
-            guard let service: String = row["service"] else { return nil }
+            // TCC.db is foreign and untrusted, and SQLite type affinity is
+            // advisory — a cell can hold any storage class. GRDB's typed
+            // subscripts trap (`try!`) on unconvertible values, so decode via
+            // the non-throwing raw subscript and drop or default anomalous
+            // cells instead: under-flag, never crash.
+            guard let service = Self.text(row, "service") else { return nil }
             self.service = service
-            self.client = row["client"]
-            self.clientType = row["client_type"]
-            self.authValue = row["auth_value"] ?? -1
-            self.lastModified = row["last_modified"] ?? 0
-            self.indirectObjectIdentifier = row["indirect_object_identifier"] ?? "UNUSED"
+            self.client = Self.text(row, "client")
+            self.clientType = Self.integer(row, "client_type").map(Int.init)
+            self.authValue = Self.integer(row, "auth_value").map(Int.init) ?? -1
+            self.lastModified = Self.integer(row, "last_modified") ?? 0
+            self.indirectObjectIdentifier = Self.text(row, "indirect_object_identifier") ?? "UNUSED"
+        }
+
+        private static func text(_ row: Row, _ column: String) -> String? {
+            let value: (any DatabaseValueConvertible)? = row[column]
+            return value as? String
+        }
+
+        private static func integer(_ row: Row, _ column: String) -> Int64? {
+            let value: (any DatabaseValueConvertible)? = row[column]
+            return value as? Int64
         }
     }
 }

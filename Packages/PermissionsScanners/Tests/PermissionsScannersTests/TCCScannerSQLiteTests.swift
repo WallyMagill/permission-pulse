@@ -38,6 +38,23 @@ import PermissionsCore
         #expect(identities.count == 4)
     }
 
+    @Test func scanDropsWrongTypedRowsInsteadOfCrashing() async throws {
+        let dir = try TempDir()
+        let dbURL = dir.dbURL("wrong-typed.db")
+        try await TCCFixtures.makeWrongTypedFixture(url: dbURL)
+
+        let scanner = TCCScannerSQLite(databaseURLs: [dbURL])
+        let grants = try await scanner.scan()
+
+        // Both anomalous rows are dropped (under-flag policy): the BLOB
+        // service fails decode; the TEXT client_type decodes as nil and is
+        // rejected by buildAppIdentity like any unknown client_type.
+        let bundleIDs = Set(grants.map(\.app.bundleID))
+        #expect(!bundleIDs.contains("com.example.blob-service"))
+        #expect(!bundleIDs.contains("com.example.text-client-type"))
+        #expect(bundleIDs.contains("com.example.valid"))
+    }
+
     @Test func scanThrowsSchemaMismatchWhenColumnMissing() async throws {
         let dir = try TempDir()
         let dbURL = dir.dbURL("missing.db")
