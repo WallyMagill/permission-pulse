@@ -253,11 +253,7 @@ private struct PermissionsDetailPage: View {
                 hasError: viewModel.tccScanError != nil,
                 isSearching: !searchText.isEmpty
             ) {
-                ContentUnavailableView {
-                    Label(String(localized: "Scanning…"), systemImage: "magnifyingglass")
-                } description: {
-                    Text(String(localized: "Reading the system's records. This takes a moment."))
-                }
+                ScanningStateView()
             } else if viewModel.grants.isEmpty {
                 PermissionsEmptyStateView(error: viewModel.tccScanError, domain: .tcc)
             } else if groups.isEmpty {
@@ -363,11 +359,7 @@ private struct LaunchAgentsDetailPage: View {
                 hasError: false,
                 isSearching: !searchText.isEmpty
             ) {
-                ContentUnavailableView {
-                    Label(String(localized: "Scanning…"), systemImage: "magnifyingglass")
-                } description: {
-                    Text(String(localized: "Reading the system's records. This takes a moment."))
-                }
+                ScanningStateView()
             } else if viewModel.launchAgents.isEmpty {
                 ContentUnavailableView(
                     String(localized: "No Launch Agents"),
@@ -470,11 +462,7 @@ private struct BackgroundItemsDetailPage: View {
                 hasError: viewModel.btmScanError != nil,
                 isSearching: !searchText.isEmpty
             ) {
-                ContentUnavailableView {
-                    Label(String(localized: "Scanning…"), systemImage: "magnifyingglass")
-                } description: {
-                    Text(String(localized: "Reading the system's records. This takes a moment."))
-                }
+                ScanningStateView()
             } else if viewModel.btmItems.isEmpty {
                 PermissionsEmptyStateView(error: viewModel.btmScanError, domain: .btm)
             } else if filteredItems.isEmpty {
@@ -642,6 +630,24 @@ private struct StaleAppsDetailPage: View {
 }
 
 // MARK: - Helpers
+
+// Shared by the three inventory pages while the initial scan is running.
+private struct ScanningStateView: View {
+    var body: some View {
+        ContentUnavailableView {
+            Label {
+                Text(String(localized: "Scanning…"))
+            } icon: {
+                ProgressView()
+                    .controlSize(.small)
+            }
+        } description: {
+            Text(String(localized: "Reading the system's records. This takes a moment."))
+        }
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel(String(localized: "Scanning"))
+    }
+}
 
 private func isSchemaIssue(_ error: ScannerError) -> Bool {
     switch error {
