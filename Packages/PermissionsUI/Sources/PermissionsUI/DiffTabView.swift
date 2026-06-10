@@ -27,14 +27,16 @@ struct DiffTabView: View {
         let now = Date()
 
         if snapshotStoreUnavailable {
-            unavailableState(
-                headline: String(localized: "Snapshot history unavailable"),
-                detail: String(localized: "Permission Pulse couldn't open its local database, so it can't track changes. Try Reset All Data in Preferences.")
+            ContentUnavailableView(
+                String(localized: "History Unavailable"),
+                systemImage: "externaldrive.badge.exclamationmark",
+                description: Text(String(localized: "Permission Pulse couldn't open its local database, so it can't track changes. Try Reset All Data in Preferences."))
             )
         } else if diffUnavailable {
-            unavailableState(
-                headline: String(localized: "Couldn't read changes"),
-                detail: String(localized: "A problem reading the local database prevented computing changes. Try Refresh.")
+            ContentUnavailableView(
+                String(localized: "Couldn't Read Changes"),
+                systemImage: "externaldrive.badge.exclamationmark",
+                description: Text(String(localized: "A problem reading the local database prevented computing changes. Try Refresh."))
             )
         } else if let diff {
             let tccVisible = filtered(tccRows(diff.tcc), now: now)
@@ -43,73 +45,92 @@ struct DiffTabView: View {
             let totalVisible = tccVisible.count + btmVisible.count + laVisible.count
 
             if totalVisible > 0 {
-                VStack(alignment: .leading, spacing: PPSpacing.lg) {
-                    if !tccVisible.isEmpty {
-                        section(title: String(localized: "Permissions"), rows: tccVisible)
-                    }
-                    if !btmVisible.isEmpty {
-                        section(title: String(localized: "Background Items"), rows: btmVisible)
-                    }
-                    if !laVisible.isEmpty {
-                        section(title: String(localized: "Launch Agents"), rows: laVisible)
-                    }
-                    Text(String(localized: "Use the ⋯ menu on a row to snooze or dismiss a change."))
-                        .ppFont(.metadata)
-                        .foregroundStyle(.tertiary)
-                }
-                .alert(
-                    String(localized: "Dismiss this change forever?"),
-                    isPresented: Binding(
-                        get: { pendingDismiss != nil },
-                        set: { if !$0 { pendingDismiss = nil } }
-                    ),
-                    presenting: pendingDismiss
-                ) { candidate in
-                    Button(String(localized: "Dismiss forever"), role: .destructive) {
-                        dismissedStore.dismissForever(key: candidate.key)
-                        pendingDismiss = nil
-                    }
-                    Button(String(localized: "Cancel"), role: .cancel) {
-                        pendingDismiss = nil
-                    }
-                } message: { candidate in
-                    Text(String(localized: "Permission Pulse will stop showing this change: \(candidate.summary). Use Reset All Data in Preferences to bring it back."))
-                }
+                diffList(tccVisible: tccVisible, btmVisible: btmVisible, laVisible: laVisible)
             } else {
-                emptyContentState
+                ContentUnavailableView(
+                    emptyContentHeadline,
+                    systemImage: "checkmark.seal.fill",
+                    description: Text(String(localized: "All permission changes have been reviewed or dismissed."))
+                )
             }
         } else {
-            emptyNoPriorState
+            ContentUnavailableView(
+                emptyNoPriorHeadline,
+                systemImage: "clock.arrow.circlepath",
+                description: Text(String(localized: "Permission Pulse needs at least one prior snapshot. Come back tomorrow."))
+            )
         }
     }
 
-    private func section(title: String, rows: [ChangeRow.Kind]) -> some View {
-        VStack(alignment: .leading, spacing: PPSpacing.sm) {
-            Text(title).ppFont(.cardHeader)
-                .accessibilityAddTraits(.isHeader)
-            VStack(spacing: 0) {
-                ForEach(Array(rows.enumerated()), id: \.offset) { _, kind in
-                    let key = DiffEntryKey.key(for: kind)
-                    ChangeRow(
-                        kind: kind,
-                        onDismissForever: {
-                            pendingDismiss = PendingDismiss(
-                                key: key,
-                                summary: ChangeRow.summary(for: kind)
-                            )
-                        },
-                        onSnooze: {
-                            dismissedStore.snooze(
-                                key: key,
-                                until: Date().addingTimeInterval(snoozeDuration)
-                            )
-                        }
-                    )
-                    .padding(.vertical, PPSpacing.sm)
-                    .padding(.horizontal, PPSpacing.md)
+    private func diffList(
+        tccVisible: [ChangeRow.Kind],
+        btmVisible: [ChangeRow.Kind],
+        laVisible: [ChangeRow.Kind]
+    ) -> some View {
+        List {
+            if !tccVisible.isEmpty {
+                Section(String(localized: "Permissions")) {
+                    changeRows(tccVisible)
                 }
             }
-            .vibrancyCard()
+            if !btmVisible.isEmpty {
+                Section(String(localized: "Background Items")) {
+                    changeRows(btmVisible)
+                }
+            }
+            if !laVisible.isEmpty {
+                Section(String(localized: "Launch Agents")) {
+                    changeRows(laVisible)
+                }
+            }
+            Section {
+                Text(String(localized: "Changes are marked reviewed when you visit this page."))
+                    .ppFont(.metadata)
+                    .foregroundStyle(.tertiary)
+                    .listRowBackground(Color.clear)
+                    .listRowSeparator(.hidden)
+            }
+        }
+        .listStyle(.inset)
+        .alert(
+            String(localized: "Dismiss this change forever?"),
+            isPresented: Binding(
+                get: { pendingDismiss != nil },
+                set: { if !$0 { pendingDismiss = nil } }
+            ),
+            presenting: pendingDismiss
+        ) { candidate in
+            Button(String(localized: "Dismiss forever"), role: .destructive) {
+                dismissedStore.dismissForever(key: candidate.key)
+                pendingDismiss = nil
+            }
+            Button(String(localized: "Cancel"), role: .cancel) {
+                pendingDismiss = nil
+            }
+        } message: { candidate in
+            Text(String(localized: "Permission Pulse will stop showing this change: \(candidate.summary). Use Reset All Data in Preferences to bring it back."))
+        }
+    }
+
+    @ViewBuilder
+    private func changeRows(_ rows: [ChangeRow.Kind]) -> some View {
+        ForEach(Array(rows.enumerated()), id: \.offset) { _, kind in
+            let key = DiffEntryKey.key(for: kind)
+            ChangeRow(
+                kind: kind,
+                onDismissForever: {
+                    pendingDismiss = PendingDismiss(
+                        key: key,
+                        summary: ChangeRow.summary(for: kind)
+                    )
+                },
+                onSnooze: {
+                    dismissedStore.snooze(
+                        key: key,
+                        until: Date().addingTimeInterval(snoozeDuration)
+                    )
+                }
+            )
         }
     }
 
@@ -132,50 +153,6 @@ struct DiffTabView: View {
         diff.added.map { ChangeRow.Kind.launchAgentAdded($0) }
             + diff.removed.map { ChangeRow.Kind.launchAgentRemoved($0) }
             + diff.changed.map { ChangeRow.Kind.launchAgentFlipped($0) }
-    }
-
-    private var emptyNoPriorState: some View {
-        VStack(spacing: PPSpacing.md) {
-            Image(systemName: "clock.arrow.circlepath")
-                .font(.system(size: 36))
-                .foregroundStyle(.secondary)
-                .accessibilityHidden(true)
-            Text(emptyNoPriorHeadline).ppFont(.cardHeader)
-            Text(String(localized: "Permission Pulse needs at least one prior snapshot. Come back tomorrow."))
-                .ppFont(.body)
-                .foregroundStyle(.secondary)
-                .multilineTextAlignment(.center)
-        }
-        .padding(.vertical, 36)
-        .frame(maxWidth: .infinity)
-    }
-
-    private var emptyContentState: some View {
-        VStack(spacing: 6) {
-            Image(systemName: "checkmark.seal.fill")
-                .font(.system(size: 36))
-                .foregroundStyle(.green)
-                .accessibilityHidden(true)
-            Text(emptyContentHeadline).ppFont(.cardHeader)
-        }
-        .padding(.vertical, 36)
-        .frame(maxWidth: .infinity)
-    }
-
-    private func unavailableState(headline: String, detail: String) -> some View {
-        VStack(spacing: PPSpacing.md) {
-            Image(systemName: "exclamationmark.triangle.fill")
-                .font(.system(size: 36))
-                .foregroundStyle(.orange)
-                .accessibilityHidden(true)
-            Text(headline).ppFont(.cardHeader)
-            Text(detail)
-                .ppFont(.body)
-                .foregroundStyle(.secondary)
-                .multilineTextAlignment(.center)
-        }
-        .padding(.vertical, 36)
-        .frame(maxWidth: .infinity)
     }
 
     private var emptyNoPriorHeadline: String {

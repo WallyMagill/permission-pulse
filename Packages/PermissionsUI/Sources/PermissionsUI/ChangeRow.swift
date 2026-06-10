@@ -27,26 +27,16 @@ struct ChangeRow: View {
                 .ppFont(.body)
                 .lineLimit(2)
                 .frame(maxWidth: .infinity, alignment: .leading)
-            if onDismissForever != nil || onSnooze != nil {
-                Menu {
-                    if let onDismissForever {
-                        Button(String(localized: "Dismiss forever"), role: .destructive) { onDismissForever() }
-                    }
-                    if let onSnooze {
-                        Button(String(localized: "Snooze 7 days")) { onSnooze() }
-                    }
-                } label: {
-                    Image(systemName: "ellipsis.circle")
-                        .ppFont(.body)
-                        .foregroundStyle(.tertiary)
-                }
-                .menuStyle(.borderlessButton)
-                .menuIndicator(.hidden)
-                .fixedSize()
-                .accessibilityLabel(String(localized: "Options"))
-                .accessibilityHint(String(localized: "Dismiss or snooze this change"))
+        }
+        .contextMenu {
+            if let onSnooze {
+                Button(String(localized: "Snooze 7 days")) { onSnooze() }
+            }
+            if let onDismissForever {
+                Button(String(localized: "Dismiss forever"), role: .destructive) { onDismissForever() }
             }
         }
+        .help(String(localized: "Right-click for dismiss options"))
     }
 
     @ViewBuilder

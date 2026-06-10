@@ -560,7 +560,7 @@ private struct RecentChangesDetailPage: View {
     @State private var window: RecentWindow = .yesterday
 
     var body: some View {
-        DetailPageScaffold(title: String(localized: "Recent Changes"), subtitle: nil) {
+        VStack(spacing: 0) {
             Picker("", selection: $window) {
                 Text(String(localized: "Yesterday")).tag(RecentWindow.yesterday)
                 Text(String(localized: "Last 7 days")).tag(RecentWindow.week)
@@ -568,7 +568,7 @@ private struct RecentChangesDetailPage: View {
             .pickerStyle(.segmented)
             .labelsHidden()
             .accessibilityLabel(String(localized: "Change window"))
-            .padding(.bottom, 4)
+            .padding(PPSpacing.lg)
 
             switch window {
             case .yesterday:
@@ -587,6 +587,7 @@ private struct RecentChangesDetailPage: View {
                 )
             }
         }
+        .navigationTitle(String(localized: "Recent Changes"))
     }
 }
 
@@ -602,13 +603,15 @@ private struct StaleAppsDetailPage: View {
     let searchText: String
 
     var body: some View {
-        DetailPageScaffold(title: String(localized: "Stale Apps"), subtitle: subtitle) {
+        Group {
             if filteredApps.isEmpty && !searchText.isEmpty {
-                EmptySearchView(query: searchText)
+                ContentUnavailableView.search(text: searchText)
             } else {
                 StaleAppsTabView(staleApps: filteredApps, staleThresholdDays: viewModel.staleThresholdDays)
             }
         }
+        .navigationTitle(String(localized: "Stale Apps"))
+        .navigationSubtitle(subtitle)
     }
 
     private var filteredApps: [StaleApp] {
@@ -620,8 +623,8 @@ private struct StaleAppsDetailPage: View {
         }
     }
 
-    private var subtitle: String? {
-        if viewModel.staleApps.isEmpty { return nil }
+    private var subtitle: String {
+        if viewModel.staleApps.isEmpty { return "" }
         return String(localized: "Apps with active grants you haven't used in \(viewModel.staleThresholdDays)+ days")
     }
 }
