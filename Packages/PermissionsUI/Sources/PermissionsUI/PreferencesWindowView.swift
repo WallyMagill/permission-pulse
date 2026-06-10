@@ -327,6 +327,11 @@ private struct DataSettingsTab: View {
                 Text(String(localized: "Deletes all snapshots, dismissed items, snoozes, and preferences. This cannot be undone."))
                     .ppFont(.metadata)
                     .foregroundStyle(.secondary)
+                if scanInProgress() {
+                    Text(String(localized: "Reset is disabled while a scan is in progress."))
+                        .ppFont(.metadata)
+                        .foregroundStyle(.orange)
+                }
             }
         }
         .formStyle(.grouped)
@@ -334,7 +339,7 @@ private struct DataSettingsTab: View {
             Button(String(localized: "Cancel"), role: .cancel) {}
             Button(String(localized: "Reset"), role: .destructive) { onResetAllData?() }
         } message: {
-            Text(String(localized: "All snapshots, dismissed items, snoozes, and preferences will be deleted. This cannot be undone."))
+            Text(String(localized: "All snapshots, dismissed items, snoozes, and preferences will be deleted. Permission Pulse will rescan immediately. This cannot be undone."))
         }
     }
 }
