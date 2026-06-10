@@ -92,6 +92,26 @@ import Testing
         #expect(vm.nextWeeklyFireDate == target)
     }
 
+    @Test("Launch-at-login toggle applies the system result, not the request")
+    @MainActor
+    func launchAtLoginAppliesSystemResult() async {
+        var requested: Bool?
+        let vm = PreferencesViewModel(
+            store: PreferencesStore(defaults: fresh()),
+            onDigestToggle: { _ in .disabled },
+            onSendTestNotification: { .idle },
+            onFetchNextFireDate: { nil },
+            initialLaunchAtLogin: false,
+            onLaunchAtLoginToggle: { enable in
+                requested = enable
+                return false   // system refused (e.g. SMAppService error)
+            }
+        )
+        await vm.setLaunchAtLogin(true)
+        #expect(requested == true)
+        #expect(vm.launchAtLoginEnabled == false)  // reflects reality, not the wish
+    }
+
     // MARK: - Helpers
 
     private func fresh() -> UserDefaults {

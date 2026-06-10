@@ -1,5 +1,6 @@
 import AppKit
 import OSLog
+import ServiceManagement
 import SwiftUI
 import PermissionsStore
 import PermissionsUI
@@ -53,6 +54,7 @@ struct PermissionPulseApp: App {
                 }
             )
             .environment(appDelegate.preferencesViewModel)
+            .environment(appDelegate.viewModel)
         }
         .windowResizability(.contentSize)
 
@@ -104,6 +106,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         },
         onFetchNextFireDate: { [weak self] in
             await self?.weeklyDigestCoordinator.nextWeeklyFireDate()
+        },
+        initialLaunchAtLogin: SMAppService.mainApp.status == .enabled,
+        onLaunchAtLoginToggle: { enable in
+            do {
+                if enable { try SMAppService.mainApp.register() }
+                else { try SMAppService.mainApp.unregister() }
+            } catch {
+                Logger(
+                    subsystem: "com.wallymagill.permissionpulse",
+                    category: "app-delegate"
+                ).error("Launch-at-login toggle failed: \(error.localizedDescription, privacy: .public)")
+            }
+            return SMAppService.mainApp.status == .enabled
         }
     )
     private var coordinator: ScanCoordinator?
@@ -193,31 +208,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func requestResetAllData() {
-        let sheet = ResetConfirmationSheet(
-            onCancel: { [weak self] in
-                self?.resetConfirmationWindow?.close()
-                self?.resetConfirmationWindow = nil
-            },
-            onConfirm: { [weak self] in
-                guard let self else { return }
-                self.resetConfirmationWindow?.close()
-                self.resetConfirmationWindow = nil
-                Task { @MainActor in await self.performReset() }
-            }
-        )
-        let window = NSWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 380, height: 200),
-            styleMask: [.titled, .closable],
-            backing: .buffered,
-            defer: false
-        )
-        window.title = String(localized: "Reset Permission Pulse")
-        window.contentView = NSHostingView(rootView: sheet)
-        window.center()
-        window.isReleasedWhenClosed = false
-        window.makeKeyAndOrderFront(nil)
-        NSApp.activate(ignoringOtherApps: true)
-        resetConfirmationWindow = window
+        Task { @MainActor in await performReset() }
     }
 
     private func performReset() async {
@@ -277,8 +268,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // before any subsequent scan begins.
         alert.runModal()
     }
-
-    private var resetConfirmationWindow: NSWindow?
 
     func showWelcomeWindow() {
         // Singleton: re-front the existing window instead of orphaning it. The

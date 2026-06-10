@@ -31,21 +31,27 @@ public final class PreferencesViewModel {
     public var authorizationHint: AuthorizationHint = .notYetRequested
     public var nextWeeklyFireDate: Date?
     public var testNotificationResult: TestNotificationResult = .idle
+    public private(set) var launchAtLoginEnabled: Bool
 
     private let onDigestToggle: @MainActor (Bool) async -> AuthorizationHint
     private let onSendTestNotification: @MainActor () async -> TestNotificationResult
     private let onFetchNextFireDate: @MainActor () async -> Date?
+    private let onLaunchAtLoginToggle: ((Bool) async -> Bool)?
 
     public init(
         store: PreferencesStore,
         onDigestToggle: @escaping @MainActor (Bool) async -> AuthorizationHint = { _ in .disabled },
         onSendTestNotification: @escaping @MainActor () async -> TestNotificationResult = { .idle },
-        onFetchNextFireDate: @escaping @MainActor () async -> Date? = { nil }
+        onFetchNextFireDate: @escaping @MainActor () async -> Date? = { nil },
+        initialLaunchAtLogin: Bool = false,
+        onLaunchAtLoginToggle: ((Bool) async -> Bool)? = nil
     ) {
         self.store = store
         self.onDigestToggle = onDigestToggle
         self.onSendTestNotification = onSendTestNotification
         self.onFetchNextFireDate = onFetchNextFireDate
+        self.launchAtLoginEnabled = initialLaunchAtLogin
+        self.onLaunchAtLoginToggle = onLaunchAtLoginToggle
     }
 
     // MARK: - Slider bindings (Double mirrors)
@@ -88,5 +94,12 @@ public final class PreferencesViewModel {
 
     public func clearTestNotificationResult() {
         testNotificationResult = .idle
+    }
+
+    // MARK: - Launch at login
+
+    public func setLaunchAtLogin(_ enable: Bool) async {
+        guard let onLaunchAtLoginToggle else { return }
+        launchAtLoginEnabled = await onLaunchAtLoginToggle(enable)
     }
 }
