@@ -54,7 +54,7 @@ The app target uses Xcode 26's `PBXFileSystemSynchronizedRootGroup`, so any `.sw
 
 ### `PermissionsUI`
 
-- SwiftUI views: `MenuBarContentView`, `DetailWindowView` (NavigationSplitView with five pages), `PreferencesWindowView`, `WelcomeWindowView`, the per-domain sections (`PermissionsSection` / `LaunchAgentsSection` / `BackgroundItemsSection`), the detail sheets (`AppPermissionsDetailSheet` / `LaunchAgentDetailSheet` / `BackgroundItemDetailSheet` / `FDAGrantSheet` / `ResetConfirmationSheet`), `DiffTabView`, `StaleAppsTabView`, and shared chrome (`SchemaMismatchBanner`, `Mock`/`LiveBadge`, `VibrancyCard`, `TappableRow`).
+- SwiftUI views: `MenuBarContentView`, `DetailWindowView` (NavigationSplitView with six pages, `OverviewPage` first), `PreferencesWindowView` (native Settings-style tabs), `WelcomeWindowView`, the non-modal inspectors (`AppPermissionsInspector` / `LaunchAgentInspector` / `BackgroundItemInspector` on the shared `InspectorPanel`), `DiffTabView`, `StaleAppsTabView`, and shared chrome (`SchemaMismatchBanner`, `MockBadge`, `ExportToolbar`, `DispositionBadge`, `PermissionsEmptyStateView`). The pre-Thread-C detail sheets and section/row components (`*DetailSheet`, `PermissionsSection`, `TappableRow`, `VibrancyCard`) were retired in the native redesign.
 - `@Observable @MainActor` view models / stores: `AppViewModel` (the central state object — scanner results, media use, diffs, stale apps, `menuBarSymbolName`), `PreferencesViewModel`, `PreferencesStore`, `DismissedDiffEntryStore`, `DismissedStaleAppStore`.
 - Depends on `PermissionsCore` + `PermissionsStore` (it consumes `SnapshotDiffs`). It does **not** depend on `PermissionsScanners` — concrete scanners are injected from the app target via the coordinators.
 
@@ -93,8 +93,10 @@ On launch the app kicks off a scan and reconciles the digest; user-initiated ref
 
 Each drop carries a `// AppKit: <reason>` comment at the call site. Shipping drops as of v0.7.x:
 
-- **Welcome and Reset-confirmation windows** — hosted in an `NSWindow` (a one-shot dialog launched from another window is awkward to time with a SwiftUI sheet; the `NSWindow` host is deterministic).
-- **`TappableRow` cursor + hover** — uses `NSCursor` (pointing hand) for the hover affordance that SwiftUI doesn't expose cleanly on a custom row.
+- **Welcome window** — hosted in an `NSWindow` (a one-shot dialog launched from another window is awkward to time with a SwiftUI sheet; the `NSWindow` host is deterministic). Reset confirmation is now a SwiftUI `.alert` in Preferences.
+- **`NSSavePanel` + `NSAlert`** — export destination picker and one-shot error dialogs (`ExportToolbar`, `PermissionPulseApp`).
+- **`NSWorkspace`** — reveal-in-Finder (read-only) from the stale-apps list and the app-permissions inspector; `AppRelauncher` restarts the running bundle after Reset All Data.
+- **`NSApp.activate`** — fronting the Preferences window from the detail toolbar.
 
 Candidates we still anticipate may force AppKit:
 

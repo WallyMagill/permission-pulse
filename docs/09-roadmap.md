@@ -102,11 +102,22 @@ A small post-v0.7.0 code-review follow-up — no new features:
 
 (The store/window fixes also visible in recent history — `computeDiff` no longer traps on duplicate identity keys, `latestSnapshotID` orders by `created_at`, singleton detail/preferences windows + Preferences toolbar entry — landed within the v0.7.0 tag range, not v0.7.1.)
 
+## Unreleased — on `main` since v0.7.1 (next tag)
+
+Landed after the v0.7.1 tag; ships in the next release:
+
+- Thread A app-quality workstreams W1–W4 (correctness, dead-code sweep, resilience, accessibility). ✅
+- Thread B visual overhaul + Thread C native redesign: `OverviewPage`, non-modal inspectors replacing the detail sheets, native Settings-style Preferences tabs, singleton `Window(id:)` scenes. ✅
+- Export to JSON/Markdown via `NSSavePanel` (`ExportToolbar`) — pulled forward from the old v1.1 list. ✅
+- Launch at login via `SMAppService` (Preferences → General). ✅
+- TCC `auth_value` change tracking in the diff engine (snapshot schema v4). ✅
+- Notification banners present while the app is frontmost (`NotificationPresentationDelegate`). ✅
+
 ## v0.8.x — Model fidelity (planned, deferred from v0.7.0)
 
 Carried over from `docs/17` "Deferred to later slices":
 
-- TCC `auth_value` tracking so a granted→denied transition shows as a change, not remove+add (`TCCGrantsDiff.changed` is currently always empty).
+- Render TCC `changed` rows in the UI (the diff engine now emits auth-value transitions; the UI still shows only added/removed).
 - Sub-service preservation for `.filesAndFolders` / Photos / Bluetooth (the five folder-scope TCC strings currently collapse to one grant).
 - Notification click → open Recent Changes (needs a `UNUserNotificationCenterDelegate` routing into `pendingDetailMode`).
 
@@ -119,7 +130,6 @@ Carried over from `docs/17` "Deferred to later slices":
 
 ## v1.1 (post-launch)
 
-- Export to JSON/Markdown.
 - Homebrew tap.
 - Localization for at least one non-English locale.
 - (Configurable stale-app threshold already shipped in v0.7.0; the detail window already has a toolbar search that filters every page.)

@@ -24,7 +24,7 @@ Read-only. No cleaner-tier nonsense. No analytics. No phoning home. Free and ope
 
 ## Status
 
-**v0.7.1 — released on [GitHub Releases](https://github.com/WallyMagill/permission-pulse/releases).** Every v1-scope feature is implemented and shipping: the TCC permission inbox, Launch Agents / Launch Daemons / BTM background-item scanners, the live mic/cam indicator, daily and weekly "What Changed" diffs with per-row dismiss/snooze, plain-English risk explanations, stale-app review, one-click System Settings deep links, a preferences pane (retention + stale threshold + reset), and an opt-in weekly digest notification. See [`docs/09-roadmap.md`](docs/09-roadmap.md) for the full milestone history and the short list of polish work remaining before a tagged `v1.0.0`.
+**v0.7.1 — released on [GitHub Releases](https://github.com/WallyMagill/permission-pulse/releases).** Every v1-scope feature is implemented and shipping: the TCC permission inbox, Launch Agents / Launch Daemons / BTM background-item scanners, the live mic/cam indicator, daily and weekly "What Changed" diffs with per-row dismiss/snooze, plain-English risk explanations, stale-app review, one-click System Settings deep links, a preferences pane (retention + stale threshold + reset), and an opt-in weekly digest notification. See [`docs/09-roadmap.md`](docs/09-roadmap.md) for the full milestone history, the unreleased work on `main` since v0.7.1 (visual overhaul, export, launch-at-login), and what remains before a tagged `v1.0.0`.
 
 Builds are **unsigned / ad-hoc-signed** — there is no paid Apple Developer ID behind this project — so the first launch needs the Gatekeeper "Open Anyway" step below. Nothing about the app is gated, paid, or phones home.
 
