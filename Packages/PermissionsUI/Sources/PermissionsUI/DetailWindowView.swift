@@ -645,7 +645,7 @@ private struct ScanningStateView: View {
             Text(String(localized: "Reading the system's records. This takes a moment."))
         }
         .accessibilityElement(children: .combine)
-        .accessibilityLabel(String(localized: "Scanning"))
+        .accessibilityLabel(String(localized: "Scanning in progress"))
     }
 }
 

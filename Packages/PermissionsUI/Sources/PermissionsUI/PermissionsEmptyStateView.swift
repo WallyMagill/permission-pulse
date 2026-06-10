@@ -5,6 +5,9 @@ struct PermissionsEmptyStateView: View {
     let error: ScannerError?
     let domain: ScannerDomain
 
+    // Explicit binding so the disclosure survives parent recomposition.
+    @State private var isDisclosureExpanded = false
+
     init(error: ScannerError?, domain: ScannerDomain = .tcc) {
         self.error = error
         self.domain = domain
@@ -53,7 +56,10 @@ struct PermissionsEmptyStateView: View {
                 .buttonStyle(.link)
                 .accessibilityHint(String(localized: "Restarts Permission Pulse so a newly granted permission takes effect"))
             }
-            DisclosureGroup(String(localized: "Why does Permission Pulse need this?")) {
+            DisclosureGroup(
+                String(localized: "Why does Permission Pulse need this?"),
+                isExpanded: $isDisclosureExpanded
+            ) {
                 Text(disclosureBody)
                     .ppFont(.metadata)
                     .foregroundStyle(.secondary)
