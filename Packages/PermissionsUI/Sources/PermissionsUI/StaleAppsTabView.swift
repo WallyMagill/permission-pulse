@@ -35,6 +35,17 @@ struct StaleAppsTabView: View {
                                 pendingSkipCandidate = app
                             }
                         }
+                        // VoiceOver can't discover a context menu on its own; mirror its actions.
+                        .accessibilityActions {
+                            if app.app.bundlePath != nil {
+                                Button(String(localized: "Reveal in Finder")) {
+                                    revealInFinder(app: app)
+                                }
+                            }
+                            Button(String(localized: "Skip forever")) {
+                                pendingSkipCandidate = app
+                            }
+                        }
                 }
             }
             .listStyle(.inset)

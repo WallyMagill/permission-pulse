@@ -37,6 +37,15 @@ struct ChangeRow: View {
             }
         }
         .help(String(localized: "Right-click for dismiss options"))
+        // VoiceOver can't discover a context menu on its own; mirror its actions.
+        .accessibilityActions {
+            if let onSnooze {
+                Button(String(localized: "Snooze 7 days")) { onSnooze() }
+            }
+            if let onDismissForever {
+                Button(String(localized: "Dismiss forever")) { onDismissForever() }
+            }
+        }
     }
 
     @ViewBuilder
