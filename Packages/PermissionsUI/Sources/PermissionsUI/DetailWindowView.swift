@@ -281,7 +281,7 @@ private struct PermissionsDetailPage: View {
         .listStyle(.inset)
     }
 
-    struct AppGrantGroup: Identifiable {
+    private struct AppGrantGroup: Identifiable {
         let appKey: String
         let app: AppIdentity
         let grants: [PermissionGrant]
@@ -326,7 +326,7 @@ private struct PermissionsDetailPage: View {
                         .lineLimit(1)
                 }
                 Spacer(minLength: PPSpacing.sm)
-                Text("\(group.grants.count)")
+                Text("\(distinctServices.count)")
                     .ppFont(.metadata)
                     .foregroundStyle(.secondary)
                     .monospacedDigit()
@@ -335,11 +335,14 @@ private struct PermissionsDetailPage: View {
             .accessibilityElement(children: .combine)
         }
 
-        private var serviceLine: String {
+        private var distinctServices: [String] {
             Set(group.grants.map(\.service))
                 .map(\.displayName)
                 .sorted()
-                .joined(separator: " · ")
+        }
+
+        private var serviceLine: String {
+            distinctServices.joined(separator: " · ")
         }
     }
 }
