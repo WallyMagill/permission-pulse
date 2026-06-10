@@ -36,7 +36,7 @@ When we add a Developer ID, we revisit. The architecture leaves room for Sparkle
 
 1. Download `PermissionPulse-vX.Y.Z.app.zip` from the Releases page and unzip it.
 2. Drag `Permission Pulse.app` to `/Applications`.
-3. **First launch:** right-click → Open. Gatekeeper warning is expected and the right-click → Open path is the standard workaround for unsigned OSS apps.
+3. **First launch:** double-click → dismiss the "Apple could not verify…" dialog with **Done** → System Settings → Privacy & Security → **Open Anyway** → authenticate. macOS 15 (Sequoia) removed the right-click → Open override for unsigned apps; that shortcut only still works on macOS 14. The `xattr -d com.apple.quarantine` CLI route is the alternative.
 4. Grant Full Disk Access when the app asks (required for TCC + BTM reads; macOS may ask you to quit and reopen).
 
 ## Anti-distribution

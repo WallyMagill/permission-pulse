@@ -6,11 +6,13 @@ Permission Pulse asks for at most one OS-level permission: **Full Disk Access**.
 
 ### 1. Gatekeeper
 
-When the user double-clicks `Permission Pulse.app` the first time, macOS shows the "Apple could not verify..." dialog. The user must:
+When the user double-clicks `Permission Pulse.app` the first time, macOS shows the "Apple could not verify..." dialog. On macOS 15 (Sequoia) and later — including Tahoe — the right-click → Open override no longer exists for unsigned apps, so the user must:
 
-1. Dismiss that dialog.
-2. **Right-click** the app in Finder → **Open**.
-3. Confirm the second, friendlier dialog (Apple includes an "Open" button on the right-click path).
+1. Dismiss that dialog with **Done** (not "Move to Trash").
+2. Open **System Settings → Privacy & Security** and scroll to the *"Permission Pulse" was blocked* notice.
+3. Click **Open Anyway** and authenticate when prompted.
+
+On macOS 14 (Sonoma) the older right-click the app → **Open** → **Open** shortcut still works. The CLI alternative on any version: `xattr -d com.apple.quarantine "/Applications/Permission Pulse.app"`.
 
 After this, normal double-clicks work.
 
