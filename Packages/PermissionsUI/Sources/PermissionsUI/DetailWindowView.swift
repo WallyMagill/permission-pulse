@@ -127,8 +127,8 @@ public struct DetailWindowView: View {
                 description: Text(String(localized: "Coming in Task 6"))
             )
         case .permissions: PermissionsDetailPage(searchText: searchText, selection: $inspectorSelection)
-        case .launchAgents: LaunchAgentsDetailPage(searchText: searchText)
-        case .backgroundItems: BackgroundItemsDetailPage(searchText: searchText)
+        case .launchAgents: LaunchAgentsDetailPage(searchText: searchText, selection: $inspectorSelection)
+        case .backgroundItems: BackgroundItemsDetailPage(searchText: searchText, selection: $inspectorSelection)
         case .recentChanges: RecentChangesDetailPage()
         case .staleApps: StaleAppsDetailPage(searchText: searchText)
         }
@@ -352,44 +352,61 @@ private struct PermissionsDetailPage: View {
 private struct LaunchAgentsDetailPage: View {
     @Environment(AppViewModel.self) private var viewModel
     let searchText: String
+    @Binding var selection: InspectorSelection?
 
     var body: some View {
-        DetailPageScaffold(title: String(localized: "Launch Agents"), subtitle: subtitle, dataSource: viewModel.launchAgentsDataSource) {
+        Group {
             if let error = viewModel.launchAgentScanError {
-                VStack(spacing: PPSpacing.sm) {
-                    Image(systemName: "exclamationmark.triangle.fill")
-                        // Decorative hero icon — keep fixed size (rule 1)
-                        .font(.system(size: 36))
-                        .foregroundStyle(PPColor.warning)
-                        .accessibilityHidden(true)
-                    Text(String(localized: "Couldn't read Launch Agents"))
-                        .ppFont(.cardHeader)
-                    Text(error.errorDescription ?? String(localized: "An error occurred reading the LaunchAgents directories."))
-                        .ppFont(.metadata)
-                        .foregroundStyle(.secondary)
-                        .multilineTextAlignment(.center)
-                }
-                .frame(maxWidth: .infinity)
-                .padding(.vertical, PPSpacing.xxl)
+                errorView(error: error)
             } else if ScanState.showsScanningPlaceholder(
                 isScanning: viewModel.scanInProgress,
                 isEmpty: viewModel.launchAgents.isEmpty,
-                hasError: false, // the error block above already owns that surface
+                hasError: false,
                 isSearching: !searchText.isEmpty
             ) {
                 ScanningPlaceholder()
+            } else if viewModel.launchAgents.isEmpty {
+                ContentUnavailableView(
+                    String(localized: "No Launch Agents"),
+                    systemImage: "gearshape.2",
+                    description: Text(String(localized: "No launch agents or daemons were found on this system."))
+                )
+            } else if filteredItems.isEmpty {
+                ContentUnavailableView.search(text: searchText)
             } else {
-                if filteredItems.isEmpty && !searchText.isEmpty {
-                    EmptySearchView(query: searchText)
-                } else {
-                    LaunchAgentsSection(
-                        items: filteredItems,
-                        dataSource: viewModel.launchAgentsDataSource,
-                        showsHeader: false
-                    )
-                }
+                agentList
             }
         }
+        .navigationTitle(String(localized: "Launch Agents"))
+        .navigationSubtitle(subtitle)
+    }
+
+    private var agentList: some View {
+        List(selection: $selection) {
+            ForEach(filteredItems) { item in
+                LaunchAgentRow(item: item)
+                    .tag(InspectorSelection.launchAgent(id: item.id))
+            }
+        }
+        .listStyle(.inset)
+    }
+
+    private func errorView(error: ScannerError) -> some View {
+        VStack(spacing: PPSpacing.sm) {
+            Image(systemName: "exclamationmark.triangle.fill")
+                // Decorative hero icon — keep fixed size (rule 1)
+                .font(.system(size: 36))
+                .foregroundStyle(PPColor.warning)
+                .accessibilityHidden(true)
+            Text(String(localized: "Couldn't read Launch Agents"))
+                .ppFont(.cardHeader)
+            Text(error.errorDescription ?? String(localized: "An error occurred reading the LaunchAgents directories."))
+                .ppFont(.metadata)
+                .foregroundStyle(.secondary)
+                .multilineTextAlignment(.center)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .padding(.vertical, PPSpacing.xxl)
     }
 
     private var filteredItems: [LaunchAgentItem] {
@@ -401,9 +418,31 @@ private struct LaunchAgentsDetailPage: View {
         }
     }
 
-    private var subtitle: String? {
-        if viewModel.launchAgents.isEmpty { return nil }
+    private var subtitle: String {
+        guard !viewModel.launchAgents.isEmpty else { return "" }
         return String(localized: "\(viewModel.launchAgents.count) agents across user and system scopes")
+    }
+}
+
+private struct LaunchAgentRow: View {
+    let item: LaunchAgentItem
+
+    var body: some View {
+        HStack(spacing: PPSpacing.md) {
+            Image(systemName: "gearshape.2")
+                .frame(width: 28, height: 28)
+                .foregroundStyle(.secondary)
+                .accessibilityHidden(true)
+            VStack(alignment: .leading, spacing: PPSpacing.xxs) {
+                Text(item.label).ppFont(.body).lineLimit(1)
+                Text(item.sourceDirectory.path)
+                    .ppFont(.metadata)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+            }
+        }
+        .padding(.vertical, PPSpacing.xxs)
+        .accessibilityElement(children: .combine)
     }
 }
 
@@ -412,31 +451,43 @@ private struct LaunchAgentsDetailPage: View {
 private struct BackgroundItemsDetailPage: View {
     @Environment(AppViewModel.self) private var viewModel
     let searchText: String
+    @Binding var selection: InspectorSelection?
 
     var body: some View {
-        DetailPageScaffold(title: String(localized: "Background Items"), subtitle: subtitle, dataSource: viewModel.btmDataSource) {
+        Group {
             if let error = viewModel.btmScanError, isSchemaIssue(error) {
-                SchemaMismatchBanner(error: error, domain: .btm)
-            }
-
-            if ScanState.showsScanningPlaceholder(
+                VStack(spacing: 0) {
+                    SchemaMismatchBanner(error: error, domain: .btm)
+                        .padding(PPSpacing.lg)
+                    btmList
+                }
+            } else if ScanState.showsScanningPlaceholder(
                 isScanning: viewModel.scanInProgress,
                 isEmpty: viewModel.btmItems.isEmpty,
                 hasError: viewModel.btmScanError != nil,
                 isSearching: !searchText.isEmpty
             ) {
                 ScanningPlaceholder()
-            } else if filteredItems.isEmpty && !searchText.isEmpty {
-                EmptySearchView(query: searchText)
+            } else if viewModel.btmItems.isEmpty {
+                PermissionsEmptyStateView(error: viewModel.btmScanError, domain: .btm)
+            } else if filteredItems.isEmpty {
+                ContentUnavailableView.search(text: searchText)
             } else {
-                BackgroundItemsSection(
-                    items: filteredItems,
-                    dataSource: viewModel.btmDataSource,
-                    error: viewModel.btmScanError,
-                    showsHeader: false
-                )
+                btmList
             }
         }
+        .navigationTitle(String(localized: "Background Items"))
+        .navigationSubtitle(subtitle)
+    }
+
+    private var btmList: some View {
+        List(selection: $selection) {
+            ForEach(filteredItems) { item in
+                BTMListRow(item: item)
+                    .tag(InspectorSelection.backgroundItem(id: item.id))
+            }
+        }
+        .listStyle(.inset)
     }
 
     private var filteredItems: [BTMItem] {
@@ -450,10 +501,86 @@ private struct BackgroundItemsDetailPage: View {
         }
     }
 
-    private var subtitle: String? {
-        if viewModel.btmItems.isEmpty { return nil }
+    private var subtitle: String {
+        guard !viewModel.btmItems.isEmpty else { return "" }
         let enabled = viewModel.btmItems.filter { $0.disposition == .enabled }.count
         return String(localized: "\(viewModel.btmItems.count) items · \(enabled) enabled")
+    }
+}
+
+private struct BTMListRow: View {
+    let item: BTMItem
+
+    var body: some View {
+        HStack(spacing: PPSpacing.md) {
+            iconView
+            VStack(alignment: .leading, spacing: PPSpacing.xxs) {
+                Text(item.name).ppFont(.body).lineLimit(1)
+                Text(secondaryLine)
+                    .ppFont(.metadata)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+            }
+            Spacer(minLength: PPSpacing.sm)
+            DispositionBadge(disposition: item.disposition)
+        }
+        .padding(.vertical, PPSpacing.xxs)
+        .accessibilityElement(children: .combine)
+    }
+
+    @ViewBuilder
+    private var iconView: some View {
+        if let bid = item.bundleIdentifier, !bid.isEmpty {
+            AppIconResolver.iconView(
+                for: AppIdentity(bundleID: bid, displayName: item.name, bundlePath: nil),
+                size: 28
+            )
+        } else {
+            ZStack {
+                RoundedRectangle(cornerRadius: 7, style: .continuous)
+                    .fill(Color.secondary.opacity(0.14))
+                    .frame(width: 28, height: 28)
+                Image(systemName: typeSymbolName)
+                    .font(.system(size: 14, weight: .medium))
+                    .foregroundStyle(.secondary)
+                    .accessibilityHidden(true)
+            }
+        }
+    }
+
+    private var typeSymbolName: String {
+        switch item.type {
+        case .app:            "app.fill"
+        case .legacyDaemon:   "gearshape.2.fill"
+        case .developerGroup: "folder.fill"
+        case .unknown:        "questionmark.circle.fill"
+        }
+    }
+
+    private var secondaryLine: String {
+        let parts: [String] = [
+            item.developerName ?? item.bundleIdentifier ?? item.identifier,
+            scopeLabel,
+            typeLabel,
+        ]
+        return parts.joined(separator: " · ")
+    }
+
+    private var scopeLabel: String {
+        switch item.scope {
+        case .system: String(localized: "system")
+        case .user: String(localized: "user")
+        case .perUser: String(localized: "current user")
+        }
+    }
+
+    private var typeLabel: String {
+        switch item.type {
+        case .app: String(localized: "App")
+        case .legacyDaemon: String(localized: "Daemon")
+        case .developerGroup: String(localized: "Group")
+        case .unknown(let rawValue): String(localized: "Unknown item type · 0x\(String(rawValue, radix: 16))")
+        }
     }
 }
 

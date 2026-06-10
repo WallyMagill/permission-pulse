@@ -149,22 +149,6 @@ struct ServicePillButton: View {
     }
 }
 
-// Close-only footer, right-aligned. Used for sheets with no primary action
-// (per the locked footer convention).
-struct SheetCloseFooter: View {
-    @Environment(\.dismiss) private var dismiss
-
-    var body: some View {
-        HStack {
-            Spacer()
-            Button(String(localized: "Close")) {
-                dismiss()
-            }
-            .keyboardShortcut(.cancelAction)
-        }
-    }
-}
-
 // Wrapping flow layout — like CSS flex-wrap. Used by the service-pill grid
 // in the per-app detail sheet so pills wrap onto new lines when the sheet's
 // width can't fit them all.

@@ -2,45 +2,32 @@ import AppKit
 import SwiftUI
 import PermissionsCore
 
-// Per-row detail sheet for a single LaunchAgent / LaunchDaemon entry.
-//
-// Launch agents are not apps — they are property-list-defined background
-// helpers. The sheet shows the launchd properties plus the file path so the
-// user can inspect or remove the underlying .plist via Finder. No System
-// Settings deep-link exists for launch agents.
-public struct LaunchAgentDetailSheet: View {
-    @Environment(\.dismiss) private var dismiss
-    private let item: LaunchAgentItem
+/// Inspector panel for a selected LaunchAgent / LaunchDaemon entry.
+///
+/// Ports the content of `LaunchAgentDetailSheet` into the non-modal trailing
+/// inspector layout — header, properties card, source path card, and a
+/// full-width "Reveal in Finder" action.
+struct LaunchAgentInspector: View {
+    let item: LaunchAgentItem
 
-    public init(item: LaunchAgentItem) {
-        self.item = item
-    }
-
-    public var body: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            header
-                .padding(.bottom, 16)
-
-            SheetSectionLabel(String(localized: "Properties"))
-                .padding(.bottom, 6)
-            SheetKVCard(rows: propertyRows)
-                .padding(.bottom, 14)
-
-            SheetSectionLabel(String(localized: "Source"))
-                .padding(.bottom, 6)
-            sourcePathLine
-                .padding(.bottom, 16)
-
-            footer
+    var body: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: PPSpacing.lg) {
+                header
+                propertiesSection
+                sourceSection
+                actionFooter
+            }
+            .padding(PPSpacing.lg)
         }
-        .padding(22)
-        .frame(width: 460)
     }
+
+    // MARK: - Header
 
     private var header: some View {
-        HStack(alignment: .top, spacing: 13) {
-            SheetGradientTile(symbol: "gearshape.fill")
-            VStack(alignment: .leading, spacing: 2) {
+        HStack(alignment: .top, spacing: PPSpacing.md) {
+            SheetGradientTile(symbol: "gearshape.fill", size: 40)
+            VStack(alignment: .leading, spacing: PPSpacing.xxs) {
                 Text(item.label)
                     .ppFont(.cardHeader)
                     .lineLimit(2)
@@ -49,6 +36,15 @@ public struct LaunchAgentDetailSheet: View {
                     .foregroundStyle(.secondary)
             }
             Spacer(minLength: 0)
+        }
+    }
+
+    // MARK: - Properties section
+
+    private var propertiesSection: some View {
+        VStack(alignment: .leading, spacing: PPSpacing.sm) {
+            SheetSectionLabel(String(localized: "Properties"))
+            SheetKVCard(rows: propertyRows)
         }
     }
 
@@ -72,32 +68,35 @@ public struct LaunchAgentDetailSheet: View {
         ]
     }
 
-    private var sourcePathLine: some View {
-        Text(item.sourceDirectory.path)
-            .font(Font.system(.subheadline).monospaced())
-            .foregroundStyle(.secondary)
-            .textSelection(.enabled)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(.horizontal, 14)
-            .padding(.vertical, 10)
-            .vibrancyCard()
-    }
+    // MARK: - Source section
 
-    private var footer: some View {
-        HStack {
-            Spacer()
-            Button(String(localized: "Close")) {
-                dismiss()
-            }
-            .keyboardShortcut(.cancelAction)
-            Button(String(localized: "Reveal in Finder")) {
-                revealInFinder()
-                dismiss()
-            }
-            .keyboardShortcut(.defaultAction)
-            .buttonStyle(.borderedProminent)
+    private var sourceSection: some View {
+        VStack(alignment: .leading, spacing: PPSpacing.sm) {
+            SheetSectionLabel(String(localized: "Source"))
+            Text(item.sourceDirectory.path)
+                .font(Font.system(.subheadline).monospaced())
+                .foregroundStyle(.secondary)
+                .textSelection(.enabled)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.horizontal, 14)
+                .padding(.vertical, 10)
+                .vibrancyCard()
         }
     }
+
+    // MARK: - Action footer
+
+    private var actionFooter: some View {
+        Button {
+            revealInFinder()
+        } label: {
+            Label(String(localized: "Reveal in Finder"), systemImage: "folder")
+                .frame(maxWidth: .infinity)
+        }
+        .controlSize(.large)
+    }
+
+    // MARK: - Helpers
 
     private var scopeLabel: String {
         switch item.sourceDirectory {

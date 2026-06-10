@@ -2,39 +2,31 @@ import AppKit
 import SwiftUI
 import PermissionsCore
 
-// Per-row detail sheet for a single BTM (Background Task Management) entry.
-//
-// macOS exposes login items in System Settings → General → Login Items, but
-// the per-item revocation flow is UI-driven there (toggle off, confirm).
-// We deep-link to that pane and surface the BTM properties for inspection.
-public struct BackgroundItemDetailSheet: View {
-    @Environment(\.dismiss) private var dismiss
-    private let item: BTMItem
+/// Inspector panel for a selected BTM (Background Task Management) entry.
+///
+/// Ports the content of `BackgroundItemDetailSheet` into the non-modal trailing
+/// inspector layout — header with icon or gradient tile, properties card, and
+/// a full-width "Open Login Items" action.
+struct BackgroundItemInspector: View {
+    let item: BTMItem
 
-    public init(item: BTMItem) {
-        self.item = item
-    }
-
-    public var body: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            header
-                .padding(.bottom, 16)
-
-            SheetSectionLabel(String(localized: "Properties"))
-                .padding(.bottom, 6)
-            SheetKVCard(rows: propertyRows)
-                .padding(.bottom, 16)
-
-            footer
+    var body: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: PPSpacing.lg) {
+                header
+                propertiesSection
+                actionFooter
+            }
+            .padding(PPSpacing.lg)
         }
-        .padding(22)
-        .frame(width: 460)
     }
+
+    // MARK: - Header
 
     private var header: some View {
-        HStack(alignment: .top, spacing: 13) {
+        HStack(alignment: .top, spacing: PPSpacing.md) {
             iconView
-            VStack(alignment: .leading, spacing: 2) {
+            VStack(alignment: .leading, spacing: PPSpacing.xxs) {
                 Text(item.name)
                     .ppFont(.cardHeader)
                     .lineLimit(2)
@@ -56,9 +48,18 @@ public struct BackgroundItemDetailSheet: View {
            let url = NSWorkspace.shared.urlForApplication(withBundleIdentifier: bid) {
             Image(nsImage: NSWorkspace.shared.icon(forFile: url.path(percentEncoded: false)))
                 .resizable()
-                .frame(width: 44, height: 44)
+                .frame(width: 40, height: 40)
         } else {
-            SheetGradientTile(symbol: typeSymbolName)
+            SheetGradientTile(symbol: typeSymbolName, size: 40)
+        }
+    }
+
+    // MARK: - Properties section
+
+    private var propertiesSection: some View {
+        VStack(alignment: .leading, spacing: PPSpacing.sm) {
+            SheetSectionLabel(String(localized: "Properties"))
+            SheetKVCard(rows: propertyRows)
         }
     }
 
@@ -81,21 +82,19 @@ public struct BackgroundItemDetailSheet: View {
         return rows
     }
 
-    private var footer: some View {
-        HStack {
-            Spacer()
-            Button(String(localized: "Close")) {
-                dismiss()
-            }
-            .keyboardShortcut(.cancelAction)
-            Button(String(localized: "Open Login Items")) {
-                SystemSettingsLink.openLoginItems()
-                dismiss()
-            }
-            .keyboardShortcut(.defaultAction)
-            .buttonStyle(.borderedProminent)
+    // MARK: - Action footer
+
+    private var actionFooter: some View {
+        Button {
+            SystemSettingsLink.openLoginItems()
+        } label: {
+            Label(String(localized: "Open Login Items"), systemImage: "gear")
+                .frame(maxWidth: .infinity)
         }
+        .controlSize(.large)
     }
+
+    // MARK: - Derived properties
 
     private var subtitle: String? {
         if let dev = item.developerName, !dev.isEmpty { return dev }
@@ -114,9 +113,9 @@ public struct BackgroundItemDetailSheet: View {
 
     private var typeLabel: String {
         switch item.type {
-        case .app:                  String(localized: "App")
-        case .legacyDaemon:         String(localized: "Legacy daemon")
-        case .developerGroup:       String(localized: "Developer group")
+        case .app:                   String(localized: "App")
+        case .legacyDaemon:          String(localized: "Legacy daemon")
+        case .developerGroup:        String(localized: "Developer group")
         case .unknown(let rawValue): String(localized: "Unknown (0x\(String(rawValue, radix: 16)))")
         }
     }
@@ -126,38 +125,6 @@ public struct BackgroundItemDetailSheet: View {
         case .system:                String(localized: "System-wide")
         case .user:                  String(localized: "Root user")
         case .perUser(let uuid):     String(localized: "Current user (\(uuid))")
-        }
-    }
-}
-
-// Re-declared here because the version in BackgroundItemsSection is private.
-// Uses contrast-safe PPBadgeStyle tokens so text passes WCAG AA (>= 4.5:1) on
-// any surface — identical pattern to the Mock/Live data-source badges.
-private struct DispositionBadge: View {
-    let disposition: BTMItem.Disposition
-
-    var body: some View {
-        Text(label)
-            .ppFont(.badge)
-            .foregroundStyle(style.foreground)
-            .padding(.horizontal, 6)
-            .padding(.vertical, 2)
-            .background(style.background, in: .capsule)
-    }
-
-    private var label: String {
-        switch disposition {
-        case .enabled:  String(localized: "Enabled")
-        case .disabled: String(localized: "Disabled")
-        case .unknown:  String(localized: "Unknown")
-        }
-    }
-
-    private var style: PPBadgeStyle {
-        switch disposition {
-        case .enabled:  .enabled
-        case .disabled: .disabled
-        case .unknown:  .dispositionUnknown
         }
     }
 }

@@ -13,9 +13,9 @@ struct InspectorPanel: View {
             case .app(let app, let grants):
                 AppPermissionsInspector(app: app, grants: grants)
             case .launchAgent(let item):
-                placeholder(title: item.label)      // Task 5: LaunchAgentInspector
+                LaunchAgentInspector(item: item)
             case .backgroundItem(let item):
-                placeholder(title: item.name)       // Task 5: BackgroundItemInspector
+                BackgroundItemInspector(item: item)
             case nil:
                 if selection == nil {
                     ContentUnavailableView(
@@ -41,9 +41,5 @@ struct InspectorPanel: View {
             launchAgents: viewModel.launchAgents,
             btmItems: viewModel.btmItems
         )
-    }
-
-    private func placeholder(title: String) -> some View {
-        ContentUnavailableView(title, systemImage: "info.circle")
     }
 }
