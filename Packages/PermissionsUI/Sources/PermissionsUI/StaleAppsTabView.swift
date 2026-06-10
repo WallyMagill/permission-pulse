@@ -23,8 +23,9 @@ struct StaleAppsTabView: View {
             )
         } else {
             List {
-                ForEach(Array(visible.enumerated()), id: \.offset) { _, app in
+                ForEach(visible, id: \.app.bundleID) { app in
                     StaleAppRow(app: app)
+                        .help(String(localized: "Right-click to reveal or skip this app"))
                         .contextMenu {
                             if app.app.bundlePath != nil {
                                 Button(String(localized: "Reveal in Finder")) {

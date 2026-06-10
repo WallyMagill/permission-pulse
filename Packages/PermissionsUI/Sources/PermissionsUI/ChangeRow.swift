@@ -20,6 +20,8 @@ struct ChangeRow: View {
     var onDismissForever: (() -> Void)? = nil
     var onSnooze: (() -> Void)? = nil
 
+    private var hasMenuActions: Bool { onSnooze != nil || onDismissForever != nil }
+
     var body: some View {
         HStack(spacing: 10) {
             indicator
@@ -36,7 +38,7 @@ struct ChangeRow: View {
                 Button(String(localized: "Dismiss forever"), role: .destructive) { onDismissForever() }
             }
         }
-        .help(String(localized: "Right-click for dismiss options"))
+        .help(hasMenuActions ? String(localized: "Right-click for dismiss options") : "")
         // VoiceOver can't discover a context menu on its own; mirror its actions.
         .accessibilityActions {
             if let onSnooze {
