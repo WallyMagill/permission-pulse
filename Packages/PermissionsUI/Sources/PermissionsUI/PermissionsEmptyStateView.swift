@@ -27,34 +27,16 @@ struct PermissionsEmptyStateView: View {
 
     private var permissionDeniedView: some View {
         VStack(spacing: PPSpacing.md) {
-            Image(systemName: "lock.shield")
-                // Decorative hero icon — keep fixed size (rule 1)
-                .font(.system(size: 36))
-                .foregroundStyle(.secondary)
-                .accessibilityHidden(true)
-            Text(String(localized: "Full Disk Access required"))
-                .ppFont(.cardHeader)
-            Text(permissionDeniedBody)
-                .ppFont(.body)
-                .foregroundStyle(.secondary)
-                .multilineTextAlignment(.center)
-                .fixedSize(horizontal: false, vertical: true)
-            Button {
-                viewModel.showFDASheetOnDetail = true
-            } label: {
-                HStack(spacing: PPSpacing.sm) {
-                    Image(systemName: "arrow.up.right.square")
-                        .accessibilityHidden(true)
-                    Text(String(localized: "Grant Access in System Settings"))
-                        .fontWeight(.semibold)
+            ContentUnavailableView {
+                Label(String(localized: "Full Disk Access Required"), systemImage: "lock.shield")
+            } description: {
+                Text(permissionDeniedBody)
+            } actions: {
+                Button(String(localized: "Grant Access in System Settings…")) {
+                    SystemSettingsLink.openFullDiskAccess()
                 }
-                .padding(.horizontal, PPSpacing.lg)
-                .padding(.vertical, PPSpacing.sm)
+                .buttonStyle(.borderedProminent)
             }
-            .buttonStyle(.borderedProminent)
-            .controlSize(.large)
-            .tint(.accentColor)
-            .padding(.vertical, PPSpacing.xs)
             VStack(spacing: PPSpacing.sm) {
                 Text(String(localized: "You'll need to relaunch Permission Pulse after granting."))
                     .ppFont(.metadata)
@@ -86,40 +68,27 @@ struct PermissionsEmptyStateView: View {
     }
 
     private var schemaMismatchView: some View {
-        VStack(spacing: PPSpacing.sm) {
-            Text(unavailableHeadline)
-                .ppFont(.cardHeader)
-                .foregroundStyle(.secondary)
+        ContentUnavailableView {
+            Label(unavailableHeadline, systemImage: "exclamationmark.triangle")
+        } description: {
             Text(String(localized: "See the banner above for details."))
-                .ppFont(.metadata)
-                .foregroundStyle(.tertiary)
         }
-        .padding(.vertical, PPSpacing.lg)
-        .frame(maxWidth: .infinity)
     }
 
     private var temporarilyUnavailableView: some View {
-        VStack(spacing: PPSpacing.sm) {
-            Image(systemName: "clock.badge.exclamationmark")
-                // Decorative hero icon — keep fixed size (rule 1)
-                .font(.system(size: 36))
-                .foregroundStyle(.secondary)
-                .accessibilityHidden(true)
-            Text(String(localized: "Temporarily unavailable"))
-                .ppFont(.cardHeader)
+        ContentUnavailableView {
+            Label(String(localized: "Temporarily Unavailable"), systemImage: "clock.badge.exclamationmark")
+        } description: {
             Text(String(localized: "The database is busy right now. Use Refresh to try again."))
-                .ppFont(.metadata)
-                .foregroundStyle(.secondary)
-                .multilineTextAlignment(.center)
         }
-        .padding(.vertical, PPSpacing.xl)
-        .frame(maxWidth: .infinity)
     }
 
     private var emptyView: some View {
-        Text(emptyHeadline)
-            .foregroundStyle(.secondary)
-            .frame(maxWidth: .infinity, alignment: .leading)
+        ContentUnavailableView {
+            Label(emptyHeadline, systemImage: "tray")
+        } description: {
+            Text(emptyDescription)
+        }
     }
 
     private var permissionDeniedBody: String {
@@ -159,6 +128,13 @@ struct PermissionsEmptyStateView: View {
         switch domain {
         case .tcc: String(localized: "No permissions yet")
         case .btm: String(localized: "No background items yet")
+        }
+    }
+
+    private var emptyDescription: String {
+        switch domain {
+        case .tcc: String(localized: "No app permissions have been recorded on this Mac.")
+        case .btm: String(localized: "No background items have been recorded on this Mac.")
         }
     }
 }

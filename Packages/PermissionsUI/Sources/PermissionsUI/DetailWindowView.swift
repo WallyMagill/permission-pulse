@@ -253,7 +253,11 @@ private struct PermissionsDetailPage: View {
                 hasError: viewModel.tccScanError != nil,
                 isSearching: !searchText.isEmpty
             ) {
-                ScanningPlaceholder()
+                ContentUnavailableView {
+                    Label(String(localized: "Scanning…"), systemImage: "magnifyingglass")
+                } description: {
+                    Text(String(localized: "Reading the system's records. This takes a moment."))
+                }
             } else if viewModel.grants.isEmpty {
                 PermissionsEmptyStateView(error: viewModel.tccScanError, domain: .tcc)
             } else if groups.isEmpty {
@@ -359,7 +363,11 @@ private struct LaunchAgentsDetailPage: View {
                 hasError: false,
                 isSearching: !searchText.isEmpty
             ) {
-                ScanningPlaceholder()
+                ContentUnavailableView {
+                    Label(String(localized: "Scanning…"), systemImage: "magnifyingglass")
+                } description: {
+                    Text(String(localized: "Reading the system's records. This takes a moment."))
+                }
             } else if viewModel.launchAgents.isEmpty {
                 ContentUnavailableView(
                     String(localized: "No Launch Agents"),
@@ -462,7 +470,11 @@ private struct BackgroundItemsDetailPage: View {
                 hasError: viewModel.btmScanError != nil,
                 isSearching: !searchText.isEmpty
             ) {
-                ScanningPlaceholder()
+                ContentUnavailableView {
+                    Label(String(localized: "Scanning…"), systemImage: "magnifyingglass")
+                } description: {
+                    Text(String(localized: "Reading the system's records. This takes a moment."))
+                }
             } else if viewModel.btmItems.isEmpty {
                 PermissionsEmptyStateView(error: viewModel.btmScanError, domain: .btm)
             } else if filteredItems.isEmpty {
@@ -630,25 +642,6 @@ private struct StaleAppsDetailPage: View {
 }
 
 // MARK: - Helpers
-
-private struct EmptySearchView: View {
-    let query: String
-
-    var body: some View {
-        VStack(spacing: PPSpacing.sm) {
-            Image(systemName: "magnifyingglass")
-                // Decorative hero icon — keep fixed size (rule 1)
-                .font(.system(size: 28))
-                .foregroundStyle(.tertiary)
-                .accessibilityHidden(true)
-            Text(String(localized: "No matches for \"\(query)\""))
-                .ppFont(.cardHeader)
-                .foregroundStyle(.secondary)
-        }
-        .frame(maxWidth: .infinity)
-        .padding(.vertical, PPSpacing.xxl)
-    }
-}
 
 private func isSchemaIssue(_ error: ScannerError) -> Bool {
     switch error {
