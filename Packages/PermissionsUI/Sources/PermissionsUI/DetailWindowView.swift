@@ -540,7 +540,7 @@ private struct BTMListRow: View {
                 RoundedRectangle(cornerRadius: 7, style: .continuous)
                     .fill(Color.secondary.opacity(0.14))
                     .frame(width: 28, height: 28)
-                Image(systemName: typeSymbolName)
+                Image(systemName: item.type.symbolName)
                     .font(.system(size: 14, weight: .medium))
                     .foregroundStyle(.secondary)
                     .accessibilityHidden(true)
@@ -548,39 +548,13 @@ private struct BTMListRow: View {
         }
     }
 
-    private var typeSymbolName: String {
-        switch item.type {
-        case .app:            "app.fill"
-        case .legacyDaemon:   "gearshape.2.fill"
-        case .developerGroup: "folder.fill"
-        case .unknown:        "questionmark.circle.fill"
-        }
-    }
-
     private var secondaryLine: String {
         let parts: [String] = [
             item.developerName ?? item.bundleIdentifier ?? item.identifier,
-            scopeLabel,
-            typeLabel,
+            item.scope.displayName,
+            item.type.displayName,
         ]
         return parts.joined(separator: " · ")
-    }
-
-    private var scopeLabel: String {
-        switch item.scope {
-        case .system: String(localized: "system")
-        case .user: String(localized: "user")
-        case .perUser: String(localized: "current user")
-        }
-    }
-
-    private var typeLabel: String {
-        switch item.type {
-        case .app: String(localized: "App")
-        case .legacyDaemon: String(localized: "Daemon")
-        case .developerGroup: String(localized: "Group")
-        case .unknown(let rawValue): String(localized: "Unknown item type · 0x\(String(rawValue, radix: 16))")
-        }
     }
 }
 

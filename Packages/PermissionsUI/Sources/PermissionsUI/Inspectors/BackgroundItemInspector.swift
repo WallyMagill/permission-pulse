@@ -50,7 +50,7 @@ struct BackgroundItemInspector: View {
                 .resizable()
                 .frame(width: 40, height: 40)
         } else {
-            SheetGradientTile(symbol: typeSymbolName, size: 40)
+            SheetGradientTile(symbol: item.type.symbolName, size: 40)
         }
     }
 
@@ -65,8 +65,8 @@ struct BackgroundItemInspector: View {
 
     private var propertyRows: [SheetKVRow] {
         var rows: [SheetKVRow] = [
-            SheetKVRow(String(localized: "Type"), typeLabel),
-            SheetKVRow(String(localized: "Scope"), scopeLabel),
+            SheetKVRow(String(localized: "Type"), item.type.displayName),
+            SheetKVRow(String(localized: "Scope"), item.scope.detailedDisplayName),
             SheetKVRow(String(localized: "Identifier"), item.identifier, mono: true),
         ]
         if let bid = item.bundleIdentifier, !bid.isEmpty {
@@ -102,29 +102,4 @@ struct BackgroundItemInspector: View {
         return nil
     }
 
-    private var typeSymbolName: String {
-        switch item.type {
-        case .app:            "app.fill"
-        case .legacyDaemon:   "gearshape.2.fill"
-        case .developerGroup: "folder.fill"
-        case .unknown:        "questionmark.circle.fill"
-        }
-    }
-
-    private var typeLabel: String {
-        switch item.type {
-        case .app:                   String(localized: "App")
-        case .legacyDaemon:          String(localized: "Legacy daemon")
-        case .developerGroup:        String(localized: "Developer group")
-        case .unknown(let rawValue): String(localized: "Unknown (0x\(String(rawValue, radix: 16)))")
-        }
-    }
-
-    private var scopeLabel: String {
-        switch item.scope {
-        case .system:                String(localized: "System-wide")
-        case .user:                  String(localized: "Root user")
-        case .perUser(let uuid):     String(localized: "Current user (\(uuid))")
-        }
-    }
 }
