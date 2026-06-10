@@ -158,6 +158,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             viewModel.scanInProgress = true
             await coordinator?.runScan()
             await snapshotCoordinator?.onScanCompleted()
+            viewModel.lastScanDate = Date()
             viewModel.scanInProgress = false
             await weeklyDigestCoordinator.reconcileSchedule()
         }
@@ -183,6 +184,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         viewModel.staleThresholdDays = preferencesStore.staleThresholdDays
         await coordinator?.rescan()
         await snapshotCoordinator?.onScanCompleted()
+        viewModel.lastScanDate = Date()
         viewModel.scanInProgress = false
     }
 

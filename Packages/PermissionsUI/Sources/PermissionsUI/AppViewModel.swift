@@ -129,6 +129,14 @@ public final class AppViewModel {
             + diff.launchAgents.added.count + diff.launchAgents.removed.count + diff.launchAgents.changed.count
     }
 
+    public var attentionState: AttentionState {
+        AttentionState.evaluate(
+            tccError: tccScanError,
+            btmError: btmScanError,
+            launchAgentError: launchAgentScanError
+        )
+    }
+
     public var menuBarSymbolName: String {
         if tccScanError != nil || btmScanError != nil || launchAgentScanError != nil {
             return "exclamationmark.shield.fill"

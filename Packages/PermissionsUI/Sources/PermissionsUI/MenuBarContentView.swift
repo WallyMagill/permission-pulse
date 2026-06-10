@@ -77,7 +77,7 @@ public struct MenuBarContentView: View {
         if viewModel.scanInProgress {
             return String(localized: "Scanning…")
         }
-        switch attentionState {
+        switch viewModel.attentionState {
         case .clean: return String(localized: "Watching for changes")
         case .fdaDenied, .btmOnlyFDADenied: return String(localized: "Action needed")
         case .schemaMismatch: return String(localized: "Schema mismatch")
@@ -228,33 +228,13 @@ public struct MenuBarContentView: View {
 
     // MARK: - Attention
 
-    private enum AttentionState {
-        case fdaDenied
-        case btmOnlyFDADenied
-        case schemaMismatch
-        case launchAgentError
-        case clean
-    }
-
-    private var attentionState: AttentionState {
-        let tccDenied = isPermissionDenied(viewModel.tccScanError)
-        let btmDenied = isPermissionDenied(viewModel.btmScanError)
-        if tccDenied { return .fdaDenied }
-        if btmDenied { return .btmOnlyFDADenied }
-        if isSchemaIssue(viewModel.tccScanError) || isSchemaIssue(viewModel.btmScanError) {
-            return .schemaMismatch
-        }
-        if viewModel.launchAgentScanError != nil { return .launchAgentError }
-        return .clean
-    }
-
     private var isCleanAttention: Bool {
-        if case .clean = attentionState { true } else { false }
+        viewModel.attentionState == .clean
     }
 
     @ViewBuilder
     private var attentionBanner: some View {
-        switch attentionState {
+        switch viewModel.attentionState {
         case .fdaDenied:
             AttentionBanner(
                 title: String(localized: "Full Disk Access needed"),
@@ -296,17 +276,6 @@ public struct MenuBarContentView: View {
     private func activateAndOpen(_ id: String) {
         NSApp.activate(ignoringOtherApps: true)
         openWindow(id: id)
-    }
-
-    private func isPermissionDenied(_ error: ScannerError?) -> Bool {
-        if case .permissionDenied = error { true } else { false }
-    }
-
-    private func isSchemaIssue(_ error: ScannerError?) -> Bool {
-        switch error {
-        case .schemaMismatch, .unsupportedOnThisOS: true
-        default: false
-        }
     }
 
     // MARK: - Footer

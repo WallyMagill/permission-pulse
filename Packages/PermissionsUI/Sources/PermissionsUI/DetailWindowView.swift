@@ -120,12 +120,7 @@ public struct DetailWindowView: View {
     private var detailPage: some View {
         switch section ?? .overview {
         case .overview:
-            // Placeholder until Task 6 lands OverviewPage.
-            ContentUnavailableView(
-                String(localized: "Overview"),
-                systemImage: "gauge.with.needle",
-                description: Text(String(localized: "Coming in Task 6"))
-            )
+            OverviewPage(section: $section)
         case .permissions: PermissionsDetailPage(searchText: searchText, selection: $inspectorSelection)
         case .launchAgents: LaunchAgentsDetailPage(searchText: searchText, selection: $inspectorSelection)
         case .backgroundItems: BackgroundItemsDetailPage(searchText: searchText, selection: $inspectorSelection)
