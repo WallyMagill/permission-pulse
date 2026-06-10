@@ -25,8 +25,6 @@ public struct DetailWindowView: View {
     }
 
     public var body: some View {
-        @Bindable var bindableViewModel = viewModel
-
         NavigationSplitView {
             DetailSidebar(selection: $section)
                 .navigationSplitViewColumnWidth(min: 200, ideal: 220, max: 280)
@@ -42,10 +40,6 @@ public struct DetailWindowView: View {
         }
         .frame(minWidth: 760, minHeight: 480)
         .background(windowShortcuts)
-        // KEPT until Task 9: the menu-bar FDA prompt routes through this sheet.
-        .sheet(isPresented: $bindableViewModel.showFDASheetOnDetail) {
-            FDAGrantSheet()
-        }
         .onAppear { applyPendingRouteIfAny() }
         .onChange(of: viewModel.pendingRoute) { _, _ in applyPendingRouteIfAny() }
         .onChange(of: section) { _, newSection in

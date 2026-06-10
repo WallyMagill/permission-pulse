@@ -37,17 +37,4 @@ import PermissionsCore
         vm.cameraInUse = false
         #expect(vm.menuBarSymbolName == "shield.lefthalf.filled")
     }
-
-    @Test func showFDASheetOnDetailDefaultsToFalse() {
-        let vm = AppViewModel()
-        #expect(vm.showFDASheetOnDetail == false)
-    }
-
-    @Test func showFDASheetOnDetailIsToggleable() {
-        let vm = AppViewModel()
-        vm.showFDASheetOnDetail = true
-        #expect(vm.showFDASheetOnDetail == true)
-        vm.showFDASheetOnDetail = false
-        #expect(vm.showFDASheetOnDetail == false)
-    }
 }

@@ -27,7 +27,6 @@ public final class AppViewModel {
     public var micInUse: Bool
     public var cameraInUse: Bool
     public var mediaDataSource: DataSource
-    public var showFDASheetOnDetail: Bool
 
     // v0.5.0 snapshot/diff/stale state.
     public var latestSnapshotID: SnapshotID?
@@ -72,7 +71,6 @@ public final class AppViewModel {
         micInUse: Bool = false,
         cameraInUse: Bool = false,
         mediaDataSource: DataSource = .mock,
-        showFDASheetOnDetail: Bool = false,
         latestSnapshotID: SnapshotID? = nil,
         lastReviewedSnapshotID: SnapshotID? = nil,
         latestDiffYesterday: SnapshotDiffs? = nil,
@@ -92,7 +90,6 @@ public final class AppViewModel {
         self.micInUse = micInUse
         self.cameraInUse = cameraInUse
         self.mediaDataSource = mediaDataSource
-        self.showFDASheetOnDetail = showFDASheetOnDetail
         self.latestSnapshotID = latestSnapshotID
         self.lastReviewedSnapshotID = lastReviewedSnapshotID
         self.latestDiffYesterday = latestDiffYesterday
