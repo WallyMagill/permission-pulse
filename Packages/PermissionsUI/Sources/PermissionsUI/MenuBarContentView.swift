@@ -149,7 +149,8 @@ private struct StatusRowButton: View {
                     .ppFont(.body)
                     .foregroundStyle(.primary)
                     .lineLimit(2)
-                    .contentTransition(.numericText())
+                    // Digit-morph only where the copy actually carries a count.
+                    .contentTransition(isCountRow ? .numericText() : .opacity)
                     .animation(reduceMotion ? nil : .default, value: title)
                 Spacer(minLength: PPSpacing.xs)
                 Image(systemName: "chevron.right")
@@ -168,6 +169,13 @@ private struct StatusRowButton: View {
         .buttonStyle(.plain)
         .onHover { isHovering = $0 }
         .accessibilityHint(String(localized: "Opens Permission Pulse"))
+    }
+
+    private var isCountRow: Bool {
+        switch row.kind {
+        case .changes, .stale, .allClear: true
+        case .attention, .media: false
+        }
     }
 
     private var title: String {
