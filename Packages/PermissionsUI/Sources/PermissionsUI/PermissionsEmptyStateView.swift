@@ -2,8 +2,6 @@ import SwiftUI
 import PermissionsCore
 
 struct PermissionsEmptyStateView: View {
-    @Environment(AppViewModel.self) private var viewModel
-
     let error: ScannerError?
     let domain: ScannerDomain
 
