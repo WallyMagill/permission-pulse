@@ -208,7 +208,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func requestResetAllData() {
-        Task { @MainActor in await performReset() }
+        Task { await performReset() }
     }
 
     private func performReset() async {
