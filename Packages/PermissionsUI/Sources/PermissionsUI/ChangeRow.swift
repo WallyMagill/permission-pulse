@@ -5,7 +5,7 @@ import PermissionsStore
 // One row in a diff sub-section. The kind enum tells the row what to render
 // (indicator color + description string); the actual layout is uniform.
 struct ChangeRow: View {
-    enum Kind {
+    enum Kind: Identifiable {
         case granted(PermissionGrant)
         case revoked(PermissionGrant)
         case btmAdded(BTMItem)
@@ -14,6 +14,8 @@ struct ChangeRow: View {
         case launchAgentAdded(LaunchAgentItem)
         case launchAgentRemoved(LaunchAgentItem)
         case launchAgentFlipped(DomainChange<LaunchAgentItem>)
+
+        var id: String { DiffEntryKey.key(for: self) }
     }
 
     let kind: Kind

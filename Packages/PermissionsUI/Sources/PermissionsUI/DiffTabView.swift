@@ -114,7 +114,7 @@ struct DiffTabView: View {
 
     @ViewBuilder
     private func changeRows(_ rows: [ChangeRow.Kind]) -> some View {
-        ForEach(Array(rows.enumerated()), id: \.offset) { _, kind in
+        ForEach(rows) { kind in
             let key = DiffEntryKey.key(for: kind)
             ChangeRow(
                 kind: kind,

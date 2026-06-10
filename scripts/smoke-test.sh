@@ -338,6 +338,18 @@ passed --no-launch). Run through them and report any deviations.
      spacing rhythm, card depth (hairline + soft shadow), and type sizes match
      everywhere. Nothing looks like a one-off.
 
+  # Thread C — native redesign (U: deep links & inspector)
+  # U1. Dropdown: every status row opens the window on the correct section.
+  # U2. Permissions: click row → inspector follows; ↑/↓ moves selection + inspector updates.
+  # U3. ⌘1–⌘6 switch sections; ⌥⌘I toggles inspector; ⌘R rescans from window.
+  # U4. Overview: attention + count rows navigate; Last Scan time is honest.
+  # U5. Changes: context-menu dismiss/snooze; badge clears after visiting.
+  # U6. Stale: context-menu Reveal/Skip forever works.
+  # U7. FDA-denied run: dropdown attention row → Permissions full-page state → Grant button opens System Settings.
+  # U8. Settings: 4 tabs render; launch-at-login toggles a Login Items entry; Reset confirms via alert and wipes.
+  # U9. Welcome: both steps; Open System Settings lands on Full Disk Access.
+  # U10. All of the above in light + dark; large Dynamic Type in window; clamped in dropdown; Reduce Transparency + Reduce Motion honored.
+
 EOF
 
 if [[ ${#FAILED[@]} -gt 0 ]]; then

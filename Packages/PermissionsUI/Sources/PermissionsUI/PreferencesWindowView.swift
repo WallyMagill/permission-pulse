@@ -61,25 +61,14 @@ private struct ScanningSettingsTab: View {
         @Bindable var vm = viewModel
         Form {
             Section {
-                LabeledContent(String(localized: "Keep snapshots for")) {
-                    HStack {
-                        Slider(
-                            value: Binding(
-                                get: { Double(vm.store.snapshotRetentionDays) },
-                                set: { vm.store.snapshotRetentionDays = Int($0.rounded()) }
-                            ),
-                            in: Double(PreferencesStore.snapshotRetentionDaysRange.lowerBound)
-                                ... Double(PreferencesStore.snapshotRetentionDaysRange.upperBound),
-                            step: 1
-                        )
-                        Text(daysLabel(vm.store.snapshotRetentionDays))
-                            .ppFont(.metadata)
-                            .fontWeight(.semibold)
-                            .monospacedDigit()
-                            .foregroundStyle(Color.accentColor)
-                            .frame(minWidth: 60, alignment: .trailing)
-                    }
-                }
+                DaysSliderRow(
+                    label: String(localized: "Keep snapshots for"),
+                    value: Binding(
+                        get: { vm.store.snapshotRetentionDays },
+                        set: { vm.store.snapshotRetentionDays = $0 }
+                    ),
+                    range: PreferencesStore.snapshotRetentionDaysRange
+                )
                 Text(String(localized: "Older snapshots are pruned automatically on the next scan."))
                     .ppFont(.metadata)
                     .foregroundStyle(.secondary)
@@ -88,25 +77,14 @@ private struct ScanningSettingsTab: View {
             }
 
             Section {
-                LabeledContent(String(localized: "Flag apps unused for")) {
-                    HStack {
-                        Slider(
-                            value: Binding(
-                                get: { Double(vm.store.staleThresholdDays) },
-                                set: { vm.store.staleThresholdDays = Int($0.rounded()) }
-                            ),
-                            in: Double(PreferencesStore.staleThresholdDaysRange.lowerBound)
-                                ... Double(PreferencesStore.staleThresholdDaysRange.upperBound),
-                            step: 1
-                        )
-                        Text(daysLabel(vm.store.staleThresholdDays))
-                            .ppFont(.metadata)
-                            .fontWeight(.semibold)
-                            .monospacedDigit()
-                            .foregroundStyle(Color.accentColor)
-                            .frame(minWidth: 60, alignment: .trailing)
-                    }
-                }
+                DaysSliderRow(
+                    label: String(localized: "Flag apps unused for"),
+                    value: Binding(
+                        get: { vm.store.staleThresholdDays },
+                        set: { vm.store.staleThresholdDays = $0 }
+                    ),
+                    range: PreferencesStore.staleThresholdDaysRange
+                )
                 Text(String(localized: "Apps unused for this long appear in the Stale Apps tab."))
                     .ppFont(.metadata)
                     .foregroundStyle(.secondary)
@@ -115,6 +93,33 @@ private struct ScanningSettingsTab: View {
             }
         }
         .formStyle(.grouped)
+    }
+}
+
+private struct DaysSliderRow: View {
+    let label: String
+    @Binding var value: Int
+    let range: ClosedRange<Int>
+
+    var body: some View {
+        LabeledContent(label) {
+            HStack {
+                Slider(
+                    value: Binding(
+                        get: { Double(value) },
+                        set: { value = Int($0.rounded()) }
+                    ),
+                    in: Double(range.lowerBound) ... Double(range.upperBound),
+                    step: 1
+                )
+                Text(daysLabel(value))
+                    .ppFont(.metadata)
+                    .fontWeight(.semibold)
+                    .monospacedDigit()
+                    .foregroundStyle(Color.accentColor)
+                    .frame(minWidth: 60, alignment: .trailing)
+            }
+        }
     }
 
     private func daysLabel(_ days: Int) -> String {

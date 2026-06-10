@@ -151,9 +151,13 @@ public struct DetailWindowView: View {
 
 private struct DetailSidebar: View {
     @Environment(AppViewModel.self) private var viewModel
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Binding var selection: SidebarItem?
 
     var body: some View {
+        let changeCount = viewModel.hasUnreviewedChanges ? viewModel.recentChangeEventCount : 0
+        let staleCount = viewModel.staleApps.count
+
         List(selection: $selection) {
             Label(String(localized: "Overview"), systemImage: "gauge.with.needle")
                 .tag(SidebarItem.overview)
@@ -169,60 +173,18 @@ private struct DetailSidebar: View {
 
             Section(String(localized: "Activity")) {
                 Label(String(localized: "Recent Changes"), systemImage: "clock.arrow.circlepath")
-                    .badge(viewModel.hasUnreviewedChanges ? viewModel.recentChangeEventCount : 0)
+                    .badge(changeCount)
+                    .contentTransition(.numericText())
+                    .animation(reduceMotion ? nil : .default, value: changeCount)
                     .tag(SidebarItem.recentChanges)
                 Label(String(localized: "Stale Apps"), systemImage: "hourglass")
-                    .badge(viewModel.staleApps.count)
+                    .badge(staleCount)
+                    .contentTransition(.numericText())
+                    .animation(reduceMotion ? nil : .default, value: staleCount)
                     .tag(SidebarItem.staleApps)
             }
         }
         .listStyle(.sidebar)
-    }
-}
-
-// MARK: - Detail page scaffold
-
-private struct DetailPageScaffold<Content: View>: View {
-    let title: String
-    var inlineMeta: String? = nil
-    let subtitle: String?
-    var dataSource: AppViewModel.DataSource? = nil
-    @ViewBuilder let content: () -> Content
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            HStack(alignment: .firstTextBaseline, spacing: PPSpacing.md) {
-                Text(title)
-                    .ppFont(.pageTitle)
-                    .accessibilityAddTraits(.isHeader)
-                if dataSource == .mock {
-                    MockBadge()
-                }
-                if let inlineMeta {
-                    Text(inlineMeta)
-                        .ppFont(.secondary)
-                        .foregroundStyle(.secondary)
-                }
-                Spacer(minLength: 0)
-            }
-            .padding(.horizontal, PPSpacing.xl)
-            .padding(.top, PPSpacing.lg)
-            .padding(.bottom, PPSpacing.md)
-
-            ScrollView {
-                VStack(alignment: .leading, spacing: PPSpacing.md) {
-                    if let subtitle {
-                        Text(subtitle)
-                            .ppFont(.secondary)
-                            .foregroundStyle(.secondary)
-                    }
-                    content()
-                }
-                .padding(.horizontal, PPSpacing.xl)
-                .padding(.bottom, PPSpacing.xl)
-                .frame(maxWidth: .infinity, alignment: .leading)
-            }
-        }
     }
 }
 

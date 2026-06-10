@@ -135,6 +135,7 @@ private struct StatusRowButton: View {
     let action: () -> Void
 
     @State private var isHovering = false
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
         Button(action: action) {
@@ -148,6 +149,8 @@ private struct StatusRowButton: View {
                     .ppFont(.body)
                     .foregroundStyle(.primary)
                     .lineLimit(2)
+                    .contentTransition(.numericText())
+                    .animation(reduceMotion ? nil : .default, value: title)
                 Spacer(minLength: PPSpacing.xs)
                 Image(systemName: "chevron.right")
                     .ppFont(.badge)
@@ -224,7 +227,6 @@ private struct MenuRowButton: View {
     let title: String
     var shortcutKey: KeyEquivalent? = nil
     var shortcutDisplay: String? = nil
-    var showsChangeDot: Bool = false
     let action: () -> Void
 
     @State private var isHovering = false
@@ -241,9 +243,6 @@ private struct MenuRowButton: View {
                     .ppFont(.body)
                     .foregroundStyle(.primary)
                 Spacer(minLength: PPSpacing.sm)
-                if showsChangeDot {
-                    PulseDot(tint: PPColor.warning)
-                }
                 if let shortcutDisplay {
                     Text(shortcutDisplay)
                         .ppFont(.metadata)
@@ -279,18 +278,3 @@ private struct OptionalShortcut: ViewModifier {
     }
 }
 
-private struct PulseDot: View {
-    let tint: Color
-
-    var body: some View {
-        ZStack {
-            Circle()
-                .fill(tint.opacity(0.22))
-                .frame(width: 13, height: 13)
-            Circle()
-                .fill(tint)
-                .frame(width: 7, height: 7)
-        }
-        .accessibilityHidden(true)
-    }
-}
