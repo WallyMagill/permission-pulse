@@ -67,8 +67,12 @@ struct PermissionsEmptyStateView: View {
             }
             .ppFont(.metadata)
         }
-        .padding(.vertical, PPSpacing.xl)
-        .frame(maxWidth: .infinity)
+        .padding(.top, PPSpacing.xxl)
+        .padding(.bottom, PPSpacing.xl)
+        // Top-anchored, not centered: expanding the disclosure grows the stack
+        // downward only. Centering would shift everything (including the
+        // disclosure label just clicked) up by half the expansion height.
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
     }
 
     private var schemaMismatchView: some View {

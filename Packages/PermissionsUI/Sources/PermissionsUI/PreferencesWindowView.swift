@@ -133,6 +133,10 @@ private struct DaysSliderRow: View {
 
 private struct DigestSettingsTab: View {
     @Environment(PreferencesViewModel.self) private var viewModel
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var clearResultTask: Task<Void, Never>?
+
+    private static let testResultDisplayDuration: Duration = .seconds(8)
 
     private static let weekdayLabels: [(value: Int, label: String)] = [
         (1, String(localized: "Sunday")),
@@ -151,7 +155,12 @@ private struct DigestSettingsTab: View {
             Section {
                 Toggle(isOn: Binding(
                     get: { vm.digestEnabled },
-                    set: { newValue in Task { await vm.handleDigestToggle(to: newValue) } }
+                    set: { newValue in
+                        // Write the store before the async hop so the switch
+                        // flips on this frame instead of snapping back first.
+                        vm.digestEnabled = newValue
+                        Task { await vm.handleDigestToggle(to: newValue) }
+                    }
                 )) {
                     VStack(alignment: .leading, spacing: PPSpacing.xxs) {
                         Text(String(localized: "Send weekly digest"))
@@ -201,9 +210,13 @@ private struct DigestSettingsTab: View {
                         }
                         Spacer(minLength: PPSpacing.md)
                         Button {
-                            Task {
+                            // Cancel any in-flight auto-clear so a re-tap's
+                            // result isn't wiped early by the previous timer.
+                            clearResultTask?.cancel()
+                            clearResultTask = Task {
                                 await vm.sendTestNotification()
-                                try? await Task.sleep(nanoseconds: 8_000_000_000)
+                                try? await Task.sleep(for: Self.testResultDisplayDuration)
+                                guard !Task.isCancelled else { return }
                                 vm.clearTestNotificationResult()
                             }
                         } label: {
@@ -227,9 +240,16 @@ private struct DigestSettingsTab: View {
             hintSection(vm: viewModel)
         }
         .formStyle(.grouped)
+        // Sections appear/disappear from three state sources (the toggle, the
+        // async authorization hint, the timed test-result clear) — track the
+        // reflow so rows don't pop and snap the form around.
+        .animation(reduceMotion ? nil : .default, value: vm.digestEnabled)
+        .animation(reduceMotion ? nil : .default, value: vm.authorizationHint)
+        .animation(reduceMotion ? nil : .default, value: vm.testNotificationResult)
         .task {
             await vm.refreshAuthorizationHint()
         }
+        .onDisappear { clearResultTask?.cancel() }
     }
 
     @ViewBuilder

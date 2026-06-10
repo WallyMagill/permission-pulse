@@ -4,6 +4,7 @@ import SwiftUI
 public struct MenuBarContentView: View {
     @Environment(\.openWindow) private var openWindow
     @Environment(AppViewModel.self) private var viewModel
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     private let onShowWelcome: (() -> Void)?
     private let onRescan: (() -> Void)?
 
@@ -64,6 +65,10 @@ public struct MenuBarContentView: View {
                 }
             }
         }
+        // The window-style dropdown stays live while open: a call ending or a
+        // rescan finishing can add/remove rows mid-interaction. Track the
+        // reflow so rows don't pop and shift the footer under the cursor.
+        .animation(reduceMotion ? nil : .default, value: currentRows)
     }
 
     private var currentRows: [DropdownStatusRow] {
@@ -238,6 +243,10 @@ private struct MenuRowButton: View {
     let action: () -> Void
 
     @State private var isHovering = false
+    // `.plain` + hardcoded foreground styles defeat the automatic disabled
+    // dimming, so a disabled row (Rescan Now mid-scan) would still look and
+    // hover-highlight like a live one.
+    @Environment(\.isEnabled) private var isEnabled
 
     var body: some View {
         Button(action: action) {
@@ -245,11 +254,11 @@ private struct MenuRowButton: View {
                 Image(systemName: icon)
                     .font(.system(size: 13, weight: .medium))
                     .frame(width: 22, height: 22)
-                    .foregroundStyle(iconTint)
+                    .foregroundStyle(isEnabled ? AnyShapeStyle(iconTint) : AnyShapeStyle(.tertiary))
                     .accessibilityHidden(true)
                 Text(title)
                     .ppFont(.body)
-                    .foregroundStyle(.primary)
+                    .foregroundStyle(isEnabled ? AnyShapeStyle(.primary) : AnyShapeStyle(.tertiary))
                 Spacer(minLength: PPSpacing.sm)
                 if let shortcutDisplay {
                     Text(shortcutDisplay)
@@ -262,7 +271,7 @@ private struct MenuRowButton: View {
             .padding(.vertical, PPSpacing.sm)
             .background {
                 RoundedRectangle(cornerRadius: PPRadius.small, style: .continuous)
-                    .fill(isHovering ? Color.primary.opacity(0.06) : .clear)
+                    .fill(isHovering && isEnabled ? Color.primary.opacity(0.06) : .clear)
             }
             .contentShape(Rectangle())
         }

@@ -192,6 +192,7 @@ private struct DetailSidebar: View {
 
 private struct PermissionsDetailPage: View {
     @Environment(AppViewModel.self) private var viewModel
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     let searchText: String
     @Binding var selection: InspectorSelection?
 
@@ -218,6 +219,9 @@ private struct PermissionsDetailPage: View {
                 grantList
             }
         }
+        // A scan can land a schema error while the page is open; animate the
+        // banner in instead of shoving the list down by a full banner height.
+        .animation(reduceMotion ? nil : .default, value: viewModel.tccScanError == nil)
         .navigationTitle(String(localized: "Permissions"))
         .navigationSubtitle(subtitle)
     }
@@ -401,6 +405,7 @@ private struct LaunchAgentRow: View {
 
 private struct BackgroundItemsDetailPage: View {
     @Environment(AppViewModel.self) private var viewModel
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     let searchText: String
     @Binding var selection: InspectorSelection?
 
@@ -427,6 +432,8 @@ private struct BackgroundItemsDetailPage: View {
                 btmList
             }
         }
+        // Same banner-insertion animation as the Permissions page.
+        .animation(reduceMotion ? nil : .default, value: viewModel.btmScanError == nil)
         .navigationTitle(String(localized: "Background Items"))
         .navigationSubtitle(subtitle)
     }
@@ -526,22 +533,28 @@ private struct RecentChangesDetailPage: View {
             .accessibilityLabel(String(localized: "Change window"))
             .padding(PPSpacing.lg)
 
-            switch window {
-            case .yesterday:
-                DiffTabView(
-                    diff: viewModel.latestDiffYesterday,
-                    windowLabel: .yesterday,
-                    snapshotStoreUnavailable: viewModel.snapshotStoreUnavailable,
-                    diffUnavailable: viewModel.diffUnavailable
-                )
-            case .week:
-                DiffTabView(
-                    diff: viewModel.latestDiffWeek,
-                    windowLabel: .lastWeek,
-                    snapshotStoreUnavailable: viewModel.snapshotStoreUnavailable,
-                    diffUnavailable: viewModel.diffUnavailable
-                )
+            // Greedy frame keeps the picker pinned to the top: ContentUnavailableView
+            // doesn't fill like List does, so without it the VStack re-centers and the
+            // picker jumps when toggling between a populated and an empty window.
+            Group {
+                switch window {
+                case .yesterday:
+                    DiffTabView(
+                        diff: viewModel.latestDiffYesterday,
+                        windowLabel: .yesterday,
+                        snapshotStoreUnavailable: viewModel.snapshotStoreUnavailable,
+                        diffUnavailable: viewModel.diffUnavailable
+                    )
+                case .week:
+                    DiffTabView(
+                        diff: viewModel.latestDiffWeek,
+                        windowLabel: .lastWeek,
+                        snapshotStoreUnavailable: viewModel.snapshotStoreUnavailable,
+                        diffUnavailable: viewModel.diffUnavailable
+                    )
+                }
             }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
         .navigationTitle(String(localized: "Recent Changes"))
     }

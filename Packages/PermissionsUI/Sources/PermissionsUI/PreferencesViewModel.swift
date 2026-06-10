@@ -100,6 +100,10 @@ public final class PreferencesViewModel {
 
     public func setLaunchAtLogin(_ enable: Bool) async {
         guard let onLaunchAtLoginToggle else { return }
+        // Flip optimistically so the checkbox responds on click; the
+        // SMAppService round-trip below reconciles to the real state
+        // (including reverting on registration failure).
+        launchAtLoginEnabled = enable
         launchAtLoginEnabled = await onLaunchAtLoginToggle(enable)
     }
 }
