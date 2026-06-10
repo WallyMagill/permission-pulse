@@ -32,6 +32,10 @@ xcuserdata/
 *.dSYM.zip
 *.dSYM
 
+# Release artifacts (hand-zipped per docs/06-distribution.md)
+*.app
+*.app.zip
+
 # Swift Package Manager
 .build/
 .swiftpm/
