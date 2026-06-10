@@ -164,7 +164,10 @@ final class WeeklyDigestCoordinator {
         if added > 0 { fragments.append(String(localized: "\(added) added")) }
         if removed > 0 { fragments.append(String(localized: "\(removed) removed")) }
         if changed > 0 { fragments.append(String(localized: "\(changed) changed")) }
-        let body = fragments.joined(separator: ", ") + String(localized: " in the last week.")
+        // One localized format string so the sentence stays translatable as a
+        // unit instead of gluing an " in the last week." shard onto the list.
+        let counts = fragments.joined(separator: ", ")
+        let body = String(localized: "\(counts) in the last week.")
         return (title, body)
     }
 }
