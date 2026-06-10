@@ -2,6 +2,8 @@ import AppKit
 import OSLog
 import ServiceManagement
 import SwiftUI
+import UserNotifications
+import PermissionsScanners
 import PermissionsStore
 import PermissionsUI
 
@@ -86,6 +88,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     let viewModel = AppViewModel()
     let preferencesStore = PreferencesStore()
+    // UNUserNotificationCenter.delegate is weak — must be retained here.
+    private let notificationPresentationDelegate = NotificationPresentationDelegate()
     let dismissedDiffEntries = DismissedDiffEntryStore()
     let dismissedStaleApps = DismissedStaleAppStore()
     lazy var weeklyDigestCoordinator = WeeklyDigestCoordinator(
@@ -148,6 +152,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        // Set before anything schedules: without a willPresent delegate,
+        // macOS suppresses banners while the app is frontmost, so the
+        // Preferences test notification never visibly fires.
+        UNUserNotificationCenter.current().delegate = notificationPresentationDelegate
+
         do {
             let url = try SnapshotPath.canonicalURL()
             snapshotStore = try SnapshotStore(path: url.path(percentEncoded: false))

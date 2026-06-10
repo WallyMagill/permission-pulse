@@ -314,7 +314,7 @@ private struct DigestSettingsTab: View {
         case .idle: return nil
         case .scheduling: return String(localized: "Scheduling…")
         case .scheduled(let seconds):
-            return String(localized: "Test notification scheduled. Switch away from Permission Pulse to see the banner in \(Int(seconds)) seconds.")
+            return String(localized: "Test notification scheduled. The banner will appear in \(Int(seconds)) seconds.")
         case .notAuthorized:
             return String(localized: "Notifications are not authorized. Open Notifications in System Settings to re-enable.")
         case .failed(let message):
