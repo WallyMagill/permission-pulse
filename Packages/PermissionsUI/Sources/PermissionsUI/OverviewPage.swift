@@ -43,9 +43,7 @@ struct OverviewPage: View {
                 }
                 LabeledContent(String(localized: "Full Disk Access")) {
                     Text(fdaStatusText)
-                        .foregroundStyle(viewModel.attentionState == .fdaDenied
-                            || viewModel.attentionState == .btmOnlyFDADenied
-                            ? PPColor.warning : .secondary)
+                        .foregroundStyle(fdaStatusColor)
                 }
             }
         }
@@ -137,6 +135,13 @@ struct OverviewPage: View {
         switch viewModel.attentionState {
         case .fdaDenied, .btmOnlyFDADenied: String(localized: "Not granted")
         default: String(localized: "Granted")
+        }
+    }
+
+    private var fdaStatusColor: Color {
+        switch viewModel.attentionState {
+        case .fdaDenied, .btmOnlyFDADenied: PPColor.warning
+        default: .secondary
         }
     }
 }

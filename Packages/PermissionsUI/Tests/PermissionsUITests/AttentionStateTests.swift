@@ -32,4 +32,13 @@ struct AttentionStateTests {
             tccError: nil, btmError: nil, launchAgentError: .temporarilyUnavailable(reason: "db")
         ) == .launchAgentError)
     }
+
+    @Test("Schema mismatch outranks a concurrent launch-agent error")
+    func schemaMismatchBeatsLaunchAgentError() {
+        #expect(AttentionState.evaluate(
+            tccError: .schemaMismatch(detail: "x"),
+            btmError: nil,
+            launchAgentError: .temporarilyUnavailable(reason: "db")
+        ) == .schemaMismatch)
+    }
 }
