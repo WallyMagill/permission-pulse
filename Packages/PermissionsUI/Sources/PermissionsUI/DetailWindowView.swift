@@ -32,17 +32,18 @@ public struct DetailWindowView: View {
         } detail: {
             detailPage
                 .navigationTitle(String(localized: "Permission Pulse"))
-                // Toolbar must be scoped to the detail content, applied BEFORE
-                // .inspector. Applied after, it binds to the detail+inspector
-                // composite, so presenting the inspector transiently
-                // re-evaluates the toolbar and double-renders a trailing item
-                // for one frame — the "ghost button" that flashes on toggle.
-                .toolbar { toolbarContent }
                 .inspector(isPresented: $isInspectorPresented) {
                     InspectorPanel(selection: inspectorSelection)
                         .inspectorColumnWidth(min: 260, ideal: 300, max: 380)
                 }
         }
+        // Toolbar lives on the NavigationSplitView, not the detail content.
+        // The detail is a per-section switch whose identity changes on every
+        // tab switch, so hosting the toolbar there made SwiftUI re-establish
+        // the items each switch — animating the trailing buttons in. Anchoring
+        // it to the stable split view keeps the items put across tab switches
+        // and inspector toggles (no re-insertion animation, no transient ghost).
+        .toolbar { toolbarContent }
         .frame(minWidth: 760, minHeight: 480)
         .background(windowShortcuts)
         .onAppear { applyPendingRouteIfAny() }
