@@ -32,11 +32,16 @@ public struct DetailWindowView: View {
         } detail: {
             detailPage
                 .navigationTitle(String(localized: "Permission Pulse"))
+                // Toolbar must be scoped to the detail content, applied BEFORE
+                // .inspector. Applied after, it binds to the detail+inspector
+                // composite, so presenting the inspector transiently
+                // re-evaluates the toolbar and double-renders a trailing item
+                // for one frame — the "ghost button" that flashes on toggle.
+                .toolbar { toolbarContent }
                 .inspector(isPresented: $isInspectorPresented) {
                     InspectorPanel(selection: inspectorSelection)
                         .inspectorColumnWidth(min: 260, ideal: 300, max: 380)
                 }
-                .toolbar { toolbarContent }
         }
         .frame(minWidth: 760, minHeight: 480)
         .background(windowShortcuts)
