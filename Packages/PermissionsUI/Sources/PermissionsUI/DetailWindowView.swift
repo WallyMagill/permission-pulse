@@ -523,40 +523,46 @@ private struct RecentChangesDetailPage: View {
     @State private var window: RecentWindow = .yesterday
 
     var body: some View {
-        VStack(spacing: 0) {
-            Picker("", selection: $window) {
-                Text(String(localized: "Yesterday")).tag(RecentWindow.yesterday)
-                Text(String(localized: "Last 7 days")).tag(RecentWindow.week)
-            }
-            .pickerStyle(.segmented)
-            .labelsHidden()
-            .accessibilityLabel(String(localized: "Change window"))
-            .padding(PPSpacing.lg)
-
-            // Greedy frame keeps the picker pinned to the top: ContentUnavailableView
-            // doesn't fill like List does, so without it the VStack re-centers and the
-            // picker jumps when toggling between a populated and an empty window.
-            Group {
-                switch window {
-                case .yesterday:
-                    DiffTabView(
-                        diff: viewModel.latestDiffYesterday,
-                        windowLabel: .yesterday,
-                        snapshotStoreUnavailable: viewModel.snapshotStoreUnavailable,
-                        diffUnavailable: viewModel.diffUnavailable
-                    )
-                case .week:
-                    DiffTabView(
-                        diff: viewModel.latestDiffWeek,
-                        windowLabel: .lastWeek,
-                        snapshotStoreUnavailable: viewModel.snapshotStoreUnavailable,
-                        diffUnavailable: viewModel.diffUnavailable
-                    )
-                }
-            }
+        // The diff content (a List or ContentUnavailableView) is the detail-pane
+        // root, matching every other section. A bare VStack root here let the
+        // pane size to its content instead of filling, which made
+        // NavigationSplitView mis-lay-out its sidebar column. The window picker
+        // rides in a top safe-area inset — pinned without distorting the pane,
+        // and it also keeps the picker steady across populated/empty windows.
+        diffContent
             .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .safeAreaInset(edge: .top, spacing: 0) {
+                Picker("", selection: $window) {
+                    Text(String(localized: "Yesterday")).tag(RecentWindow.yesterday)
+                    Text(String(localized: "Last 7 days")).tag(RecentWindow.week)
+                }
+                .pickerStyle(.segmented)
+                .labelsHidden()
+                .accessibilityLabel(String(localized: "Change window"))
+                .padding(PPSpacing.lg)
+                .background(.windowBackground)
+            }
+            .navigationTitle(String(localized: "Recent Changes"))
+    }
+
+    @ViewBuilder
+    private var diffContent: some View {
+        switch window {
+        case .yesterday:
+            DiffTabView(
+                diff: viewModel.latestDiffYesterday,
+                windowLabel: .yesterday,
+                snapshotStoreUnavailable: viewModel.snapshotStoreUnavailable,
+                diffUnavailable: viewModel.diffUnavailable
+            )
+        case .week:
+            DiffTabView(
+                diff: viewModel.latestDiffWeek,
+                windowLabel: .lastWeek,
+                snapshotStoreUnavailable: viewModel.snapshotStoreUnavailable,
+                diffUnavailable: viewModel.diffUnavailable
+            )
         }
-        .navigationTitle(String(localized: "Recent Changes"))
     }
 }
 
