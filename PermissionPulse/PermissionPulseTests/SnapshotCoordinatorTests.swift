@@ -103,6 +103,24 @@ import PermissionsUI
         #expect(env.viewModel.staleApps.contains { $0.app.bundleID == "com.example.sixtyDay" })
     }
 
+    @Test func changedStaleThresholdAppliesOnNextScan() async throws {
+        let path = URL(fileURLWithPath: "/Applications/SixtyDay.app")
+        let old = fixedNow().addingTimeInterval(-60 * 86_400)
+        let env = try await Environment(
+            now: fixedNow,
+            probe: MockLastUsedProbe(fixed: [path: (old, .spotlight)])
+        )
+        env.preferences.staleThresholdDays = 30
+        env.viewModel.grants = [
+            demoGrant(bundleID: "com.example.sixty", bundlePath: path),
+        ]
+
+        await env.coordinator.onScanCompleted()
+
+        #expect(env.viewModel.staleApps.map(\.app.bundleID) == ["com.example.sixty"])
+        #expect(env.viewModel.staleThresholdDays == 30)
+    }
+
     @Test func staleAppsFilteredByDismissedStaleAppsStore() async throws {
         // Two stale candidates. One is in the dismissed set → must not appear.
         let keptPath = URL(fileURLWithPath: "/Applications/Kept.app")
@@ -153,6 +171,40 @@ import PermissionsUI
             atOrBefore: fixedNow().addingTimeInterval(-15 * 86_400)
         )
         #expect(afterPrune == nil, "Seeded snapshot should be pruned by 10-day retention")
+    }
+
+    @Test func changedRetentionAppliesOnNextScan() async throws {
+        let env = try await Environment(now: fixedNow)
+        _ = try await env.store.writeFullSnapshot(
+            grants: [],
+            launchAgents: [],
+            btmItems: [],
+            at: fixedNow().addingTimeInterval(-20 * 86_400)
+        )
+        env.preferences.snapshotRetentionDays = 10
+        env.viewModel.grants = [demoGrant()]
+
+        await env.coordinator.onScanCompleted()
+
+        let retained = try await env.store.latestSnapshotID(
+            atOrBefore: fixedNow().addingTimeInterval(-15 * 86_400)
+        )
+        #expect(retained == nil)
+    }
+
+    @Test func capturesPreferenceProvidersExactlyOncePerScanBoundary() async throws {
+        let env = try await Environment(now: fixedNow)
+        env.viewModel.grants = [demoGrant()]
+
+        await env.coordinator.onScanCompleted()
+
+        #expect(env.providers.snapshotRetentionReadCount == 1)
+        #expect(env.providers.staleThresholdReadCount == 1)
+
+        await env.coordinator.onScanCompleted()
+
+        #expect(env.providers.snapshotRetentionReadCount == 2)
+        #expect(env.providers.staleThresholdReadCount == 2)
     }
 
     @Test func markCurrentSnapshotReviewedClearsBadge() async throws {
@@ -220,6 +272,8 @@ import PermissionsUI
         let store: SnapshotStore
         let viewModel: AppViewModel
         let defaults: UserDefaults
+        let preferences: PreferencesStore
+        let providers: LivePreferenceProviders
         let coordinator: SnapshotCoordinator
 
         init(
@@ -233,6 +287,10 @@ import PermissionsUI
             self.store = try SnapshotStore.inMemory()
             self.viewModel = AppViewModel()
             self.defaults = UserDefaults(suiteName: "test-\(UUID().uuidString)")!
+            self.preferences = PreferencesStore(defaults: defaults)
+            preferences.snapshotRetentionDays = snapshotRetentionDays
+            preferences.staleThresholdDays = staleThresholdDays
+            self.providers = LivePreferenceProviders(preferences: preferences)
             self.coordinator = SnapshotCoordinator(
                 viewModel: viewModel,
                 store: store,
@@ -240,8 +298,12 @@ import PermissionsUI
                 defaults: defaults,
                 calendar: calendar,
                 now: now,
-                snapshotRetentionDays: snapshotRetentionDays,
-                staleThresholdDays: staleThresholdDays,
+                snapshotRetentionDays: { [providers] in
+                    providers.snapshotRetentionDays()
+                },
+                staleThresholdDays: { [providers] in
+                    providers.staleThresholdDays()
+                },
                 dismissedStaleApps: dismissedStaleApps
             )
         }
@@ -252,6 +314,27 @@ import PermissionsUI
             guard let latest = try await store.latestSnapshotID() else { return 0 }
             return Int(latest.rawValue)
         }
+    }
+}
+
+@MainActor
+final class LivePreferenceProviders {
+    let preferences: PreferencesStore
+    private(set) var snapshotRetentionReadCount = 0
+    private(set) var staleThresholdReadCount = 0
+
+    init(preferences: PreferencesStore) {
+        self.preferences = preferences
+    }
+
+    func snapshotRetentionDays() -> Int {
+        snapshotRetentionReadCount += 1
+        return preferences.snapshotRetentionDays
+    }
+
+    func staleThresholdDays() -> Int {
+        staleThresholdReadCount += 1
+        return preferences.staleThresholdDays
     }
 }
 

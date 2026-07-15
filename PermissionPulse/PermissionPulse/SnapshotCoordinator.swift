@@ -27,11 +27,8 @@ final class SnapshotCoordinator {
     private let now: @Sendable () -> Date
     private let dismissedStaleApps: DismissedStaleAppStore?
 
-    // Injected so Preferences can change them at runtime. New values take
-    // effect on the next scan cycle — we do not re-prune mid-session to
-    // avoid surprise data deletion when the user drags a slider.
-    private let snapshotRetentionDays: Int
-    private let staleThresholdDays: Int
+    private let snapshotRetentionDays: @MainActor () -> Int
+    private let staleThresholdDays: @MainActor () -> Int
 
     init(
         viewModel: AppViewModel,
@@ -40,8 +37,12 @@ final class SnapshotCoordinator {
         defaults: UserDefaults = .standard,
         calendar: Calendar = .current,
         now: @Sendable @escaping () -> Date = Date.init,
-        snapshotRetentionDays: Int = SnapshotCoordinator.defaultSnapshotRetentionDays,
-        staleThresholdDays: Int = SnapshotCoordinator.defaultStaleThresholdDays,
+        snapshotRetentionDays: @MainActor @escaping () -> Int = {
+            SnapshotCoordinator.defaultSnapshotRetentionDays
+        },
+        staleThresholdDays: @MainActor @escaping () -> Int = {
+            SnapshotCoordinator.defaultStaleThresholdDays
+        },
         dismissedStaleApps: DismissedStaleAppStore? = nil
     ) {
         self.viewModel = viewModel
@@ -59,6 +60,10 @@ final class SnapshotCoordinator {
     }
 
     func onScanCompleted() async {
+        let retentionDays = snapshotRetentionDays()
+        let thresholdDays = staleThresholdDays()
+        viewModel.staleThresholdDays = thresholdDays
+
         guard scanFullySucceeded() else {
             Self.logger.debug("Skipping snapshot — at least one scanner errored")
             return
@@ -69,7 +74,10 @@ final class SnapshotCoordinator {
             // Same calendar day — don't write, but still refresh diffs in case
             // the user has not seen this snapshot since launch.
             Self.logger.debug("Snapshot already written today; refreshing diffs only")
-            await refreshDiffsAndStale(latestID: try? await store.latestSnapshotID())
+            await refreshDiffsAndStale(
+                latestID: try? await store.latestSnapshotID(),
+                thresholdDays: thresholdDays
+            )
             return
         }
 
@@ -83,9 +91,9 @@ final class SnapshotCoordinator {
             persistLastSnapshotDate(today)
             let retentionCutoff = calendar.date(
                 byAdding: .day,
-                value: -snapshotRetentionDays,
+                value: -retentionDays,
                 to: today
-            ) ?? today.addingTimeInterval(-Double(snapshotRetentionDays) * 86_400)
+            ) ?? today.addingTimeInterval(-Double(retentionDays) * 86_400)
             // A prune failure must NOT abort the diff refresh below, so it gets
             // its own do/catch (not the outer one) and is logged rather than
             // swallowed — otherwise the DB grows unbounded with no signal. (R1)
@@ -94,7 +102,7 @@ final class SnapshotCoordinator {
             } catch {
                 Self.logger.error("Snapshot prune failed: \(error.localizedDescription, privacy: .public)")
             }
-            await refreshDiffsAndStale(latestID: snapshotID)
+            await refreshDiffsAndStale(latestID: snapshotID, thresholdDays: thresholdDays)
         } catch {
             Self.logger.error(
                 "Snapshot write failed: \(error.localizedDescription, privacy: .public)"
@@ -129,7 +137,7 @@ final class SnapshotCoordinator {
         defaults.set(iso, forKey: Self.lastSnapshotDateKey)
     }
 
-    private func refreshDiffsAndStale(latestID: SnapshotID?) async {
+    private func refreshDiffsAndStale(latestID: SnapshotID?, thresholdDays: Int) async {
         viewModel.diffUnavailable = false
         guard let latestID else { return }
         viewModel.latestSnapshotID = latestID
@@ -161,7 +169,10 @@ final class SnapshotCoordinator {
 
         viewModel.latestDiffYesterday = await computeDiffs(cutoff: startOfToday, latestID: latestID)
         viewModel.latestDiffWeek = await computeDiffs(cutoff: weekCutoff, latestID: latestID)
-        viewModel.staleApps = await computeStaleApps(nowDate: nowDate)
+        viewModel.staleApps = await computeStaleApps(
+            nowDate: nowDate,
+            thresholdDays: thresholdDays
+        )
     }
 
     private func computeDiffs(cutoff: Date, latestID: SnapshotID) async -> SnapshotDiffs? {
@@ -188,7 +199,7 @@ final class SnapshotCoordinator {
         }
     }
 
-    private func computeStaleApps(nowDate: Date) async -> [StaleApp] {
+    private func computeStaleApps(nowDate: Date, thresholdDays: Int) async -> [StaleApp] {
         // Dedupe grants by bundleID, keep only those with a bundlePath.
         // Drop anything the user has chosen to skip in Preferences so the
         // sidebar badge count stays honest end-to-end.
@@ -202,7 +213,6 @@ final class SnapshotCoordinator {
             return StaleCandidate(app: representative.app, path: path, services: services)
         }
 
-        let threshold = staleThresholdDays
         let probe = lastUsedProbe
         let cal = calendar
         let limit = Self.maxStaleProbesInFlight
@@ -213,7 +223,13 @@ final class SnapshotCoordinator {
             for _ in 0..<limit {
                 guard let c = iterator.next() else { break }
                 group.addTask {
-                    await Self.probeOne(candidate: c, probe: probe, now: nowDate, threshold: threshold, calendar: cal)
+                    await Self.probeOne(
+                        candidate: c,
+                        probe: probe,
+                        now: nowDate,
+                        threshold: thresholdDays,
+                        calendar: cal
+                    )
                 }
             }
 
@@ -222,7 +238,13 @@ final class SnapshotCoordinator {
                 if let stale = maybeStale { results.append(stale) }
                 if let c = iterator.next() {
                     group.addTask {
-                        await Self.probeOne(candidate: c, probe: probe, now: nowDate, threshold: threshold, calendar: cal)
+                        await Self.probeOne(
+                            candidate: c,
+                            probe: probe,
+                            now: nowDate,
+                            threshold: thresholdDays,
+                            calendar: cal
+                        )
                     }
                 }
             }

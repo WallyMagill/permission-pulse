@@ -206,8 +206,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             snapshotCoordinator = SnapshotCoordinator(
                 viewModel: viewModel,
                 store: snapshotStore,
-                snapshotRetentionDays: preferencesStore.snapshotRetentionDays,
-                staleThresholdDays: preferencesStore.staleThresholdDays,
+                snapshotRetentionDays: { [weak preferencesStore = self.preferencesStore] in
+                    preferencesStore?.snapshotRetentionDays
+                        ?? SnapshotCoordinator.defaultSnapshotRetentionDays
+                },
+                staleThresholdDays: { [weak preferencesStore = self.preferencesStore] in
+                    preferencesStore?.staleThresholdDays
+                        ?? SnapshotCoordinator.defaultStaleThresholdDays
+                },
                 dismissedStaleApps: dismissedStaleApps
             )
         }
@@ -276,8 +282,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                     self.snapshotCoordinator = SnapshotCoordinator(
                         viewModel: self.viewModel,
                         store: newStore,
-                        snapshotRetentionDays: self.preferencesStore.snapshotRetentionDays,
-                        staleThresholdDays: self.preferencesStore.staleThresholdDays,
+                        snapshotRetentionDays: {
+                            [weak preferencesStore = self.preferencesStore] in
+                            preferencesStore?.snapshotRetentionDays
+                                ?? SnapshotCoordinator.defaultSnapshotRetentionDays
+                        },
+                        staleThresholdDays: {
+                            [weak preferencesStore = self.preferencesStore] in
+                            preferencesStore?.staleThresholdDays
+                                ?? SnapshotCoordinator.defaultStaleThresholdDays
+                        },
                         dismissedStaleApps: self.dismissedStaleApps
                     )
                 }
