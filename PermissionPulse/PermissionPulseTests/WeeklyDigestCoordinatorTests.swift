@@ -99,6 +99,28 @@ import PermissionsUI
         #expect(!composed.body.contains("changed"))
     }
 
+    @Test func composeTCCChangedOnlyProducesChangedSentence() {
+        let env = makeEnv(digestEnabled: true, status: .authorized)
+        let before = demoGrant(authValue: 2)
+        let after = demoGrant(authValue: 3)
+        let diff = SnapshotDiffs(
+            fromID: SnapshotID(rawValue: 1),
+            toID: SnapshotID(rawValue: 2),
+            tcc: TCCGrantsDiff(
+                added: [],
+                removed: [],
+                changed: [DomainChange(before: before, after: after)]
+            ),
+            btm: BTMItemsDiff(added: [], removed: []),
+            launchAgents: LaunchAgentsDiff(added: [], removed: [])
+        )
+
+        #expect(
+            env.coordinator.composeDigestBody(diff: diff).body
+                == String(localized: "1 changed in the last week.")
+        )
+    }
+
     @Test func handleAuthorizationToggleOffCancelsPending() async throws {
         let env = makeEnv(digestEnabled: true, status: .authorized)
         env.preferencesStore.digestEnabled = true
@@ -178,11 +200,15 @@ import PermissionsUI
     }
 }
 
-private func demoGrant(bundleID: String = "com.example.demo") -> PermissionGrant {
+private func demoGrant(
+    bundleID: String = "com.example.demo",
+    authValue: Int = 2
+) -> PermissionGrant {
     PermissionGrant(
         service: .microphone,
         app: AppIdentity(bundleID: bundleID, displayName: bundleID),
-        lastModified: Date(timeIntervalSince1970: 0)
+        lastModified: Date(timeIntervalSince1970: 0),
+        authValue: authValue
     )
 }
 

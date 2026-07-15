@@ -158,7 +158,7 @@ final class WeeklyDigestCoordinator {
 
         let added = diff.tcc.added.count + diff.btm.added.count + diff.launchAgents.added.count
         let removed = diff.tcc.removed.count + diff.btm.removed.count + diff.launchAgents.removed.count
-        let changed = diff.btm.changed.count + diff.launchAgents.changed.count
+        let changed = diff.tcc.changed.count + diff.btm.changed.count + diff.launchAgents.changed.count
 
         var fragments: [String] = []
         if added > 0 { fragments.append(String(localized: "\(added) added")) }
