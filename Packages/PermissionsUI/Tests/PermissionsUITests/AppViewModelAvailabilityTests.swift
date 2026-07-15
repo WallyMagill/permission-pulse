@@ -122,5 +122,8 @@ import PermissionsCore
 
         #expect(banner.headline.localizedCaseInsensitiveContains("failed"))
         #expect(!banner.headline.localizedCaseInsensitiveContains("stale"))
+        #expect(banner.accessibilityText.localizedCaseInsensitiveContains("failed"))
+        #expect(banner.accessibilityText.localizedCaseInsensitiveContains("no successful scan"))
+        #expect(!banner.accessibilityText.localizedCaseInsensitiveContains("complete"))
     }
 }

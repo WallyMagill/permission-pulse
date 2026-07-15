@@ -55,7 +55,7 @@ fail_schema() {
     exit 1
 }
 
-for table in schema_version snapshots tcc_grants btm_items launch_agents; do
+for table in schema_version snapshots tcc_grants btm_items launch_agents grdb_migrations; do
     table_count=$(readonly_query \
         "SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = '$table';") \
         || fail_schema "could not inspect table $table"
@@ -64,6 +64,7 @@ done
 
 for required_column in \
     schema_version:version \
+    grdb_migrations:identifier \
     snapshots:id \
     snapshots:created_at \
     launch_agents:id \
@@ -111,6 +112,26 @@ versions=$(readonly_query \
     || fail_schema 'could not read schema version'
 [[ "$versions" == '4' || "$versions" == '5' ]] \
     || fail_schema "unsupported schema version set: ${versions:-empty}"
+
+case "$versions" in
+    4)
+        expected_migrations='v1,v2,v3,v4'
+        expected_migration_count='4'
+        ;;
+    5)
+        expected_migrations='v1,v2,v3,v4,v5'
+        expected_migration_count='5'
+        ;;
+esac
+migration_count=$(readonly_query 'SELECT COUNT(*) FROM grdb_migrations;') \
+    || fail_schema 'could not count GRDB migrations'
+migrations=$(readonly_query \
+    "SELECT group_concat(identifier, ',') FROM (SELECT identifier FROM grdb_migrations ORDER BY identifier);") \
+    || fail_schema 'could not read GRDB migrations'
+[[ "$migration_count" == "$expected_migration_count" \
+    && "$migrations" == "$expected_migrations" ]] \
+    || fail_schema \
+        "schema version $versions requires exact GRDB migrations $expected_migrations; found ${migrations:-empty} (count $migration_count)"
 
 snapshot_marker_columns=$(readonly_query \
     "SELECT COUNT(*) FROM pragma_table_info('snapshots') WHERE name = 'launch_agent_disabled_captured';") \

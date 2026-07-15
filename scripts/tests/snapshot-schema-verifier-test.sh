@@ -54,6 +54,14 @@ CREATE TABLE btm_items (
     modification_date DOUBLE NOT NULL,
     parent_identifier TEXT
 );
+CREATE TABLE grdb_migrations (
+    identifier TEXT PRIMARY KEY NOT NULL
+);
+INSERT INTO grdb_migrations (identifier) VALUES
+    ('v1'),
+    ('v2'),
+    ('v3'),
+    ('v4');
 INSERT INTO snapshots (created_at) VALUES (0);
 INSERT INTO launch_agents (
     snapshot_id, label, source_directory, program_arguments_json,
@@ -70,6 +78,7 @@ ALTER TABLE launch_agents
 ALTER TABLE snapshots
     ADD COLUMN launch_agent_disabled_captured INTEGER NOT NULL DEFAULT 0;
 UPDATE schema_version SET version = 5;
+INSERT INTO grdb_migrations (identifier) VALUES ('v5');
 UPDATE snapshots SET launch_agent_disabled_captured = 1;
 UPDATE launch_agents SET is_disabled = 1;
 SQL
@@ -120,6 +129,11 @@ invalid_shape_db="$tmp_dir/invalid v4 shape.db"
 missing_capture_column_db="$tmp_dir/missing capture column.db"
 missing_disabled_column_db="$tmp_dir/missing disabled column.db"
 future_db="$tmp_dir/future.db"
+missing_ledger_db="$tmp_dir/missing migration ledger.db"
+missing_v4_ledger_db="$tmp_dir/missing v4 ledger.db"
+missing_v5_ledger_db="$tmp_dir/missing v5 ledger.db"
+unexpected_ledger_db="$tmp_dir/unexpected ledger identifier.db"
+duplicate_ledger_db="$tmp_dir/duplicate ledger identifier.db"
 missing_db="$tmp_dir/missing snapshots.db"
 
 create_v4_database "$v4_db"
@@ -131,6 +145,11 @@ cp "$v4_db" "$invalid_shape_db"
 cp "$v4_db" "$missing_capture_column_db"
 cp "$v4_db" "$missing_disabled_column_db"
 cp "$v5_db" "$future_db"
+cp "$v5_db" "$missing_ledger_db"
+cp "$v4_db" "$missing_v4_ledger_db"
+cp "$v5_db" "$missing_v5_ledger_db"
+cp "$v5_db" "$unexpected_ledger_db"
+cp "$v5_db" "$duplicate_ledger_db"
 sqlite3 "$invalid_capture_db" \
     'UPDATE snapshots SET launch_agent_disabled_captured = 2;'
 sqlite3 "$invalid_disabled_db" \
@@ -147,6 +166,21 @@ ALTER TABLE snapshots
 UPDATE schema_version SET version = 5;
 SQL
 sqlite3 "$future_db" 'UPDATE schema_version SET version = 6;'
+sqlite3 "$missing_ledger_db" 'DROP TABLE grdb_migrations;'
+sqlite3 "$missing_v4_ledger_db" \
+    "DELETE FROM grdb_migrations WHERE identifier = 'v4';"
+sqlite3 "$missing_v5_ledger_db" \
+    "DELETE FROM grdb_migrations WHERE identifier = 'v5';"
+sqlite3 "$unexpected_ledger_db" \
+    "INSERT INTO grdb_migrations (identifier) VALUES ('v99');"
+sqlite3 "$duplicate_ledger_db" <<'SQL'
+ALTER TABLE grdb_migrations RENAME TO grdb_migrations_original;
+CREATE TABLE grdb_migrations (identifier TEXT NOT NULL);
+INSERT INTO grdb_migrations (identifier)
+    SELECT identifier FROM grdb_migrations_original;
+INSERT INTO grdb_migrations (identifier) VALUES ('v5');
+DROP TABLE grdb_migrations_original;
+SQL
 
 v4_before=$(shasum -a 256 "$v4_db")
 v5_before=$(shasum -a 256 "$v5_db")
@@ -169,6 +203,16 @@ expect_failure 'v5 requires the LaunchAgent disabled column' \
     "$verifier" --database "$missing_disabled_column_db"
 expect_failure 'future schema versions fail closed' \
     "$verifier" --database "$future_db"
+expect_failure 'v5 requires the GRDB migration ledger table' \
+    "$verifier" --database "$missing_ledger_db"
+expect_failure 'schema v4 requires the exact v1-v4 migration ledger' \
+    "$verifier" --database "$missing_v4_ledger_db" --allow-pending-v4
+expect_failure 'schema v5 rejects the reviewer partial-ledger case missing v5' \
+    "$verifier" --database "$missing_v5_ledger_db"
+expect_failure 'schema v5 rejects an unexpected migration identifier' \
+    "$verifier" --database "$unexpected_ledger_db"
+expect_failure 'schema v5 rejects duplicate migration identifiers in a malformed ledger' \
+    "$verifier" --database "$duplicate_ledger_db"
 expect_failure 'a missing database is reported without creating it' \
     "$verifier" --database "$missing_db"
 

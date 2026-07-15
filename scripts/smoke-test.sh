@@ -436,14 +436,20 @@ passed --no-launch). Run through them and report any deviations.
       authorization from Allowed to Limited (or back). Recent Changes must show
       the before → after row; badge count, search, dismiss/snooze, and weekly
       digest total must all include that same event.
-  V6. VoiceOver coverage states. With VoiceOver on, verify the domain banners
-      announce "degraded data" for partial evidence and "last-known data" with
-      its timestamp after a later full scan failure; neither state may rely on
-      color or icon alone.
-  V7. VoiceOver no-history failure. In an isolated profile with no successful
-      history, force a scanner failure and confirm VoiceOver announces that the
-      scan failed and "no successful history" is available; no empty result may
-      be presented as a successful scan.
+  V6. VoiceOver coverage-state semantics (automated safe seam). Run:
+        swift test --package-path Packages/PermissionsUI \
+          --filter AppViewModelAvailabilityTests
+      This asserts that degraded data and last-known data include explicit state
+      and timestamp text instead of relying on color or icon alone. There is no
+      supported live UI source-injection seam.
+      Live status: equivalent live VoiceOver path as UNVERIFIED.
+  V7. VoiceOver no successful history failure semantics (automated safe seam).
+      The same AppViewModelAvailabilityTests run asserts that a failure with no successful
+      history is labeled as failed, not stale or successful ("no successful
+      history"). There is no supported safe live seam.
+      Live status: equivalent live VoiceOver path as UNVERIFIED.
+      Safety: Do not force protected-data or permission mutations merely for
+      V6/V7; never edit real TCC/BTM data, change permissions, or escalate.
   V8. Intel execution remains unverified unless this exact checklist and the
       release artifact are run on real Intel hardware. A universal x86_64 slice
       proves packaging only, not runtime/UI behavior.
