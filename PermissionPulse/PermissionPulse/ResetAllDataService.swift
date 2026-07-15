@@ -214,9 +214,9 @@ final class ResetAllDataService {
         viewModel.grants.removeAll()
         viewModel.launchAgents.removeAll()
         viewModel.btmItems.removeAll()
-        viewModel.tccScanError = nil
-        viewModel.btmScanError = nil
-        viewModel.launchAgentScanError = nil
+        viewModel.tccAvailability = .never
+        viewModel.btmAvailability = .never
+        viewModel.launchAgentAvailability = .never
         viewModel.latestSnapshotID = nil
         viewModel.lastReviewedSnapshotID = nil
         viewModel.latestDiffYesterday = nil

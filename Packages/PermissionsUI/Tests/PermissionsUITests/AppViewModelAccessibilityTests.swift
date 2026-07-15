@@ -14,6 +14,40 @@ import PermissionsStore
         #expect(vm.menuBarAccessibilityLabel.contains("action needed"))
     }
 
+    @Test func degradedDataIsNamedWithoutRelyingOnTheIcon() {
+        let vm = AppViewModel(
+            tccAvailability: .degraded(
+                lastUpdated: Date(timeIntervalSince1970: 1_700_000_000),
+                warnings: [.init(source: .systemTCCDatabase)]
+            )
+        )
+        #expect(vm.menuBarAccessibilityLabel.localizedCaseInsensitiveContains("degraded"))
+    }
+
+    @Test func staleDataIsNamedWithoutRelyingOnTheIcon() {
+        let vm = AppViewModel(
+            tccAvailability: .failed(
+                lastSuccessful: Date(timeIntervalSince1970: 1_700_000_000),
+                error: .temporarilyUnavailable(reason: "busy")
+            )
+        )
+        #expect(vm.menuBarAccessibilityLabel.localizedCaseInsensitiveContains("stale"))
+    }
+
+    @Test func failedScanWithoutHistoryDoesNotClaimStaleOrLastKnownData() {
+        let vm = AppViewModel(
+            tccAvailability: .failed(
+                lastSuccessful: nil,
+                error: .temporarilyUnavailable(reason: "busy")
+            )
+        )
+
+        #expect(vm.menuBarAccessibilityLabel.localizedCaseInsensitiveContains("failed"))
+        #expect(vm.menuBarAccessibilityLabel.localizedCaseInsensitiveContains("no results"))
+        #expect(!vm.menuBarAccessibilityLabel.localizedCaseInsensitiveContains("stale"))
+        #expect(!vm.menuBarAccessibilityLabel.localizedCaseInsensitiveContains("last known"))
+    }
+
     @Test func cameraInUseAnnounced() {
         let vm = AppViewModel(cameraInUse: true)
         #expect(vm.menuBarAccessibilityLabel.contains("camera"))

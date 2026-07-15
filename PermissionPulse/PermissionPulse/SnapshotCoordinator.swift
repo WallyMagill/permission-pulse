@@ -65,7 +65,7 @@ final class SnapshotCoordinator {
         viewModel.staleThresholdDays = thresholdDays
 
         guard scanFullySucceeded() else {
-            Self.logger.debug("Skipping snapshot — at least one scanner errored")
+            Self.logger.debug("Skipping snapshot — at least one scanner is not complete")
             return
         }
 
@@ -118,13 +118,10 @@ final class SnapshotCoordinator {
 
     // MARK: - Private
 
-    // Only TCC and BTM gate the snapshot write: they are the FDA-critical,
-    // higher-value domains where a partial write would corrupt the diff. A rare
-    // unreadable LaunchAgents directory does NOT block the daily snapshot —
-    // blocking would also discard that day's TCC/BTM history for a low-stakes,
-    // infrequent failure.
     private func scanFullySucceeded() -> Bool {
-        viewModel.tccScanError == nil && viewModel.btmScanError == nil
+        viewModel.tccAvailability.isComplete
+            && viewModel.btmAvailability.isComplete
+            && viewModel.launchAgentAvailability.isComplete
     }
 
     private func lastSnapshotDate() -> Date? {

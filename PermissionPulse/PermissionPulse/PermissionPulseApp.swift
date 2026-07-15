@@ -168,6 +168,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         self.resetOperation = resetOperation
         self.weeklyDigestScheduler = weeklyDigestScheduler
         super.init()
+        if runtimeEnvironment.isRunningTests {
+            // Test mode skips applicationDidFinishLaunching, but reset recovery
+            // still needs a real deterministic scan rather than treating
+            // never-scanned availability as success.
+            self.coordinator = ScanCoordinator(
+                viewModel: viewModel,
+                tccScanner: MockTCCScanner(),
+                tccDataSource: .mock,
+                launchAgentScanner: MockLaunchAgentScanner(),
+                launchAgentsDataSource: .mock,
+                btmScanner: MockBTMScanner(),
+                btmDataSource: .mock
+            )
+        }
     }
 
     private static func makeRuntimeDefaults(
@@ -362,9 +376,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private func performResetRecoveryScan() async -> Bool {
         guard await performRescanIfIdle() else { return false }
-        return viewModel.tccScanError == nil
-            && viewModel.btmScanError == nil
-            && viewModel.launchAgentScanError == nil
+        return viewModel.tccAvailability.isComplete
+            && viewModel.btmAvailability.isComplete
+            && viewModel.launchAgentAvailability.isComplete
     }
 
     func handleResetResult(_ result: ResetResult) {

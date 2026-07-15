@@ -21,9 +21,9 @@ public final class AppViewModel {
     public var tccDataSource: DataSource
     public var launchAgentsDataSource: DataSource
     public var btmDataSource: DataSource
-    public var tccScanError: ScannerError?
-    public var btmScanError: ScannerError?
-    public var launchAgentScanError: ScannerError?
+    public var tccAvailability: ScanAvailability
+    public var btmAvailability: ScanAvailability
+    public var launchAgentAvailability: ScanAvailability
     public var micInUse: Bool
     public var cameraInUse: Bool
     public var mediaDataSource: DataSource
@@ -65,6 +65,9 @@ public final class AppViewModel {
         tccDataSource: DataSource = .mock,
         launchAgentsDataSource: DataSource = .mock,
         btmDataSource: DataSource = .mock,
+        tccAvailability: ScanAvailability = .never,
+        btmAvailability: ScanAvailability = .never,
+        launchAgentAvailability: ScanAvailability = .never,
         tccScanError: ScannerError? = nil,
         btmScanError: ScannerError? = nil,
         launchAgentScanError: ScannerError? = nil,
@@ -84,9 +87,12 @@ public final class AppViewModel {
         self.tccDataSource = tccDataSource
         self.launchAgentsDataSource = launchAgentsDataSource
         self.btmDataSource = btmDataSource
-        self.tccScanError = tccScanError
-        self.btmScanError = btmScanError
-        self.launchAgentScanError = launchAgentScanError
+        self.tccAvailability = Self.initialAvailability(tccAvailability, error: tccScanError)
+        self.btmAvailability = Self.initialAvailability(btmAvailability, error: btmScanError)
+        self.launchAgentAvailability = Self.initialAvailability(
+            launchAgentAvailability,
+            error: launchAgentScanError
+        )
         self.micInUse = micInUse
         self.cameraInUse = cameraInUse
         self.mediaDataSource = mediaDataSource
@@ -128,14 +134,31 @@ public final class AppViewModel {
 
     public var attentionState: AttentionState {
         AttentionState.evaluate(
-            tccError: tccScanError,
-            btmError: btmScanError,
-            launchAgentError: launchAgentScanError
+            tccAvailability: tccAvailability,
+            btmAvailability: btmAvailability,
+            launchAgentAvailability: launchAgentAvailability
         )
     }
 
+    // Compatibility accessors for existing views/tests while availability is
+    // the only stored scan truth.
+    public var tccScanError: ScannerError? {
+        get { tccAvailability.error }
+        set { tccAvailability = Self.updating(tccAvailability, error: newValue) }
+    }
+
+    public var btmScanError: ScannerError? {
+        get { btmAvailability.error }
+        set { btmAvailability = Self.updating(btmAvailability, error: newValue) }
+    }
+
+    public var launchAgentScanError: ScannerError? {
+        get { launchAgentAvailability.error }
+        set { launchAgentAvailability = Self.updating(launchAgentAvailability, error: newValue) }
+    }
+
     public var menuBarSymbolName: String {
-        if tccScanError != nil || btmScanError != nil || launchAgentScanError != nil {
+        if attentionState != .clean {
             return "exclamationmark.shield.fill"
         }
         if hasUnreviewedChanges {
@@ -151,8 +174,17 @@ public final class AppViewModel {
     // otherwise conveyed only by SF Symbol swap, which a VoiceOver user can't
     // perceive. Same precedence as the symbol. (A1)
     public var menuBarAccessibilityLabel: String {
-        if tccScanError != nil || btmScanError != nil || launchAgentScanError != nil {
+        switch attentionState {
+        case .degradedData:
+            return String(localized: "Permission Pulse — degraded scan data, action needed")
+        case .staleData:
+            return String(localized: "Permission Pulse — stale scan data, action needed")
+        case .scanFailed:
+            return String(localized: "Permission Pulse — scan failed, no results available, action needed")
+        case .fdaDenied, .btmOnlyFDADenied, .schemaMismatch, .launchAgentError:
             return String(localized: "Permission Pulse — scan error, action needed")
+        case .clean:
+            break
         }
         if hasUnreviewedChanges {
             return String(localized: "Permission Pulse — unreviewed changes")
@@ -163,6 +195,25 @@ public final class AppViewModel {
         if cameraInUse { return String(localized: "Permission Pulse — camera in use") }
         if micInUse { return String(localized: "Permission Pulse — microphone in use") }
         return String(localized: "Permission Pulse")
+    }
+
+    private static func initialAvailability(
+        _ availability: ScanAvailability,
+        error: ScannerError?
+    ) -> ScanAvailability {
+        guard let error else { return availability }
+        return .failed(lastSuccessful: availability.lastSuccessful, error: error)
+    }
+
+    private static func updating(
+        _ availability: ScanAvailability,
+        error: ScannerError?
+    ) -> ScanAvailability {
+        guard let error else {
+            if case .failed = availability { return .never }
+            return availability
+        }
+        return .failed(lastSuccessful: availability.lastSuccessful, error: error)
     }
 
     // Verify the preferred symbol exists on this OS. `bell.badge.fill` has

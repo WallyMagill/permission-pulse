@@ -18,6 +18,7 @@ final class ScanCoordinator {
     private let launchAgentsDataSource: AppViewModel.DataSource
     private let btmScanner: any BTMScanner
     private let btmDataSource: AppViewModel.DataSource
+    private let now: @Sendable () -> Date
 
     init(
         viewModel: AppViewModel,
@@ -26,7 +27,8 @@ final class ScanCoordinator {
         launchAgentScanner: any LaunchAgentScanner = LaunchAgentScannerFS(),
         launchAgentsDataSource: AppViewModel.DataSource = .live,
         btmScanner: any BTMScanner = BTMScannerDirect(),
-        btmDataSource: AppViewModel.DataSource = .live
+        btmDataSource: AppViewModel.DataSource = .live,
+        now: @Sendable @escaping () -> Date = Date.init
     ) {
         self.viewModel = viewModel
         self.tccScanner = tccScanner
@@ -35,12 +37,15 @@ final class ScanCoordinator {
         self.launchAgentsDataSource = launchAgentsDataSource
         self.btmScanner = btmScanner
         self.btmDataSource = btmDataSource
+        self.now = now
     }
 
     func runScan() async {
+        // One timestamp describes the evidence boundary across every domain.
+        let scanDate = now()
+
         // DataSource reflects which scanner is wired up, not whether the last
-        // scan succeeded — a failed live scan (e.g. no FDA) must not leave the
-        // UI claiming the data on screen is mock.
+        // scan succeeded.
         viewModel.tccDataSource = tccDataSource
         viewModel.launchAgentsDataSource = launchAgentsDataSource
         viewModel.btmDataSource = btmDataSource
@@ -53,93 +58,101 @@ final class ScanCoordinator {
         let launchAgentResult = await launchAgentResultTask
         let btmResult = await btmResultTask
 
-        applyTCC(tccResult)
-        applyLaunchAgents(launchAgentResult)
-        applyBTM(btmResult)
+        applyTCC(tccResult, at: scanDate)
+        applyLaunchAgents(launchAgentResult, at: scanDate)
+        applyBTM(btmResult, at: scanDate)
     }
 
     func rescan() async {
         await runScan()
     }
 
-    private struct TCCScanResult: Sendable {
-        let grants: [PermissionGrant]
-        let error: ScannerError?
+    private enum DomainScanResult<Item: Sendable>: Sendable {
+        case output(ScannerOutput<Item>)
+        case failure(ScannerError)
     }
 
-    private struct LaunchAgentScanResult: Sendable {
-        let items: [LaunchAgentItem]
-        let error: ScannerError?
-    }
-
-    private struct BTMScanResult: Sendable {
-        let items: [BTMItem]
-        let error: ScannerError?
-    }
-
-    private func runTCCScan() async -> TCCScanResult {
+    private func runTCCScan() async -> DomainScanResult<PermissionGrant> {
         do {
-            let grants = try await tccScanner.scan()
-            return TCCScanResult(grants: grants, error: nil)
+            return .output(try await tccScanner.scan())
         } catch let scannerError as ScannerError {
             Self.logger.error("TCC scan failed: \(scannerError.localizedDescription, privacy: .public)")
-            return TCCScanResult(grants: [], error: scannerError)
+            return .failure(scannerError)
         } catch {
             Self.logger.error("TCC scan failed with unexpected error: \(error.localizedDescription, privacy: .public)")
-            return TCCScanResult(grants: [], error: .permissionDenied(reason: error.localizedDescription))
+            return .failure(.temporarilyUnavailable(reason: error.localizedDescription))
         }
     }
 
-    private func runLaunchAgentScan() async -> LaunchAgentScanResult {
+    private func runLaunchAgentScan() async -> DomainScanResult<LaunchAgentItem> {
         do {
-            let items = try await launchAgentScanner.scan()
-            return LaunchAgentScanResult(items: items, error: nil)
+            return .output(try await launchAgentScanner.scan())
         } catch let scannerError as ScannerError {
             Self.logger.error("LaunchAgent scan failed: \(scannerError.localizedDescription, privacy: .public)")
-            return LaunchAgentScanResult(items: [], error: scannerError)
+            return .failure(scannerError)
         } catch {
             Self.logger.error("LaunchAgent scan failed with unexpected error: \(error.localizedDescription, privacy: .public)")
-            return LaunchAgentScanResult(items: [], error: .permissionDenied(reason: error.localizedDescription))
+            return .failure(.temporarilyUnavailable(reason: error.localizedDescription))
         }
     }
 
-    private func runBTMScan() async -> BTMScanResult {
+    private func runBTMScan() async -> DomainScanResult<BTMItem> {
         do {
-            let items = try await btmScanner.scan()
-            return BTMScanResult(items: items, error: nil)
+            return .output(try await btmScanner.scan())
         } catch let scannerError as ScannerError {
             Self.logger.error("BTM scan failed: \(scannerError.localizedDescription, privacy: .public)")
-            return BTMScanResult(items: [], error: scannerError)
+            return .failure(scannerError)
         } catch {
             Self.logger.error("BTM scan failed with unexpected error: \(error.localizedDescription, privacy: .public)")
-            return BTMScanResult(items: [], error: .permissionDenied(reason: error.localizedDescription))
+            return .failure(.temporarilyUnavailable(reason: error.localizedDescription))
         }
     }
 
-    private func applyTCC(_ result: TCCScanResult) {
-        if let error = result.error {
-            viewModel.tccScanError = error
-        } else {
-            viewModel.grants = result.grants
-            viewModel.tccScanError = nil
+    private func applyTCC(_ result: DomainScanResult<PermissionGrant>, at scanDate: Date) {
+        switch result {
+        case .output(let output):
+            viewModel.grants = output.items
+            viewModel.tccAvailability = availability(for: output.warnings, at: scanDate)
+        case .failure(let error):
+            viewModel.tccAvailability = .failed(
+                lastSuccessful: viewModel.tccAvailability.lastSuccessful,
+                error: error
+            )
         }
     }
 
-    private func applyLaunchAgents(_ result: LaunchAgentScanResult) {
-        if let error = result.error {
-            viewModel.launchAgentScanError = error
-        } else {
-            viewModel.launchAgents = result.items
-            viewModel.launchAgentScanError = nil
+    private func applyLaunchAgents(
+        _ result: DomainScanResult<LaunchAgentItem>,
+        at scanDate: Date
+    ) {
+        switch result {
+        case .output(let output):
+            viewModel.launchAgents = output.items
+            viewModel.launchAgentAvailability = availability(for: output.warnings, at: scanDate)
+        case .failure(let error):
+            viewModel.launchAgentAvailability = .failed(
+                lastSuccessful: viewModel.launchAgentAvailability.lastSuccessful,
+                error: error
+            )
         }
     }
 
-    private func applyBTM(_ result: BTMScanResult) {
-        if let error = result.error {
-            viewModel.btmScanError = error
-        } else {
-            viewModel.btmItems = result.items
-            viewModel.btmScanError = nil
+    private func applyBTM(_ result: DomainScanResult<BTMItem>, at scanDate: Date) {
+        switch result {
+        case .output(let output):
+            viewModel.btmItems = output.items
+            viewModel.btmAvailability = availability(for: output.warnings, at: scanDate)
+        case .failure(let error):
+            viewModel.btmAvailability = .failed(
+                lastSuccessful: viewModel.btmAvailability.lastSuccessful,
+                error: error
+            )
         }
+    }
+
+    private func availability(for warnings: [ScannerWarning], at scanDate: Date) -> ScanAvailability {
+        warnings.isEmpty
+            ? .complete(lastUpdated: scanDate)
+            : .degraded(lastUpdated: scanDate, warnings: warnings)
     }
 }

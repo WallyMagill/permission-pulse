@@ -203,26 +203,34 @@ private struct PermissionsDetailPage: View {
     @Binding var selection: InspectorSelection?
 
     var body: some View {
-        Group {
-            if let error = viewModel.tccScanError, isSchemaIssue(error) {
-                VStack(spacing: 0) {
-                    SchemaMismatchBanner(error: error, domain: .tcc)
-                        .padding(PPSpacing.lg)
+        VStack(spacing: 0) {
+            ScanAvailabilityBanner(
+                availability: viewModel.tccAvailability,
+                domainName: String(localized: "Permissions")
+            )
+            .padding([.horizontal, .top], PPSpacing.lg)
+            .padding(.bottom, PPSpacing.sm)
+            Group {
+                if let error = viewModel.tccScanError, isSchemaIssue(error) {
+                    VStack(spacing: 0) {
+                        SchemaMismatchBanner(error: error, domain: .tcc)
+                            .padding(PPSpacing.lg)
+                        grantList
+                    }
+                } else if ScanState.showsScanningPlaceholder(
+                    isScanning: viewModel.scanInProgress,
+                    isEmpty: viewModel.grants.isEmpty,
+                    hasError: viewModel.tccScanError != nil,
+                    isSearching: !searchText.isEmpty
+                ) {
+                    ScanningStateView()
+                } else if viewModel.grants.isEmpty {
+                    PermissionsEmptyStateView(error: viewModel.tccScanError, domain: .tcc)
+                } else if groups.isEmpty {
+                    ContentUnavailableView.search(text: searchText)
+                } else {
                     grantList
                 }
-            } else if ScanState.showsScanningPlaceholder(
-                isScanning: viewModel.scanInProgress,
-                isEmpty: viewModel.grants.isEmpty,
-                hasError: viewModel.tccScanError != nil,
-                isSearching: !searchText.isEmpty
-            ) {
-                ScanningStateView()
-            } else if viewModel.grants.isEmpty {
-                PermissionsEmptyStateView(error: viewModel.tccScanError, domain: .tcc)
-            } else if groups.isEmpty {
-                ContentUnavailableView.search(text: searchText)
-            } else {
-                grantList
             }
         }
         // A scan can land a schema error while the page is open; animate the
@@ -316,26 +324,34 @@ private struct LaunchAgentsDetailPage: View {
     @Binding var selection: InspectorSelection?
 
     var body: some View {
-        Group {
-            if let error = viewModel.launchAgentScanError {
-                errorView(error: error)
-            } else if ScanState.showsScanningPlaceholder(
-                isScanning: viewModel.scanInProgress,
-                isEmpty: viewModel.launchAgents.isEmpty,
-                hasError: false,
-                isSearching: !searchText.isEmpty
-            ) {
-                ScanningStateView()
-            } else if viewModel.launchAgents.isEmpty {
-                ContentUnavailableView(
-                    String(localized: "No Launch Agents"),
-                    systemImage: "gearshape.2",
-                    description: Text(String(localized: "No launch agents or daemons were found on this system."))
-                )
-            } else if filteredItems.isEmpty {
-                ContentUnavailableView.search(text: searchText)
-            } else {
-                agentList
+        VStack(spacing: 0) {
+            ScanAvailabilityBanner(
+                availability: viewModel.launchAgentAvailability,
+                domainName: String(localized: "Launch Agents")
+            )
+            .padding([.horizontal, .top], PPSpacing.lg)
+            .padding(.bottom, PPSpacing.sm)
+            Group {
+                if let error = viewModel.launchAgentScanError, viewModel.launchAgents.isEmpty {
+                    errorView(error: error)
+                } else if ScanState.showsScanningPlaceholder(
+                    isScanning: viewModel.scanInProgress,
+                    isEmpty: viewModel.launchAgents.isEmpty,
+                    hasError: viewModel.launchAgentScanError != nil,
+                    isSearching: !searchText.isEmpty
+                ) {
+                    ScanningStateView()
+                } else if viewModel.launchAgents.isEmpty {
+                    ContentUnavailableView(
+                        String(localized: "No Launch Agents"),
+                        systemImage: "gearshape.2",
+                        description: Text(String(localized: "No launch agents or daemons were found on this system."))
+                    )
+                } else if filteredItems.isEmpty {
+                    ContentUnavailableView.search(text: searchText)
+                } else {
+                    agentList
+                }
             }
         }
         .navigationTitle(String(localized: "Launch Agents"))
@@ -416,26 +432,34 @@ private struct BackgroundItemsDetailPage: View {
     @Binding var selection: InspectorSelection?
 
     var body: some View {
-        Group {
-            if let error = viewModel.btmScanError, isSchemaIssue(error) {
-                VStack(spacing: 0) {
-                    SchemaMismatchBanner(error: error, domain: .btm)
-                        .padding(PPSpacing.lg)
+        VStack(spacing: 0) {
+            ScanAvailabilityBanner(
+                availability: viewModel.btmAvailability,
+                domainName: String(localized: "Background Items")
+            )
+            .padding([.horizontal, .top], PPSpacing.lg)
+            .padding(.bottom, PPSpacing.sm)
+            Group {
+                if let error = viewModel.btmScanError, isSchemaIssue(error) {
+                    VStack(spacing: 0) {
+                        SchemaMismatchBanner(error: error, domain: .btm)
+                            .padding(PPSpacing.lg)
+                        btmList
+                    }
+                } else if ScanState.showsScanningPlaceholder(
+                    isScanning: viewModel.scanInProgress,
+                    isEmpty: viewModel.btmItems.isEmpty,
+                    hasError: viewModel.btmScanError != nil,
+                    isSearching: !searchText.isEmpty
+                ) {
+                    ScanningStateView()
+                } else if viewModel.btmItems.isEmpty {
+                    PermissionsEmptyStateView(error: viewModel.btmScanError, domain: .btm)
+                } else if filteredItems.isEmpty {
+                    ContentUnavailableView.search(text: searchText)
+                } else {
                     btmList
                 }
-            } else if ScanState.showsScanningPlaceholder(
-                isScanning: viewModel.scanInProgress,
-                isEmpty: viewModel.btmItems.isEmpty,
-                hasError: viewModel.btmScanError != nil,
-                isSearching: !searchText.isEmpty
-            ) {
-                ScanningStateView()
-            } else if viewModel.btmItems.isEmpty {
-                PermissionsEmptyStateView(error: viewModel.btmScanError, domain: .btm)
-            } else if filteredItems.isEmpty {
-                ContentUnavailableView.search(text: searchText)
-            } else {
-                btmList
             }
         }
         // Same banner-insertion animation as the Permissions page.

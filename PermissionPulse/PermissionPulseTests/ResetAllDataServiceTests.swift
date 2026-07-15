@@ -668,9 +668,9 @@ private actor SuspendingWeeklyDigestScheduler: WeeklyDigestScheduler {
 
 @MainActor
 private func seedPresentationState(_ viewModel: AppViewModel) async throws {
-    let grants = try await MockTCCScanner().scan()
-    let launchAgents = try await MockLaunchAgentScanner().scan()
-    let btmItems = try await MockBTMScanner().scan()
+    let grants = try await MockTCCScanner().scan().items
+    let launchAgents = try await MockLaunchAgentScanner().scan().items
+    let btmItems = try await MockBTMScanner().scan().items
     viewModel.grants = grants
     viewModel.launchAgents = launchAgents
     viewModel.btmItems = btmItems

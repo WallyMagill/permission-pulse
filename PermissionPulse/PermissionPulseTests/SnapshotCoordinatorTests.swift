@@ -61,6 +61,76 @@ import PermissionsUI
         #expect(env.viewModel.staleThresholdDays == 30)
     }
 
+    @Test func degradedAvailabilityInAnyDomainSkipsSnapshotWrite() async throws {
+        let warning = ScannerWarning(source: .entries, omittedCount: 1)
+        for domain in PersistedDomain.allCases {
+            let env = try await Environment(now: fixedNow)
+            env.viewModel.grants = [demoGrant()]
+            env.viewModel.launchAgents = [demoLaunchAgent()]
+            setAvailability(
+                .degraded(lastUpdated: fixedNow(), warnings: [warning]),
+                for: domain,
+                on: env.viewModel
+            )
+
+            await env.coordinator.onScanCompleted()
+
+            #expect(try await env.snapshotsCount() == 0, "Degraded \(domain) must not write")
+        }
+    }
+
+    @Test func failedAvailabilityInAnyDomainSkipsSnapshotWrite() async throws {
+        let error = ScannerError.temporarilyUnavailable(reason: "busy")
+        for domain in PersistedDomain.allCases {
+            let env = try await Environment(now: fixedNow)
+            env.viewModel.grants = [demoGrant()]
+            env.viewModel.launchAgents = [demoLaunchAgent()]
+            setAvailability(
+                .failed(lastSuccessful: fixedNow(), error: error),
+                for: domain,
+                on: env.viewModel
+            )
+
+            await env.coordinator.onScanCompleted()
+
+            #expect(try await env.snapshotsCount() == 0, "Failed \(domain) must not write")
+        }
+    }
+
+    @Test func neverAvailabilityInAnyDomainSkipsSnapshotWrite() async throws {
+        for domain in PersistedDomain.allCases {
+            let env = try await Environment(now: fixedNow)
+            env.viewModel.grants = [demoGrant()]
+            env.viewModel.launchAgents = [demoLaunchAgent()]
+            setAvailability(.never, for: domain, on: env.viewModel)
+
+            await env.coordinator.onScanCompleted()
+
+            #expect(try await env.snapshotsCount() == 0, "Never-scanned \(domain) must not write")
+        }
+    }
+
+    @Test func degradedLaunchAgentDataCannotCreateFalseRemoval() async throws {
+        let env = try await Environment(now: fixedNow)
+        _ = try await env.store.writeFullSnapshot(
+            grants: [],
+            launchAgents: [demoLaunchAgent(label: "com.example.existing")],
+            btmItems: [],
+            at: fixedNow().addingTimeInterval(-86_400)
+        )
+        let countBefore = try await env.snapshotsCount()
+        env.viewModel.launchAgents = []
+        env.viewModel.launchAgentAvailability = .degraded(
+            lastUpdated: fixedNow(),
+            warnings: [.init(source: .libraryLaunchAgents)]
+        )
+
+        await env.coordinator.onScanCompleted()
+
+        #expect(try await env.snapshotsCount() == countBefore)
+        #expect(env.viewModel.latestDiffYesterday == nil)
+    }
+
     @Test func pushesDiffsAndStaleAppsToViewModelAfterWrite() async throws {
         // Seed an older snapshot (~36 hours ago) so the yesterday window has
         // something to diff against the new write.
@@ -172,7 +242,7 @@ import PermissionsUI
                 urls: [bundleID: resolvedPath]
             )
         )
-        var grants = try await scanner.scan()
+        var grants = try await scanner.scan().items
         grants.append(demoGrant(bundleID: ""))
         let old = fixedNow().addingTimeInterval(-200 * 86_400)
         let probe = RecordingLastUsedProbe(
@@ -392,7 +462,11 @@ import PermissionsUI
             dismissedStaleApps: DismissedStaleAppStore? = nil
         ) async throws {
             self.store = try SnapshotStore.inMemory()
-            self.viewModel = AppViewModel()
+            self.viewModel = AppViewModel(
+                tccAvailability: .complete(lastUpdated: now()),
+                btmAvailability: .complete(lastUpdated: now()),
+                launchAgentAvailability: .complete(lastUpdated: now())
+            )
             self.defaults = UserDefaults(suiteName: "test-\(UUID().uuidString)")!
             self.preferences = PreferencesStore(defaults: defaults)
             preferences.snapshotRetentionDays = snapshotRetentionDays
@@ -420,6 +494,24 @@ import PermissionsUI
         func snapshotsCount() async throws -> Int {
             guard let latest = try await store.latestSnapshotID() else { return 0 }
             return Int(latest.rawValue)
+        }
+    }
+
+    private enum PersistedDomain: CaseIterable {
+        case tcc
+        case btm
+        case launchAgent
+    }
+
+    private func setAvailability(
+        _ availability: ScanAvailability,
+        for domain: PersistedDomain,
+        on viewModel: AppViewModel
+    ) {
+        switch domain {
+        case .tcc: viewModel.tccAvailability = availability
+        case .btm: viewModel.btmAvailability = availability
+        case .launchAgent: viewModel.launchAgentAvailability = availability
         }
     }
 }

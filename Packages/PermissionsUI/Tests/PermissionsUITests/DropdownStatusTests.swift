@@ -1,4 +1,6 @@
+import Foundation
 import Testing
+import PermissionsCore
 @testable import PermissionsUI
 
 @Suite("DropdownStatusBuilder")
@@ -33,6 +35,8 @@ struct DropdownStatusTests {
         #expect(btm.first?.route == .backgroundItems(selectID: nil))
         let la = rows(attention: .launchAgentError)
         #expect(la.first?.route == .launchAgents(selectID: nil))
+        #expect(rows(attention: .degradedData).first?.route == .overview)
+        #expect(rows(attention: .staleData).first?.route == .overview)
     }
 
     @Test("Media row appears while mic or camera is in use, routes to Permissions")
@@ -41,6 +45,22 @@ struct DropdownStatusTests {
         #expect(result.contains { $0.kind == .media(mic: true, camera: false) })
         #expect(result.first { $0.kind == .media(mic: true, camera: false) }?.route
             == .permissions(selectAppKey: nil))
+    }
+
+    @Test("Scan failure without history has a truthful Overview title and route")
+    func scanFailureTitleAndRoute() {
+        let attention = AttentionState.evaluate(
+            tccAvailability: .failed(
+                lastSuccessful: nil,
+                error: .temporarilyUnavailable(reason: "busy")
+            ),
+            btmAvailability: .complete(lastUpdated: Date(timeIntervalSince1970: 1_700_000_000)),
+            launchAgentAvailability: .complete(lastUpdated: Date(timeIntervalSince1970: 1_700_000_000))
+        )
+        let result = rows(attention: attention)
+
+        #expect(result.first?.route == .overview)
+        #expect(result.first?.title == String(localized: "Scan failed — no results available"))
     }
 
     @Test("Changes and stale rows appear only with content; order is attention, media, changes, stale, summary")

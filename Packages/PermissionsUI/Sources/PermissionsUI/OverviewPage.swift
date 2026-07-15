@@ -84,6 +84,21 @@ struct OverviewPage: View {
                 String(localized: "Launch Agents couldn't be read"),
                 target: .launchAgents
             )
+        case .degradedData:
+            attentionRow(
+                String(localized: "Scan data is degraded — some sources are missing"),
+                target: .overview
+            )
+        case .staleData:
+            attentionRow(
+                String(localized: "Scan data is stale — showing last-known results"),
+                target: .overview
+            )
+        case .scanFailed:
+            attentionRow(
+                String(localized: "Scan failed — no results are available"),
+                target: .overview
+            )
         case .clean:
             EmptyView()
         }

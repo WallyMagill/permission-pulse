@@ -23,6 +23,39 @@ public struct DropdownStatusRow: Equatable, Sendable, Identifiable {
         case .allClear: "allClear"
         }
     }
+
+    var title: String {
+        switch kind {
+        case .attention(.fdaDenied):
+            String(localized: "Full Disk Access needed")
+        case .attention(.btmOnlyFDADenied):
+            String(localized: "FDA needed for background items")
+        case .attention(.schemaMismatch):
+            String(localized: "A data source changed format")
+        case .attention(.launchAgentError):
+            String(localized: "Launch Agents couldn't be read")
+        case .attention(.scanFailed):
+            String(localized: "Scan failed — no results available")
+        case .attention(.degradedData):
+            String(localized: "Scan data is degraded")
+        case .attention(.staleData):
+            String(localized: "Scan data is stale")
+        case .attention(.clean):
+            "" // builder never emits this
+        case .media(true, true):
+            String(localized: "Microphone and camera are in use")
+        case .media(true, false):
+            String(localized: "Microphone is in use")
+        case .media(_, _):
+            String(localized: "Camera is in use")
+        case .changes(let n):
+            String(localized: "\(n) changes since your last review")
+        case .stale(let n):
+            String(localized: "\(n) stale apps with old permissions")
+        case .allClear(let n):
+            String(localized: "\(n) apps with permissions")
+        }
+    }
 }
 
 /// Pure derivation of the dropdown's status rows. Order: attention first,
@@ -48,6 +81,8 @@ public enum DropdownStatusBuilder {
             result.append(.init(kind: .attention(attention), route: .backgroundItems(selectID: nil)))
         case .launchAgentError:
             result.append(.init(kind: .attention(attention), route: .launchAgents(selectID: nil)))
+        case .scanFailed, .degradedData, .staleData:
+            result.append(.init(kind: .attention(attention), route: .overview))
         }
         if micInUse || cameraInUse {
             result.append(.init(

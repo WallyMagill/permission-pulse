@@ -150,13 +150,13 @@ private struct StatusRowButton: View {
                     .foregroundStyle(iconColor)
                     .frame(width: 20)
                     .accessibilityHidden(true)
-                Text(title)
+                Text(row.title)
                     .ppFont(.body)
                     .foregroundStyle(.primary)
                     .lineLimit(2)
                     // Digit-morph only where the copy actually carries a count.
                     .contentTransition(isCountRow ? .numericText() : .opacity)
-                    .animation(reduceMotion ? nil : .default, value: title)
+                    .animation(reduceMotion ? nil : .default, value: row.title)
                 Spacer(minLength: PPSpacing.xs)
                 Image(systemName: "chevron.right")
                     .ppFont(.badge)
@@ -180,33 +180,6 @@ private struct StatusRowButton: View {
         switch row.kind {
         case .changes, .stale, .allClear: true
         case .attention, .media: false
-        }
-    }
-
-    private var title: String {
-        switch row.kind {
-        case .attention(.fdaDenied):
-            String(localized: "Full Disk Access needed")
-        case .attention(.btmOnlyFDADenied):
-            String(localized: "FDA needed for background items")
-        case .attention(.schemaMismatch):
-            String(localized: "A data source changed format")
-        case .attention(.launchAgentError):
-            String(localized: "Launch Agents couldn't be read")
-        case .attention(.clean):
-            "" // builder never emits this
-        case .media(true, true):
-            String(localized: "Microphone and camera are in use")
-        case .media(true, false):
-            String(localized: "Microphone is in use")
-        case .media(_, _):
-            String(localized: "Camera is in use")
-        case .changes(let n):
-            String(localized: "\(n) changes since your last review")
-        case .stale(let n):
-            String(localized: "\(n) stale apps with old permissions")
-        case .allClear(let n):
-            String(localized: "\(n) apps with permissions")
         }
     }
 
@@ -294,4 +267,3 @@ private struct OptionalShortcut: ViewModifier {
         }
     }
 }
-
