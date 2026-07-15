@@ -56,32 +56,47 @@ From Xcode: ⌘U runs the per-package suites and the app-level test target.
 From the CLI:
 
 ```bash
-# Package-level tests (run without the Xcode project) — ~161 tests total
-swift test --package-path Packages/PermissionsCore       # ~15
-swift test --package-path Packages/PermissionsScanners   # ~48
-swift test --package-path Packages/PermissionsStore      # ~24
-swift test --package-path Packages/PermissionsUI         # ~74
+# Package-level tests (run without the Xcode project) — 233 tests total
+swift test --package-path Packages/PermissionsCore       # 34
+swift test --package-path Packages/PermissionsScanners   # 59
+swift test --package-path Packages/PermissionsStore      # 35
+swift test --package-path Packages/PermissionsUI         # 105
 
-# App build + app-target tests via xcodebuild (the ~27 coordinator tests)
-xcodebuild \
+# App build + app-target tests via xcodebuild — 38 tests
+PERMISSION_PULSE_TEST_MODE=1 xcodebuild test \
   -project PermissionPulse/PermissionPulse.xcodeproj \
   -scheme PermissionPulse \
   -destination 'platform=macOS,arch=arm64' \
-  test
+  -only-testing:PermissionPulseTests CODE_SIGNING_ALLOWED=NO
 ```
 
-Tests use **Swift Testing** (`import Testing`); the UITest target uses XCTest. Coverage is real, not smoke: the packages carry ~161 tests and the app target adds ~27 coordinator tests (`SnapshotCoordinator`, `WeeklyDigestCoordinator`, `ResetAllDataService`).
+Tests use **Swift Testing** (`import Testing`); the UITest target uses XCTest. The four package suites contain 233 tests and the app target contains 38 tests, for 271 automated tests total. These are the counts observed by the v0.7.2 Workstream A gate on macOS 26.5 with Xcode 26.5 / Swift 6.3.2, not estimates.
 
 ### Full local smoke test
 
-`scripts/smoke-test.sh` is the comprehensive pre-release gate. It wipes only Permission Pulse's own state (never the real TCC.db / login items), does a Release build, asserts the bundle version (`0.7.1` / build `11`), runs all package + app-target tests, verifies the on-disk `snapshots.db` schema, and prints a human checklist (§A–§I). `scripts/seed-diff.sh` inserts a dated empty snapshot so the next scan produces a non-empty diff for exercising the dismiss/snooze flow.
+`scripts/smoke-test.sh` is the comprehensive pre-release gate. A normal run wipes only Permission Pulse's own state (never the real TCC.db / login items), does a Release build, asserts the bundle version (`0.7.2` / build `12`), runs all package + app-target tests, verifies the on-disk `snapshots.db` schema, and prints a human checklist (§A–§I). `--keep` preserves the production snapshot database and defaults domain; `--no-launch` skips launching the built app. `scripts/seed-diff.sh` inserts a dated empty snapshot so the next scan produces a non-empty diff for exercising the dismiss/snooze flow.
+
+## Build and verify the v0.7.2 release artifact
+
+This is the single supported release-artifact path. It is non-publishing and must run from a clean release commit:
+
+```bash
+scripts/smoke-test.sh --keep --no-launch
+scripts/package-release.sh 0.7.2 /tmp/permission-pulse-v0.7.2
+scripts/verify-release.sh \
+  /tmp/permission-pulse-v0.7.2/PermissionPulse-v0.7.2.app.zip 0.7.2 12
+```
+
+The packaging script produces a universal arm64 + x86_64, ad-hoc-signed, entitlement-clean app; verifies the raw app and exact archive; and records the release commit and checksum in sidecars. Tagging, GitHub Release creation, uploading, and post-download verification remain manual steps described in `docs/06-distribution.md`. v0.7.1 and its development-signed asset remain immutable; v0.7.2 supersedes that asset.
 
 ## CI
 
-GitHub Actions (`.github/workflows/ci.yml`) runs on every PR and every push to `main`, on `macos-latest`:
+GitHub Actions (`.github/workflows/ci.yml`) runs on every PR and every push to `main`. Both jobs use `macos-26` and `/Applications/Xcode_26.5.app/Contents/Developer`, and print the macOS, Xcode, and Swift versions:
 
-- **`packages` job** — `swift test` for all four SwiftPM packages. This is the real coverage gate.
-- **`app` job** — `xcodebuild … build` only (Debug, signing disabled). It **builds** the app target but does **not** run the app-target tests; those ~27 coordinator tests run locally via `smoke-test.sh §4`. There is no release/packaging automation in CI (distribution is manual).
+- **`packages` job** — runs all 233 tests in the four SwiftPM packages.
+- **`app` job** — runs all 38 app-target tests in isolated test mode, performs static analysis, proves `smoke-test.sh --keep` preserves live state, then builds and independently verifies the exact v0.7.2/build 12 archive from the clean checkout.
+
+CI never tags, publishes, or uploads that verified artifact. GitHub Releases remains a separate manual boundary.
 
 GRDB is pinned at `7.10.0` (see each `Package.resolved`). Deployment targets are not uniform: the app release target is `14.6`, the test targets are `26.4`, and the SwiftPM packages floor at `.macOS(.v14)`. The app is built and tested only on Tahoe 26; treat 14.x as the declared floor, not a verified one.
 

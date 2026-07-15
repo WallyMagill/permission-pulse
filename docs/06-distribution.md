@@ -6,21 +6,24 @@
 
 **Signing:** Ad-hoc (`-`) for now. Notarization deferred indefinitely until a paid Apple Developer ID is acquired. Sparkle 2 auto-updates also deferred.
 
-## Release flow (current — manual)
+## Supported v0.7.2 release flow (manual publication)
 
-Releases v0.2.0 → v0.7.1 were all cut by hand. There is **no** tag-triggered release workflow; CI only builds and tests (see `docs/07-build-and-test.md`). The actual steps:
+`scripts/package-release.sh` is the only supported release-artifact entry point. It builds from the exact clean `HEAD`, creates a universal arm64 + x86_64 app, signs it ad hoc without entitlements, independently verifies the app before and after archiving, and writes the zip, SHA-256 sidecar, and manifest to the explicit output directory. Do not build or zip a release artifact by hand.
 
-1. Bump `MARKETING_VERSION` / `CURRENT_PROJECT_VERSION` across the six pbxproj configs and update `scripts/smoke-test.sh`'s expected-version literals.
-2. Run `scripts/smoke-test.sh` and work the §A–§I human checklist.
-3. Build Release with `xcodebuild`, locate the `.app` in DerivedData, and zip it to `PermissionPulse-vX.Y.Z.app.zip`.
-4. Tag the commit: `git tag vX.Y.Z && git push origin vX.Y.Z`.
-5. Create the release and upload the zip: `gh release create vX.Y.Z PermissionPulse-vX.Y.Z.app.zip --title "vX.Y.Z — …" --notes "…"`.
+After all v0.7.2 automated and human gates pass, run these exact commands from the clean release commit:
 
-Release notes are written by hand directly in the GitHub Release. There is **no `CHANGELOG.md`** in the repo — `docs/09-roadmap.md` is the closest thing to a changelog.
+```bash
+scripts/smoke-test.sh --keep --no-launch
+scripts/package-release.sh 0.7.2 /tmp/permission-pulse-v0.7.2
+scripts/verify-release.sh \
+  /tmp/permission-pulse-v0.7.2/PermissionPulse-v0.7.2.app.zip 0.7.2 12
+```
 
-## Release flow (planned automation — not built)
+The output directory must then contain the independently verified archive, `PermissionPulse-v0.7.2.app.zip.sha256`, and `PermissionPulse-v0.7.2.manifest.txt`. Confirm the checksum sidecar and manifest both name that exact archive, and confirm the manifest's `gitSHA` is the release commit.
 
-A future tag-triggered GitHub Action could: build Release with `xcodebuild` → ad-hoc-sign the `.app` → package a `.dmg` via `create-dmg`/`hdiutil` → create the release → upload. When a Developer ID lands it would also gain code signing from a CI secret, `xcrun notarytool submit` + `xcrun stapler staple`, and optional Sparkle appcast generation on GitHub Pages.
+Publication remains an intentional manual boundary. CI builds and verifies the exact archive shape above from a clean checkout, but it never tags, creates a GitHub release, or uploads files. A maintainer must tag the manifest's exact commit as `v0.7.2`, create the GitHub release, upload the zip, checksum, and manifest, download them into a fresh directory, check the downloaded checksum, and rerun `scripts/verify-release.sh` before announcing the release. Release notes are written by hand; there is no `CHANGELOG.md` in the repository.
+
+v0.7.1 remains an immutable historical release. Its development-signed artifact is superseded by v0.7.2: amend the v0.7.1 release notes to point users to v0.7.2, but do not delete, replace, or modify the existing v0.7.1 asset.
 
 ## Update mechanism (v1)
 
@@ -53,5 +56,7 @@ Once we have at least one stable release, a `homebrew-tap` repo gets added: `bre
 
 - `.app` bundle: ~16 MB.
 - `PermissionPulse-vX.Y.Z.app.zip`: ~5 MB (v0.7.1 was 4.8 MB).
+- `PermissionPulse-vX.Y.Z.app.zip.sha256`: SHA-256 checksum sidecar.
+- `PermissionPulse-vX.Y.Z.manifest.txt`: version, build, exact Git commit, archive name, and checksum.
 - The Release binary is a **universal binary (arm64 + x86_64)** — the Intel slice is built but is **untested** (development is Apple-Silicon-only). The app should run on Intel Macs in principle, but no one has verified it.
 - A `.dmg` would add a few MB over the zip, once `.dmg` packaging is built.

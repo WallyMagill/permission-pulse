@@ -70,3 +70,10 @@ jobs:
 
       - name: Verify smoke preservation
         run: scripts/tests/smoke-test-safety-test.sh
+
+      - name: Build and verify release artifact
+        run: |
+          scripts/package-release.sh 0.7.2 "$RUNNER_TEMP/permission-pulse-release"
+          scripts/verify-release.sh \
+            "$RUNNER_TEMP/permission-pulse-release/PermissionPulse-v0.7.2.app.zip" \
+            0.7.2 12
