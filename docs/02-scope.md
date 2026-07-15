@@ -50,9 +50,9 @@ Deep links into the correct System Settings pane. Uses `x-apple.systempreference
 
 ### Screen 6 — Weekly Digest Notification
 
-Once per week, on Monday 09:00 local time. Local notification only. Summary: "N new permissions, M new background items, K stale apps."
+Once per week at the user-selected local day and time (default Monday 09:00). Local notification only. The body aggregates added, removed, and changed rows across the latest weekly TCC, BTM, and LaunchAgent snapshot diffs; TCC authorization transitions count as changed rows. A week with no diff content sends the heartbeat "No changes in the last week."
 
-**Acceptance:** Notification fires when run for 7+ days. Summary numbers match the underlying snapshot diffs. User can disable in preferences.
+**Acceptance:** Notification fires on the selected schedule. Added/removed/changed totals match the underlying weekly snapshot diffs, including TCC-only authorization changes. User can disable or reschedule it in preferences.
 
 ## Explicitly out of scope for v1
 

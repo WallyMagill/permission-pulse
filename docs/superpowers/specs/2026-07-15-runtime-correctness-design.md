@@ -102,7 +102,7 @@ User-facing error text remains localized and does not expose private filesystem 
 - Changing stale threshold from 90 to 30 days changes the next scan's stale results and matching UI copy.
 - Values remain stable inside one scan even if the preference changes concurrently.
 - Reset clears every live store and every persisted Permission Pulse key while preserving macOS-owned defaults.
-- Reset removes SQLite main/WAL/SHM files, recreates a v5 database, and performs a clean rescan.
+- Reset removes SQLite main/WAL/SHM files, recreates the current migrated database (v4 at the Workstream B gate; v5 after the approved Data Fidelity Workstream C Task 6 is implemented), and performs a clean rescan.
 - An injected file-removal failure returns the deletion phase and does not claim success or reuse the old store.
 - Reset while digest is enabled leaves no pending digest and sets the live preference to disabled.
 - Day/time edits replace the pending request and refresh the next-fire date.

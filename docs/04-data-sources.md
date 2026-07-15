@@ -146,17 +146,17 @@ Each scanner is documented as: **what it reads, which API, what permission is ne
 
 | Table | Cols | Notes |
 |---|---|---|
-| `schema_version` | `version: INTEGER` | Single row, currently `3`. |
+| `schema_version` | `version: INTEGER` | Single row, currently `4` at the Workstream B gate. Schema v5 is reserved for Data Fidelity Workstream C Task 6 and is not current yet. |
 | `snapshots` | `id: INTEGER PK AUTO`, `created_at: DOUBLE` | One row per write. |
 | `launch_agents` | snapshot_id FK CASCADE + label / source_directory / program_path / program_arguments_json / run_at_load / keep_alive | v2 migration. |
-| `tcc_grants` | snapshot_id FK CASCADE + service / bundle_id / display_name / bundle_path / last_modified / automation_target | v3 migration. |
+| `tcc_grants` | snapshot_id FK CASCADE + service / bundle_id / display_name / bundle_path / last_modified / automation_target / auth_value | Created in v3; v4 adds persisted `auth_value` for authorization-transition diffs. |
 | `btm_items` | snapshot_id FK CASCADE + identifier / name / developer_name / bundle_identifier / team_identifier / type_kind + type_raw / disposition_kind + disposition_raw / scope_kind + scope_per_user_uuid / modification_date / parent_identifier | v3 migration. The `*_kind` TEXT + nullable `*_raw` INTEGER split round-trips associated-value enum cases. |
 
 **Where:** `~/Library/Application Support/com.wallymagill.permissionpulse/snapshots.db` via the `SnapshotPath` helper in the app target.
 
 **Write cadence:** Once per calendar day, gated by `UserDefaults` key `com.wallymagill.permissionpulse.lastSnapshotDate` (ISO string). Driven by `SnapshotCoordinator.onScanCompleted()` after a successful scan. If any scanner errored, the write is skipped — diff signal stays clean.
 
-**Retention:** 90 days. `SnapshotStore.pruneSnapshots(olderThan:)` runs at each write; FK CASCADE drops child rows.
+**Retention:** Live user preference, 7–365 days (default 90). `SnapshotCoordinator` captures the current retention value once at each scan-completion boundary, so an edit applies to the next snapshot/prune pass and remains stable within that pass. `SnapshotStore.pruneSnapshots(olderThan:)` runs at each write; FK CASCADE drops child rows.
 
 **Fragility:** Low. GRDB v7.x is locked; migrations are additive.
 
@@ -186,7 +186,7 @@ Each scanner is documented as: **what it reads, which API, what permission is ne
 
 **Where:** Standard `UserDefaults` (`com.wallymagill.permissionpulse.*` namespace). See `CLAUDE.md` for the full key list.
 
-**API:** Direct property reads/writes via the typed accessors. The view-model layer (`PreferencesViewModel`) exposes Double mirrors for `Slider` bindings and a digest-time `Date` convenience for `.hourAndMinute` `DatePicker`.
+**API:** Direct property reads/writes via the typed accessors. Snapshot retention is clamped to 7–365 days and the stale-app threshold to 30–365 days; both default to 90 and are captured from the live store at each scan-completion boundary. The view-model layer (`PreferencesViewModel`) exposes Double mirrors for `Slider` bindings and a digest-time `Date` convenience for `.hourAndMinute` `DatePicker`.
 
 **Permission needed:** None. UserDefaults is unrestricted for our domain.
 
