@@ -109,6 +109,124 @@ struct PermissionPulseTests {
         #expect(await gate.invocationCount == 1)
     }
 
+    @Test func reservedAndInFlightResetRejectExternalRescan() async {
+        let gate = SuspendingResetOperation()
+        let delegate = AppDelegate(
+            runtimeEnvironment: AppRuntimeEnvironment(
+                environment: ["PERMISSION_PULSE_TEST_MODE": "1"]
+            ),
+            resetOperation: { await gate.run() }
+        )
+
+        delegate.requestResetAllData()
+
+        // The task reservation is synchronous, so this refresh must lose even
+        // if the reset operation has not reached its first instruction yet.
+        await delegate.rescan()
+        #expect(delegate.viewModel.lastScanDate == nil)
+        #expect(!delegate.viewModel.scanInProgress)
+
+        await gate.waitUntilRunning()
+        await delegate.rescan()
+        #expect(delegate.viewModel.lastScanDate == nil)
+        #expect(!delegate.viewModel.scanInProgress)
+
+        await gate.resume()
+        await delegate.waitForResetCompletion()
+    }
+
+    @Test func activeScanRejectsResetBeforeLifecycleSideEffects() async throws {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("app-delegate-scan-reset-race-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let databaseURL = directory.appendingPathComponent("snapshots.db")
+        var resetInvocationCount = 0
+        var deletionCount = 0
+        var runtimeWasReleased = false
+        var recoveryScanCount = 0
+        var presentedMessages: [String] = []
+        weak var delegate: AppDelegate?
+
+        let createdDelegate = AppDelegate(
+            runtimeEnvironment: AppRuntimeEnvironment(
+                environment: ["PERMISSION_PULSE_TEST_MODE": "1"]
+            ),
+            resetMessagePresenter: { presentedMessages.append($0) },
+            resetOperation: {
+                guard let delegate else { return }
+                resetInvocationCount += 1
+                _ = await delegate.performReset(
+                    at: databaseURL,
+                    fileManager: ObservingResetFileManager { _ in
+                        deletionCount += 1
+                        let references = delegate.snapshotRuntimeReferences
+                        runtimeWasReleased = !references.hasStore
+                            && !references.hasCoordinator
+                    },
+                    rescan: {
+                        recoveryScanCount += 1
+                        return false
+                    }
+                )
+            },
+            weeklyDigestScheduler: MockWeeklyDigestScheduler(initialStatus: .authorized)
+        )
+        delegate = createdDelegate
+        createdDelegate.installSnapshotRuntime(
+            try SnapshotStore(path: databaseURL.path(percentEncoded: false))
+        )
+        createdDelegate.viewModel.scanInProgress = true
+
+        createdDelegate.requestResetAllData()
+        await createdDelegate.waitForResetCompletion()
+
+        #expect(resetInvocationCount == 0)
+        #expect(deletionCount == 0)
+        #expect(!runtimeWasReleased)
+        #expect(recoveryScanCount == 0)
+        #expect(presentedMessages.isEmpty)
+        #expect(createdDelegate.hasSnapshotRuntime)
+        #expect(FileManager.default.fileExists(atPath: databaseURL.path))
+    }
+
+    @Test func resetOwnedRecoveryScanRunsWhileResetIsReserved() async throws {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("app-delegate-reset-recovery-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let databaseURL = directory.appendingPathComponent("snapshots.db")
+        var resetResult: ResetResult?
+        weak var delegate: AppDelegate?
+
+        let createdDelegate = AppDelegate(
+            runtimeEnvironment: AppRuntimeEnvironment(
+                environment: ["PERMISSION_PULSE_TEST_MODE": "1"]
+            ),
+            resetOperation: {
+                guard let delegate else { return }
+                resetResult = await delegate.performReset(
+                    at: databaseURL,
+                    fileManager: FileManager.default
+                )
+            },
+            weeklyDigestScheduler: MockWeeklyDigestScheduler(initialStatus: .authorized)
+        )
+        delegate = createdDelegate
+        createdDelegate.installSnapshotRuntime(
+            try SnapshotStore(path: databaseURL.path(percentEncoded: false))
+        )
+        #expect(createdDelegate.viewModel.lastScanDate == nil)
+
+        createdDelegate.requestResetAllData()
+        await createdDelegate.waitForResetCompletion()
+
+        #expect(resetResult == .completed(scanSucceeded: true))
+        #expect(createdDelegate.viewModel.lastScanDate != nil)
+        #expect(!createdDelegate.viewModel.scanInProgress)
+        #expect(createdDelegate.hasSnapshotRuntime)
+    }
+
     @Test func resetReleasesAndReconstructsLiveSnapshotRuntime() async throws {
         let directory = FileManager.default.temporaryDirectory
             .appendingPathComponent("app-delegate-reset-\(UUID().uuidString)")

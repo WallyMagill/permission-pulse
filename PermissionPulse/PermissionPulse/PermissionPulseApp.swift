@@ -242,20 +242,30 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func rescan() async {
+        guard resetTask == nil else {
+            Self.logger.debug("Rescan ignored — a reset is already in progress")
+            return
+        }
+        _ = await performRescanIfIdle()
+    }
+
+    @discardableResult
+    private func performRescanIfIdle() async -> Bool {
         // Don't start a second scan while one is in flight (e.g. user hits
         // Refresh during the initial launch scan). Concurrent scans can both
         // pass SnapshotCoordinator's once-per-day write guard before the first
         // persists lastSnapshotDate, producing duplicate snapshot rows. (R2)
         guard !viewModel.scanInProgress else {
             Self.logger.debug("Rescan ignored — a scan is already in progress")
-            return
+            return false
         }
         viewModel.scanInProgress = true
+        defer { viewModel.scanInProgress = false }
         viewModel.staleThresholdDays = preferencesStore.staleThresholdDays
         await coordinator?.rescan()
         await updateSnapshotHistoryAfterScan()
         viewModel.lastScanDate = Date()
-        viewModel.scanInProgress = false
+        return true
     }
 
     func markCurrentSnapshotReviewed() {
@@ -263,6 +273,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func requestResetAllData() {
+        guard !viewModel.scanInProgress else {
+            Self.logger.debug("Reset request ignored — a scan is already in progress")
+            return
+        }
         guard resetTask == nil else {
             Self.logger.debug("Reset request ignored — a reset is already in progress")
             return
@@ -293,15 +307,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             )
             return
         }
-        _ = await performReset(
+        _ = await performReset(at: url, fileManager: FileManager.default)
+    }
+
+    @discardableResult
+    func performReset(
+        at url: URL,
+        fileManager: any ResetFileManaging
+    ) async -> ResetResult {
+        await performReset(
             at: url,
-            fileManager: FileManager.default,
+            fileManager: fileManager,
             rescan: { [weak self] in
-                guard let self, !self.viewModel.scanInProgress else { return false }
-                await self.rescan()
-                return self.viewModel.tccScanError == nil
-                    && self.viewModel.btmScanError == nil
-                    && self.viewModel.launchAgentScanError == nil
+                guard let self else { return false }
+                return await self.performResetRecoveryScan()
             }
         )
     }
@@ -333,6 +352,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let result = await service.reset()
         handleResetResult(result)
         return result
+    }
+
+    private func performResetRecoveryScan() async -> Bool {
+        guard await performRescanIfIdle() else { return false }
+        return viewModel.tccScanError == nil
+            && viewModel.btmScanError == nil
+            && viewModel.launchAgentScanError == nil
     }
 
     func handleResetResult(_ result: ResetResult) {
