@@ -18,51 +18,14 @@ lock_owned=0
 final_zip=''
 final_checksum=''
 final_manifest=''
-zip_installed=0
-checksum_installed=0
-manifest_installed=0
-zip_identity=''
-checksum_identity=''
-manifest_identity=''
-zip_digest=''
-checksum_digest=''
-manifest_digest=''
 complete=0
-
-file_identity() {
-    /usr/bin/stat -f '%d:%i' "$1" 2>/dev/null
-}
-
-file_digest() {
-    /usr/bin/shasum -a 256 "$1" | /usr/bin/awk '{ print $1 }'
-}
-
-remove_if_owned() {
-    local path=$1
-    local expected_identity=$2
-    local expected_digest=$3
-    local current_identity
-    local current_digest
-
-    [[ -f "$path" && ! -L "$path" ]] || return 0
-    current_identity=$(file_identity "$path") || return 0
-    [[ "$current_identity" == "$expected_identity" ]] || return 0
-    current_digest=$(file_digest "$path") || return 0
-    [[ "$current_digest" == "$expected_digest" ]] || return 0
-    /bin/rm -f "$path"
-}
 
 cleanup() {
     local status=$?
     trap - EXIT HUP INT TERM
 
-    if [[ $complete -ne 1 ]]; then
-        [[ $manifest_installed -eq 0 ]] \
-            || remove_if_owned "$final_manifest" "$manifest_identity" "$manifest_digest"
-        [[ $checksum_installed -eq 0 ]] \
-            || remove_if_owned "$final_checksum" "$checksum_identity" "$checksum_digest"
-        [[ $zip_installed -eq 0 ]] \
-            || remove_if_owned "$final_zip" "$zip_identity" "$zip_digest"
+    if [[ $complete -ne 1 && $status -eq 0 ]]; then
+        status=1
     fi
 
     if [[ $lock_owned -eq 1 && -d "$lock_dir" ]]; then
@@ -271,26 +234,17 @@ if [[ $test_late_collision -eq 1 ]]; then
     printf 'late-collision-sentinel\n' >"$final_zip"
 fi
 
-zip_identity=$(file_identity "$temporary_zip")
-zip_digest=$checksum
-if ! /bin/ln "$temporary_zip" "$final_zip"; then
-    fail "output appeared before final installation: $final_zip"
-fi
-zip_installed=1
-
-checksum_identity=$(file_identity "$staging/final-checksum.txt")
-checksum_digest=$(file_digest "$staging/final-checksum.txt")
 if ! /bin/ln "$staging/final-checksum.txt" "$final_checksum"; then
     fail "output appeared before final installation: $final_checksum"
 fi
-checksum_installed=1
 
-manifest_identity=$(file_identity "$temporary_manifest")
-manifest_digest=$(file_digest "$temporary_manifest")
 if ! /bin/ln "$temporary_manifest" "$final_manifest"; then
     fail "output appeared before final installation: $final_manifest"
 fi
-manifest_installed=1
+
+if ! /bin/ln "$temporary_zip" "$final_zip"; then
+    fail "output appeared before final installation: $final_zip"
+fi
 complete=1
 
 printf 'Release archive: %s\n' "$final_zip"
