@@ -86,12 +86,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     static let hasSeenWelcomeKey = "com.wallymagill.permissionpulse.hasSeenWelcome"
 
-    let viewModel = AppViewModel()
-    let preferencesStore = PreferencesStore()
+    private let runtimeEnvironment: AppRuntimeEnvironment
+    let runtimeDefaults: UserDefaults
+    let viewModel: AppViewModel
+    let preferencesStore: PreferencesStore
     // UNUserNotificationCenter.delegate is weak — must be retained here.
-    private let notificationPresentationDelegate = NotificationPresentationDelegate()
-    let dismissedDiffEntries = DismissedDiffEntryStore()
-    let dismissedStaleApps = DismissedStaleAppStore()
+    private let notificationPresentationDelegate: NotificationPresentationDelegate
+    let dismissedDiffEntries: DismissedDiffEntryStore
+    let dismissedStaleApps: DismissedStaleAppStore
     lazy var weeklyDigestCoordinator = WeeklyDigestCoordinator(
         viewModel: viewModel,
         preferencesStore: preferencesStore
@@ -131,6 +133,36 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var snapshotCoordinator: SnapshotCoordinator?
     private var welcomeWindow: NSWindow?
 
+    override convenience init() {
+        self.init(runtimeEnvironment: AppRuntimeEnvironment())
+    }
+
+    init(runtimeEnvironment: AppRuntimeEnvironment) {
+        let defaults = Self.makeRuntimeDefaults(for: runtimeEnvironment)
+        self.runtimeEnvironment = runtimeEnvironment
+        self.runtimeDefaults = defaults
+        self.viewModel = AppViewModel()
+        self.preferencesStore = PreferencesStore(defaults: defaults)
+        self.notificationPresentationDelegate = NotificationPresentationDelegate()
+        self.dismissedDiffEntries = DismissedDiffEntryStore(defaults: defaults)
+        self.dismissedStaleApps = DismissedStaleAppStore(defaults: defaults)
+        super.init()
+    }
+
+    private static func makeRuntimeDefaults(
+        for runtimeEnvironment: AppRuntimeEnvironment
+    ) -> UserDefaults {
+        guard runtimeEnvironment.isRunningTests else { return .standard }
+
+        let suiteName =
+            "com.wallymagill.permissionpulse.test-host.\(ProcessInfo.processInfo.processIdentifier)"
+        guard let defaults = UserDefaults(suiteName: suiteName) else {
+            preconditionFailure("Unable to create isolated test defaults")
+        }
+        defaults.removePersistentDomain(forName: suiteName)
+        return defaults
+    }
+
     private static func hint(
         for result: WeeklyDigestCoordinator.AuthorizationResult
     ) -> PreferencesViewModel.AuthorizationHint {
@@ -152,7 +184,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
-        guard !AppRuntimeEnvironment().isRunningTests else {
+        guard !runtimeEnvironment.isRunningTests else {
             Self.logger.debug("Skipping production launch services in test mode")
             return
         }
