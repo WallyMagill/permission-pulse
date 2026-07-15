@@ -6,9 +6,9 @@ public struct PermissionGrant: Sendable, Hashable, Identifiable {
     public let lastModified: Date
     public let automationTarget: String?
     // TCC auth_value: 2 = allowed, 3 = limited (e.g. Photos "Selected Photos").
-    // Captured so limited access surfaces. auth_value is NOT part of identity, so
-    // a 2<->3 change lands in TCCGrantsDiff.changed; RENDERING that change as a UI
-    // row is what's deferred to the v0.8.x model-fidelity slice. (D2)
+    // Persisted with each grant and compared outside stable identity, so a 2<->3
+    // transition lands in TCCGrantsDiff.changed and renders as a searchable TCC
+    // change row in Recent Changes. (D2)
     public let authValue: Int
 
     public init(
