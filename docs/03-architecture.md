@@ -120,11 +120,13 @@ Tahoe's transparent menu bar means our icon must render cleanly on both light an
 
 All package tests use **Swift Testing**; the UITest target uses XCTest.
 
-- `PermissionsCore`: unit tests, no fixtures. Pure data types. (~15 tests)
-- `PermissionsScanners`: golden-fixture tests (`TCCFixtures`, `BTMFixtures`) + `Mock` behavior tests. Real-scanner tests run only on developer machines (FDA-gated). (~48 tests)
-- `PermissionsStore`: in-memory + on-disk GRDB tests (migrations, diff engine, retention, discovery). (~24 tests)
-- `PermissionsUI`: view-model and store logic tests with injected mocks + in-memory store. (~74 tests)
-- App target (`PermissionPulseTests`): coordinator-level tests (`SnapshotCoordinator`, `WeeklyDigestCoordinator`, `ResetAllDataService`) — exercised by `scripts/smoke-test.sh §4` locally, **not run in CI** (see `docs/07-build-and-test.md`). (~27 tests)
+- `PermissionsCore`: unit tests, no fixtures. Pure data types. (34 tests)
+- `PermissionsScanners`: golden-fixture tests (`TCCFixtures`, `BTMFixtures`) + `Mock` behavior tests. Real-scanner tests run only on developer machines (FDA-gated). (59 tests)
+- `PermissionsStore`: in-memory + on-disk GRDB tests (migrations, diff engine, retention, discovery). (35 tests)
+- `PermissionsUI`: view-model and store logic tests with injected mocks + in-memory store. (105 tests)
+- App target (`PermissionPulseTests`): coordinator-level tests (`SnapshotCoordinator`, `WeeklyDigestCoordinator`, `ResetAllDataService`) — exercised by `scripts/smoke-test.sh §4` locally and by pinned CI under `PERMISSION_PULSE_TEST_MODE=1`. (38 tests)
+
+The four package suites total 233 tests; with the 38 app-target tests, the automated total is 271. These counts are the v0.7.2 Workstream A gate snapshot (macOS 26.5, Xcode 26.5, Swift 6.3.2); see `docs/07-build-and-test.md`.
 
 ## What lives in the App target, not packages
 
