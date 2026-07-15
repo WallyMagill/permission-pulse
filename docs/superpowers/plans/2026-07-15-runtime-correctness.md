@@ -270,7 +270,11 @@ Expected: FAIL because reset returns `Bool`, swallows removal errors, and cannot
 
 ```swift
 enum ResetPhase: Sendable, Equatable {
+    case cancelNotifications
+    case releaseHistory
     case deleteHistory
+    case resetLiveStores
+    case clearDefaults
     case recreateHistory
     case rescan
 }

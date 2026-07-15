@@ -73,3 +73,6 @@ design-mockups/
 
 # Local isolated feature worktrees
 .worktrees/
+
+# Subagent-driven development scratch ledgers and review packages
+.superpowers/sdd/

@@ -395,7 +395,7 @@ xcodebuild -project "$project" -scheme PermissionPulse -configuration Release \
   CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO build
 
 app="$derived/Build/Products/Release/PermissionPulse.app"
-codesign --force --deep --sign - --options runtime --timestamp=none "$app"
+codesign --force --sign - --options runtime --timestamp=none "$app"
 "$repo_root/scripts/verify-release.sh" "$app" "$expected_version" "$expected_build"
 ditto -c -k --keepParent "$app" "$temporary_zip"
 "$repo_root/scripts/verify-release.sh" "$temporary_zip" "$expected_version" "$expected_build"
