@@ -200,14 +200,18 @@ final class SnapshotCoordinator {
     }
 
     private func computeStaleApps(nowDate: Date, thresholdDays: Int) async -> [StaleApp] {
-        // Dedupe grants by bundleID, keep only those with a bundlePath.
+        // Dedupe grants by stable app identity, keep only those with a bundlePath.
         // Drop anything the user has chosen to skip in Preferences so the
         // sidebar badge count stays honest end-to-end.
-        let skipped = dismissedStaleApps?.allBundleIDs() ?? []
-        let grouped = Dictionary(grouping: viewModel.grants, by: \.app.bundleID)
-            .filter { bundleID, _ in !skipped.contains(bundleID) }
+        let skipped = dismissedStaleApps?.allStableKeys() ?? []
+        var grouped: [String: [PermissionGrant]] = [:]
+        for grant in viewModel.grants {
+            guard let stableKey = grant.app.stableKey,
+                  !skipped.contains(stableKey) else { continue }
+            grouped[stableKey, default: []].append(grant)
+        }
         let candidates: [StaleCandidate] = grouped.compactMap { _, grants in
-            guard let representative = grants.first,
+            guard let representative = grants.first(where: { $0.app.bundlePath != nil }),
                   let path = representative.app.bundlePath else { return nil }
             let services = grants.map(\.service)
             return StaleCandidate(app: representative.app, path: path, services: services)

@@ -233,6 +233,71 @@ import PermissionsCore
         #expect(grant.app.displayName == "com.example.permissionpulse.nonexistent-test.bundle")
     }
 
+    @Test func scanResolvesEachUniqueBundleOnceAndRetainsTheResolvedURL() async throws {
+        let dir = try TempDir()
+        let dbURL = dir.dbURL("resolved.db")
+        let bundleID = "com.example.installed"
+        let expectedURL = dir.url.appendingPathComponent("Installed.app")
+        try FileManager.default.createDirectory(
+            at: expectedURL,
+            withIntermediateDirectories: true
+        )
+        try await TCCFixtures.makeRepeatedBundleFixture(url: dbURL, bundleID: bundleID)
+        let resolver = TestApplicationResolver(urls: [bundleID: expectedURL])
+
+        let scanner = TCCScannerSQLite(
+            databaseURLs: [dbURL],
+            applicationResolver: resolver
+        )
+        let grants = try await scanner.scan()
+
+        #expect(grants.count == 2)
+        #expect(grants.allSatisfy { $0.app.bundlePath == expectedURL })
+        let expectedName = FileManager.default.displayName(
+            atPath: expectedURL.path(percentEncoded: false)
+        )
+        #expect(grants.allSatisfy { $0.app.displayName == expectedName })
+        #expect(await resolver.requestCount(for: bundleID) == 1)
+    }
+
+    @Test func nilResolutionKeepsBundleGrantVisibleWithoutFabricatingAPath() async throws {
+        let dir = try TempDir()
+        let dbURL = dir.dbURL("unresolved.db")
+        let bundleID = "com.example.permissionpulse.nonexistent-test.bundle"
+        try await TCCFixtures.makeNonexistentBundleFixture(url: dbURL)
+        let resolver = TestApplicationResolver(urls: [:])
+
+        let scanner = TCCScannerSQLite(
+            databaseURLs: [dbURL],
+            applicationResolver: resolver
+        )
+        let grant = try #require(try await scanner.scan().first)
+
+        #expect(grant.app.bundleID == bundleID)
+        #expect(grant.app.displayName == bundleID)
+        #expect(grant.app.bundlePath == nil)
+        #expect(await resolver.requestCount(for: bundleID) == 1)
+    }
+
+    @Test func dedupeUsesStableAppKeysForBundleAndPathClients() async throws {
+        let dir = try TempDir()
+        let dbURL = dir.dbURL("stable-identities.db")
+        try await TCCFixtures.makeStableIdentityFixture(url: dbURL)
+
+        let scanner = TCCScannerSQLite(
+            databaseURLs: [dbURL],
+            applicationResolver: TestApplicationResolver(urls: [:])
+        )
+        let grants = try await scanner.scan()
+
+        #expect(grants.count == 3)
+        #expect(Set(grants.compactMap(\.app.stableKey)) == [
+            "bundle:/Applications/Shared.app",
+            "path:/Applications/Shared.app",
+            "path:/Applications/Other.app",
+        ])
+    }
+
     @Test func scanDedupesIdenticalGrantsKeepingMostRecentLastModified() async throws {
         let dir = try TempDir()
         let olderDB = dir.dbURL("older.db")
@@ -285,6 +350,24 @@ import PermissionsCore
         let shmURL = dir.url.appendingPathComponent("sidecars.db-shm")
         #expect(!FileManager.default.fileExists(atPath: walURL.path))
         #expect(!FileManager.default.fileExists(atPath: shmURL.path))
+    }
+}
+
+private actor TestApplicationResolver: ApplicationResolving {
+    private let urls: [String: URL]
+    private var requests: [String: Int] = [:]
+
+    init(urls: [String: URL]) {
+        self.urls = urls
+    }
+
+    func applicationURL(forBundleIdentifier bundleID: String) async -> URL? {
+        requests[bundleID, default: 0] += 1
+        return urls[bundleID]
+    }
+
+    func requestCount(for bundleID: String) -> Int {
+        requests[bundleID, default: 0]
     }
 }
 

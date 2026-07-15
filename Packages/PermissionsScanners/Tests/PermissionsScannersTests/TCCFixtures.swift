@@ -165,6 +165,37 @@ enum TCCFixtures {
         }
     }
 
+    static func makeRepeatedBundleFixture(url: URL, bundleID: String) async throws {
+        try await makeFixture(url: url, schema: fullSchema) { db in
+            try db.execute(sql: insertSQL, arguments: [
+                "kTCCServiceCamera", bundleID,
+                ClientType.bundleID, AuthValue.allowed, 1_715_000_000,
+            ])
+            try db.execute(sql: insertSQL, arguments: [
+                "kTCCServiceMicrophone", bundleID,
+                ClientType.bundleID, AuthValue.allowed, 1_714_000_000,
+            ])
+        }
+    }
+
+    static func makeStableIdentityFixture(url: URL) async throws {
+        try await makeFixture(url: url, schema: fullSchema) { db in
+            let firstPath = "/Applications/Shared.app"
+            try db.execute(sql: insertSQL, arguments: [
+                "kTCCServiceCamera", firstPath,
+                ClientType.bundleID, AuthValue.allowed, 1_715_000_000,
+            ])
+            try db.execute(sql: insertSQL, arguments: [
+                "kTCCServiceCamera", firstPath,
+                ClientType.path, AuthValue.allowed, 1_714_000_000,
+            ])
+            try db.execute(sql: insertSQL, arguments: [
+                "kTCCServiceCamera", "/Applications/Other.app",
+                ClientType.path, AuthValue.allowed, 1_713_000_000,
+            ])
+        }
+    }
+
     // Identical grant (same service + client + client_type) at a specific
     // last_modified. Used by the dedupe test to seed two databases that
     // collide except for the timestamp.

@@ -46,18 +46,6 @@ public final class DismissedStaleAppStore {
         stableKeys
     }
 
-    /// Temporary compatibility bridge for the pre-C2 stale-app coordinator.
-    /// Projects bundle stable keys back to sorted raw bundle IDs without
-    /// mutating the stable-key store; path identities are intentionally omitted.
-    @available(*, deprecated, message: "C2 must consume stable keys directly")
-    public func allBundleIDs() -> [String] {
-        stableKeys.compactMap { stableKey in
-            guard stableKey.hasPrefix("bundle:") else { return nil }
-            return String(stableKey.dropFirst("bundle:".count))
-        }
-        .sorted()
-    }
-
     public func removeAll() {
         stableKeys.removeAll()
         persist()

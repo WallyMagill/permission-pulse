@@ -1,7 +1,8 @@
 import Foundation
+import GRDB
 import Testing
 import PermissionsCore
-import PermissionsScanners
+@testable import PermissionsScanners
 import PermissionsStore
 import PermissionsUI
 @testable import PermissionPulse
@@ -152,6 +153,69 @@ import PermissionsUI
         let stale = env.viewModel.staleApps
         #expect(stale.contains { $0.app.bundleID == "com.example.kept" })
         #expect(!stale.contains { $0.app.bundleID == "com.example.skipped" })
+    }
+
+    @Test func scannerResolvedBundlePathFlowsIntoStaleComputation() async throws {
+        let fixture = FileManager.default.temporaryDirectory
+            .appendingPathComponent("ppulse-c2-\(UUID().uuidString).db")
+        defer { try? FileManager.default.removeItem(at: fixture) }
+        let bundleID = "com.example.installed"
+        let unresolvedBundleID = "com.example.unresolved"
+        let resolvedPath = URL(fileURLWithPath: "/Applications/Installed.app")
+        try await makeTCCFixture(
+            at: fixture,
+            bundleIDs: [bundleID, unresolvedBundleID]
+        )
+        let scanner = TCCScannerSQLite(
+            databaseURLs: [fixture],
+            applicationResolver: SnapshotTestApplicationResolver(
+                urls: [bundleID: resolvedPath]
+            )
+        )
+        var grants = try await scanner.scan()
+        grants.append(demoGrant(bundleID: ""))
+        let old = fixedNow().addingTimeInterval(-200 * 86_400)
+        let probe = RecordingLastUsedProbe(
+            fixed: [resolvedPath: (old, .spotlight)]
+        )
+        let env = try await Environment(
+            now: fixedNow,
+            probe: probe
+        )
+
+        env.viewModel.grants = grants
+        await env.coordinator.onScanCompleted()
+
+        #expect(grants.first { $0.app.bundleID == bundleID }?.app.bundlePath == resolvedPath)
+        #expect(grants.first { $0.app.bundleID == unresolvedBundleID }?.app.bundlePath == nil)
+        #expect(env.viewModel.staleApps.map(\.app.bundleID) == [bundleID])
+        #expect(await probe.requestedPaths() == [resolvedPath])
+    }
+
+    @Test func pathOnlyStaleAppsUseIndependentStableGroupingAndDismissal() async throws {
+        let skippedPath = URL(fileURLWithPath: "/Applications/Skipped Path.app")
+        let keptPath = URL(fileURLWithPath: "/Applications/Kept Path.app")
+        let old = fixedNow().addingTimeInterval(-200 * 86_400)
+        let dismissed = DismissedStaleAppStore(
+            defaults: UserDefaults(suiteName: "dismissed-path-stale-\(UUID().uuidString)")!
+        )
+        dismissed.skipForever(stableKey: "path:/Applications/Skipped Path.app")
+        let env = try await Environment(
+            now: fixedNow,
+            probe: MockLastUsedProbe(fixed: [
+                skippedPath: (old, .spotlight),
+                keptPath: (old, .spotlight),
+            ]),
+            dismissedStaleApps: dismissed
+        )
+        env.viewModel.grants = [
+            demoGrant(bundleID: "", bundlePath: skippedPath),
+            demoGrant(bundleID: "", bundlePath: keptPath),
+        ]
+
+        await env.coordinator.onScanCompleted()
+
+        #expect(env.viewModel.staleApps.map(\.app.bundlePath) == [keptPath])
     }
 
     @Test func customRetentionHonored() async throws {
@@ -357,6 +421,62 @@ import PermissionsUI
             guard let latest = try await store.latestSnapshotID() else { return 0 }
             return Int(latest.rawValue)
         }
+    }
+}
+
+private struct SnapshotTestApplicationResolver: ApplicationResolving {
+    let urls: [String: URL]
+
+    func applicationURL(forBundleIdentifier bundleID: String) async -> URL? {
+        urls[bundleID]
+    }
+}
+
+private func makeTCCFixture(at url: URL, bundleIDs: [String]) async throws {
+    let queue = try DatabaseQueue(path: url.path(percentEncoded: false))
+    try await queue.write { db in
+        try db.execute(sql: """
+            CREATE TABLE access (
+                service TEXT NOT NULL,
+                client TEXT NOT NULL,
+                client_type INTEGER NOT NULL,
+                auth_value INTEGER NOT NULL,
+                last_modified INTEGER NOT NULL,
+                indirect_object_identifier TEXT NOT NULL DEFAULT 'UNUSED'
+            )
+            """)
+        for bundleID in bundleIDs {
+            try db.execute(
+                sql: """
+                    INSERT INTO access
+                        (service, client, client_type, auth_value, last_modified)
+                    VALUES (?, ?, ?, ?, ?)
+                    """,
+                arguments: [
+                    "kTCCServiceCamera", bundleID, 0, 2, 1_715_000_000,
+                ]
+            )
+        }
+    }
+}
+
+private actor RecordingLastUsedProbe: LastUsedProbe {
+    typealias Result = (date: Date, source: StaleApp.DateSource)
+
+    private let fixed: [URL: Result]
+    private var requests: [URL] = []
+
+    init(fixed: [URL: Result]) {
+        self.fixed = fixed
+    }
+
+    func lastUsedDate(for bundlePath: URL) async -> Result? {
+        requests.append(bundlePath)
+        return fixed[bundlePath]
+    }
+
+    func requestedPaths() -> [URL] {
+        requests
     }
 }
 

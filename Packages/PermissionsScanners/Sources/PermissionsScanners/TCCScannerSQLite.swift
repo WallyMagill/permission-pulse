@@ -4,6 +4,20 @@ import GRDB
 import OSLog
 import PermissionsCore
 
+public protocol ApplicationResolving: Sendable {
+    func applicationURL(forBundleIdentifier bundleID: String) async -> URL?
+}
+
+public struct WorkspaceApplicationResolver: ApplicationResolving {
+    public init() {}
+
+    public func applicationURL(forBundleIdentifier bundleID: String) async -> URL? {
+        await MainActor.run {
+            NSWorkspace.shared.urlForApplication(withBundleIdentifier: bundleID)
+        }
+    }
+}
+
 public struct TCCScannerSQLite: TCCScanner, Sendable {
     private static let logger = Logger(
         subsystem: "com.wallymagill.permissionpulse",
@@ -24,13 +38,19 @@ public struct TCCScannerSQLite: TCCScanner, Sendable {
     )
 
     private let databaseURLs: [URL]
+    private let applicationResolver: any ApplicationResolving
 
     public init() {
         self.databaseURLs = [Self.userDatabaseURL, Self.systemDatabaseURL]
+        self.applicationResolver = WorkspaceApplicationResolver()
     }
 
-    init(databaseURLs: [URL]) {
+    public init(
+        databaseURLs: [URL],
+        applicationResolver: any ApplicationResolving = WorkspaceApplicationResolver()
+    ) {
         self.databaseURLs = databaseURLs
+        self.applicationResolver = applicationResolver
     }
 
     public func scan() async throws -> [PermissionGrant] {
@@ -43,7 +63,7 @@ public struct TCCScannerSQLite: TCCScanner, Sendable {
             }
         }
 
-        let successes = results.compactMap { _, result -> [PermissionGrant]? in
+        let successes = results.compactMap { _, result -> [TCCRow]? in
             try? result.get()
         }
 
@@ -55,7 +75,11 @@ public struct TCCScannerSQLite: TCCScanner, Sendable {
             Self.logger.error("TCC read failed for \(url.path, privacy: .public): \(error.localizedDescription, privacy: .public)")
         }
 
-        let combined = successes.flatMap { $0 }
+        let rows = successes.flatMap { $0 }
+        let resolvedURLs = await resolveApplicationURLs(for: rows)
+        let combined = rows.compactMap {
+            Self.mapRowToGrant($0, resolvedURLs: resolvedURLs)
+        }
         return Self.dedupe(combined).sorted(by: Self.sortGrants)
     }
 
@@ -77,7 +101,8 @@ public struct TCCScannerSQLite: TCCScanner, Sendable {
     private static func dedupe(_ grants: [PermissionGrant]) -> [PermissionGrant] {
         var byKey: [String: PermissionGrant] = [:]
         for grant in grants {
-            let key = grant.identityKey
+            let appKey = grant.app.stableKey ?? grant.appKey
+            let key = "\(grant.service.rawValue)|\(appKey)|\(grant.automationTarget ?? "")"
             if let existing = byKey[key], existing.lastModified >= grant.lastModified {
                 continue
             }
@@ -86,21 +111,21 @@ public struct TCCScannerSQLite: TCCScanner, Sendable {
         return Array(byKey.values)
     }
 
-    private func readAllDatabases() async -> [(URL, Result<[PermissionGrant], any Error>)] {
+    private func readAllDatabases() async -> [(URL, Result<[TCCRow], any Error>)] {
         await withTaskGroup(
-            of: (URL, Result<[PermissionGrant], any Error>).self
+            of: (URL, Result<[TCCRow], any Error>).self
         ) { group in
             for url in databaseURLs {
                 group.addTask {
                     do {
-                        let grants = try await Self.readGrants(from: url)
-                        return (url, .success(grants))
+                        let rows = try await Self.readRows(from: url)
+                        return (url, .success(rows))
                     } catch {
                         return (url, .failure(error))
                     }
                 }
             }
-            var collected: [(URL, Result<[PermissionGrant], any Error>)] = []
+            var collected: [(URL, Result<[TCCRow], any Error>)] = []
             for await item in group {
                 collected.append(item)
             }
@@ -108,7 +133,7 @@ public struct TCCScannerSQLite: TCCScanner, Sendable {
         }
     }
 
-    private static func readGrants(from url: URL) async throws -> [PermissionGrant] {
+    private static func readRows(from url: URL) async throws -> [TCCRow] {
         var config = Configuration()
         config.readonly = true
         config.prepareDatabase { db in
@@ -130,8 +155,7 @@ public struct TCCScannerSQLite: TCCScanner, Sendable {
         do {
             return try await queue.read { db in
                 try validateSchema(db)
-                let rows = try fetchRows(from: db)
-                return rows.compactMap(mapRowToGrant)
+                return try fetchRows(from: db)
             }
         } catch let scannerError as ScannerError {
             throw scannerError
@@ -171,7 +195,29 @@ public struct TCCScannerSQLite: TCCScanner, Sendable {
         return rows.compactMap(TCCRow.init(row:))
     }
 
-    private static func mapRowToGrant(_ row: TCCRow) -> PermissionGrant? {
+    private func resolveApplicationURLs(for rows: [TCCRow]) async -> [String: URL] {
+        let bundleIDs = Set(rows.compactMap { row -> String? in
+            guard row.clientType == 0,
+                  let client = row.client,
+                  !client.isEmpty else { return nil }
+            return client
+        })
+
+        var resolvedURLs: [String: URL] = [:]
+        for bundleID in bundleIDs.sorted() {
+            if let url = await applicationResolver.applicationURL(
+                forBundleIdentifier: bundleID
+            ) {
+                resolvedURLs[bundleID] = url
+            }
+        }
+        return resolvedURLs
+    }
+
+    private static func mapRowToGrant(
+        _ row: TCCRow,
+        resolvedURLs: [String: URL]
+    ) -> PermissionGrant? {
         // Keep allowed (2), limited (3), and any future affirmative value; drop
         // denied (0) and undetermined (1). (D2)
         guard row.authValue >= 2 else { return nil }
@@ -185,7 +231,11 @@ public struct TCCScannerSQLite: TCCScanner, Sendable {
             return nil
         }
 
-        guard let identity = buildAppIdentity(client: row.client, clientType: row.clientType) else {
+        guard let identity = buildAppIdentity(
+            client: row.client,
+            clientType: row.clientType,
+            resolvedURLs: resolvedURLs
+        ) else {
             return nil
         }
 
@@ -202,13 +252,26 @@ public struct TCCScannerSQLite: TCCScanner, Sendable {
         )
     }
 
-    private static func buildAppIdentity(client: String?, clientType: Int?) -> AppIdentity? {
+    private static func buildAppIdentity(
+        client: String?,
+        clientType: Int?,
+        resolvedURLs: [String: URL]
+    ) -> AppIdentity? {
         guard let client, !client.isEmpty, let clientType else { return nil }
         switch clientType {
         case 0:
-            return AppIdentity(bundleID: client, displayName: resolveDisplayName(bundleID: client))
+            let url = resolvedURLs[client]
+            let resolvedName = url.map {
+                FileManager.default.displayName(atPath: $0.path(percentEncoded: false))
+            }
+            let displayName = resolvedName.flatMap { $0.isEmpty ? nil : $0 } ?? client
+            return AppIdentity(
+                bundleID: client,
+                displayName: displayName,
+                bundlePath: url
+            )
         case 1:
-            let url = URL(fileURLWithPath: client)
+            let url = URL(fileURLWithPath: client).standardizedFileURL
             let name = url.deletingPathExtension().lastPathComponent
             return AppIdentity(bundleID: "", displayName: name, bundlePath: url)
         default:
@@ -216,20 +279,14 @@ public struct TCCScannerSQLite: TCCScanner, Sendable {
         }
     }
 
-    private static func resolveDisplayName(bundleID: String) -> String {
-        guard let url = NSWorkspace.shared.urlForApplication(withBundleIdentifier: bundleID) else {
-            return bundleID
-        }
-        let name = FileManager.default.displayName(atPath: url.path(percentEncoded: false))
-        return name.isEmpty ? bundleID : name
-    }
-
     private static func sortGrants(_ a: PermissionGrant, _ b: PermissionGrant) -> Bool {
         if a.service.rawValue != b.service.rawValue {
             return a.service.rawValue < b.service.rawValue
         }
-        if a.app.bundleID != b.app.bundleID {
-            return a.app.bundleID < b.app.bundleID
+        let aKey = a.app.stableKey ?? a.appKey
+        let bKey = b.app.stableKey ?? b.appKey
+        if aKey != bKey {
+            return aKey < bKey
         }
         return a.lastModified < b.lastModified
     }
