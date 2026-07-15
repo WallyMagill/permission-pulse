@@ -67,6 +67,22 @@ import Testing
         #expect(reader.allEntries()["after-recovery"] == .distantFuture)
     }
 
+    @Test func removeAllClearsInMemoryAndPersistedEntriesIdempotently() {
+        let defaults = fresh()
+        let store = DismissedDiffEntryStore(defaults: defaults)
+        store.dismissForever(key: "change")
+
+        store.removeAll()
+
+        #expect(store.allEntries().isEmpty)
+        #expect(DismissedDiffEntryStore(defaults: defaults).allEntries().isEmpty)
+
+        store.removeAll()
+
+        #expect(store.allEntries().isEmpty)
+        #expect(DismissedDiffEntryStore(defaults: defaults).allEntries().isEmpty)
+    }
+
     // MARK: - Helpers
 
     private func fresh() -> UserDefaults {

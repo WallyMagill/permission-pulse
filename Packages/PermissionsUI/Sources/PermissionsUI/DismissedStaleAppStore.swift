@@ -46,6 +46,11 @@ public final class DismissedStaleAppStore {
         bundleIDs
     }
 
+    public func removeAll() {
+        bundleIDs.removeAll()
+        persist()
+    }
+
     // MARK: - Private
 
     private func persist() {

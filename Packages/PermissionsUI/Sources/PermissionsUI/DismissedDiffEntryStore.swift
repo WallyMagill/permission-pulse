@@ -64,6 +64,11 @@ public final class DismissedDiffEntryStore {
         entries
     }
 
+    public func removeAll() {
+        entries.removeAll()
+        persist()
+    }
+
     // MARK: - Private
 
     private func persist() {

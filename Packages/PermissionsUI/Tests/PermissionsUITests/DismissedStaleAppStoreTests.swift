@@ -32,6 +32,22 @@ import Testing
         #expect(store.allBundleIDs().isEmpty)
     }
 
+    @Test func removeAllClearsInMemoryAndPersistedBundleIDsIdempotently() {
+        let defaults = fresh()
+        let store = DismissedStaleAppStore(defaults: defaults)
+        store.skipForever(bundleID: "com.example.app")
+
+        store.removeAll()
+
+        #expect(store.allBundleIDs().isEmpty)
+        #expect(DismissedStaleAppStore(defaults: defaults).allBundleIDs().isEmpty)
+
+        store.removeAll()
+
+        #expect(store.allBundleIDs().isEmpty)
+        #expect(DismissedStaleAppStore(defaults: defaults).allBundleIDs().isEmpty)
+    }
+
     // MARK: - Helpers
 
     private func fresh() -> UserDefaults {

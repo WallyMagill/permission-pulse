@@ -144,6 +144,15 @@ public final class PreferencesStore {
         )
     }
 
+    public func resetToDefaults() {
+        snapshotRetentionDays = Self.defaultSnapshotRetentionDays
+        staleThresholdDays = Self.defaultStaleThresholdDays
+        digestEnabled = Self.defaultDigestEnabled
+        digestWeekday = Self.defaultDigestWeekday
+        digestHour = Self.defaultDigestHour
+        digestMinute = Self.defaultDigestMinute
+    }
+
     // MARK: - DatePicker convenience
 
     /// Returns a `Date` whose hour/minute reflect the persisted digest time

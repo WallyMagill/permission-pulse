@@ -72,6 +72,22 @@ import Testing
         #expect(reader.digestEnabled == true)
     }
 
+    @Test func resetToDefaultsUpdatesLiveValuesAndPersistence() {
+        let defaults = fresh()
+        let store = PreferencesStore(defaults: defaults)
+        store.snapshotRetentionDays = 120
+        store.staleThresholdDays = 180
+        store.digestEnabled = true
+        store.digestWeekday = 6
+        store.digestHour = 17
+        store.digestMinute = 45
+
+        store.resetToDefaults()
+
+        expectDefaults(in: store)
+        expectDefaults(in: PreferencesStore(defaults: defaults))
+    }
+
     /// Regression guard: a fresh init must NOT write fallback values back
     /// into UserDefaults. The distinction between "absent key" (user has
     /// never touched this preference) and "set to default" is load-bearing
@@ -92,5 +108,14 @@ import Testing
 
     private func fresh() -> UserDefaults {
         UserDefaults(suiteName: "prefs-test-\(UUID().uuidString)")!
+    }
+
+    private func expectDefaults(in store: PreferencesStore) {
+        #expect(store.snapshotRetentionDays == PreferencesStore.defaultSnapshotRetentionDays)
+        #expect(store.staleThresholdDays == PreferencesStore.defaultStaleThresholdDays)
+        #expect(store.digestEnabled == PreferencesStore.defaultDigestEnabled)
+        #expect(store.digestWeekday == PreferencesStore.defaultDigestWeekday)
+        #expect(store.digestHour == PreferencesStore.defaultDigestHour)
+        #expect(store.digestMinute == PreferencesStore.defaultDigestMinute)
     }
 }
