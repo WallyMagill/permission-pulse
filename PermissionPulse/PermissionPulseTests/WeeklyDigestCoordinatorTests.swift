@@ -121,6 +121,33 @@ import PermissionsUI
         )
     }
 
+    @Test func composeTwoTCCChangesProducesPluralChangedSentence() {
+        let env = makeEnv(digestEnabled: true, status: .authorized)
+        let firstBefore = demoGrant(bundleID: "com.example.first", authValue: 2)
+        let firstAfter = demoGrant(bundleID: "com.example.first", authValue: 3)
+        let secondBefore = demoGrant(bundleID: "com.example.second", authValue: 3)
+        let secondAfter = demoGrant(bundleID: "com.example.second", authValue: 2)
+        let diff = SnapshotDiffs(
+            fromID: SnapshotID(rawValue: 1),
+            toID: SnapshotID(rawValue: 2),
+            tcc: TCCGrantsDiff(
+                added: [],
+                removed: [],
+                changed: [
+                    DomainChange(before: firstBefore, after: firstAfter),
+                    DomainChange(before: secondBefore, after: secondAfter),
+                ]
+            ),
+            btm: BTMItemsDiff(added: [], removed: []),
+            launchAgents: LaunchAgentsDiff(added: [], removed: [])
+        )
+
+        #expect(
+            env.coordinator.composeDigestBody(diff: diff).body
+                == String(localized: "2 changed in the last week.")
+        )
+    }
+
     @Test func handleAuthorizationToggleOffCancelsPending() async throws {
         let env = makeEnv(digestEnabled: true, status: .authorized)
         env.preferencesStore.digestEnabled = true
