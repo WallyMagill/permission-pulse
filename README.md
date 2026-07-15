@@ -53,6 +53,14 @@ See [`docs/07-build-and-test.md`](docs/07-build-and-test.md).
 
 Permission Pulse runs as a menu-bar app. On launch it scans (a) the TCC database for granted permissions, (b) `LaunchAgents` and `LaunchDaemons`, (c) BTM-managed background items, and (d) the system device-use APIs (CoreMediaIO + CoreAudio) for current mic/cam usage. Each daily snapshot is stored in a local SQLite database (via GRDB) under `~/Library/Application Support/com.wallymagill.permissionpulse/`. The "What Changed" view is a diff between today's snapshot and yesterday's (and last week's). Nothing leaves your machine.
 
+## Runtime settings and recovery
+
+Snapshot retention and stale-app thresholds are live preferences. Permission Pulse captures both values once when each completed scan reaches snapshot and stale-app processing, so an edit applies at the next scan boundary and the captured values remain stable throughout that processing pass.
+
+**Reset All Data** cancels Permission Pulse's weekly and test notifications, releases the open history store, removes `snapshots.db` plus its `-wal` and `-shm` sidecars, clears live and persisted preferences and dismissals, removes Permission Pulse-prefixed defaults while preserving macOS-owned window/status/split-view state, recreates a migrated history store, clears the current presentation state, and runs a recovery scan. Scans, resets, and overlapping reset requests are serialized. History deletion, defaults cleanup, and history recreation failures are reported by their actual phase; if storage reset succeeds but the recovery scan fails, Permission Pulse shows a separate warning and offers Refresh rather than claiming the scan succeeded.
+
+When an enabled weekly digest's day or time changes, the selected value is saved immediately and superseded edits are debounced. Schedule mutations run serially, replace the pending weekly request, and publish the actual next-fire date. A scheduling failure keeps the selected day/time and shows an orange, retryable error. Digest change totals include TCC authorization transitions as well as background-item and launch-agent changes.
+
 ## Contributing
 
 Issues and PRs welcome. Read [`docs/03-architecture.md`](docs/03-architecture.md) first to orient. By contributing you agree to license your contributions under MIT.

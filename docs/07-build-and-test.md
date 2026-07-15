@@ -56,13 +56,13 @@ From Xcode: ⌘U runs the per-package suites and the app-level test target.
 From the CLI:
 
 ```bash
-# Package-level tests (run without the Xcode project) — 233 tests total
+# Package-level tests (run without the Xcode project) — 243 tests total
 swift test --package-path Packages/PermissionsCore       # 34
 swift test --package-path Packages/PermissionsScanners   # 59
 swift test --package-path Packages/PermissionsStore      # 35
-swift test --package-path Packages/PermissionsUI         # 105
+swift test --package-path Packages/PermissionsUI         # 115
 
-# App build + app-target tests via xcodebuild — 38 tests
+# App build + app-target tests via xcodebuild — 65 tests
 PERMISSION_PULSE_TEST_MODE=1 xcodebuild test \
   -project PermissionPulse/PermissionPulse.xcodeproj \
   -scheme PermissionPulse \
@@ -70,7 +70,25 @@ PERMISSION_PULSE_TEST_MODE=1 xcodebuild test \
   -only-testing:PermissionPulseTests CODE_SIGNING_ALLOWED=NO
 ```
 
-Tests use **Swift Testing** (`import Testing`); the UITest target uses XCTest. The four package suites contain 233 tests and the app target contains 38 tests, for 271 automated tests total. These are the counts observed by the v0.7.2 Workstream A gate on macOS 26.5 with Xcode 26.5 / Swift 6.3.2, not estimates.
+Tests use **Swift Testing** (`import Testing`); the UITest target uses XCTest. The four package suites contain 243 tests and the app target contains 65 tests, for 308 automated tests total. These are fresh observed counts from the v0.7.2 Workstream B gate on macOS 26.5 with Xcode 26.5 / Swift 6.3.2, not estimates.
+
+### Runtime-correctness contract
+
+- Snapshot retention and stale-app thresholds are captured once at each scan boundary. Preference edits apply to the next scan without coordinator recreation and cannot change a scan already in progress.
+- Reset clears the live and persisted preference/dismissal stores, Permission Pulse-prefixed defaults, presentation state, owned notifications, and the SQLite main/WAL/SHM files. It recreates the migrated store only after deletion/default cleanup succeeds. Tests assert the exact `deleteHistory`, `clearDefaults`, and `recreateHistory` failure phases, scan/reset serialization, and that reset's default-disabled live digest state cannot recreate a pending weekly request.
+- A reset can complete its storage lifecycle even when the recovery scan fails. That outcome is tested and presented separately with Refresh guidance instead of being reported as either storage failure or full success.
+- Weekly digest copy counts TCC-only authorization changes. Enabled day/time edits persist immediately, debounce to the final edit, serialize scheduler mutations, cancel-and-replace the pending request, refresh the actual next-fire date, and retain the selected values if scheduling fails. The orange failure state exposes Retry.
+
+The focused Workstream B gate is:
+
+```bash
+swift test --package-path Packages/PermissionsUI
+PERMISSION_PULSE_TEST_MODE=1 xcodebuild test \
+  -project PermissionPulse/PermissionPulse.xcodeproj -scheme PermissionPulse \
+  -destination 'platform=macOS,arch=arm64' \
+  -only-testing:PermissionPulseTests CODE_SIGNING_ALLOWED=NO
+git diff --check
+```
 
 ### Full local smoke test
 
@@ -93,8 +111,8 @@ The packaging script produces a universal arm64 + x86_64, ad-hoc-signed, entitle
 
 GitHub Actions (`.github/workflows/ci.yml`) runs on every PR and every push to `main`. Both jobs use `macos-26` and `/Applications/Xcode_26.5.app/Contents/Developer`, and print the macOS, Xcode, and Swift versions:
 
-- **`packages` job** — runs all 233 tests in the four SwiftPM packages.
-- **`app` job** — runs all 38 app-target tests in isolated test mode, performs static analysis, proves `smoke-test.sh --keep` preserves live state, then builds and independently verifies the exact v0.7.2/build 12 archive from the clean checkout.
+- **`packages` job** — runs all 243 tests in the four SwiftPM packages.
+- **`app` job** — runs all 65 app-target tests in isolated test mode, performs static analysis, proves `smoke-test.sh --keep` preserves live state, then builds and independently verifies the exact v0.7.2/build 12 archive from the clean checkout.
 
 CI never tags, publishes, or uploads that verified artifact. GitHub Releases remains a separate manual boundary.
 

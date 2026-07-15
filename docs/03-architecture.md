@@ -14,7 +14,7 @@ permission-pulse/                       (repo root)
 │   │   ├── SnapshotCoordinator.swift   (daily snapshot write, diff refresh, stale apps)
 │   │   ├── MediaUseCoordinator.swift   (mic/cam observation loop → viewModel)
 │   │   ├── WeeklyDigestCoordinator.swift (digest schedule lifecycle + compose)
-│   │   ├── ResetAllDataService.swift   (6-step full data wipe)
+│   │   ├── ResetAllDataService.swift   (ordered, result-bearing reset lifecycle)
 │   │   ├── SnapshotPath.swift          (Application Support path resolution)
 │   │   ├── Assets.xcassets/
 │   │   └── Info.plist                  (empty <dict/>; all keys live in INFOPLIST_KEY_* build settings)
@@ -49,7 +49,7 @@ The app target uses Xcode 26's `PBXFileSystemSynchronizedRootGroup`, so any `.sw
 
 - GRDB.swift-backed SQLite store at `~/Library/Application Support/com.wallymagill.permissionpulse/snapshots.db`.
 - Daily snapshot writes (`writeFullSnapshot`), per-domain diff engine (`TCCGrantsDiff` / `BTMItemsDiff` / `LaunchAgentsDiff` via `DomainChange<T>`), snapshot discovery (`latestSnapshotID(atOrBefore:)`), and retention pruning (`pruneSnapshots(olderThan:)`). Retention is configurable (7–365 days, default 90) — injected from the app, not a fixed constant.
-- Three GRDB migrations: v1 `schema_version`, v2 `snapshots` + `launch_agents`, v3 `tcc_grants` + `btm_items` (the `*_kind` TEXT + nullable `*_raw` INTEGER pattern preserves `unknown(rawValue:)` losslessly). Defines `StoreError`.
+- Four GRDB migrations: v1 `schema_version`, v2 `snapshots` + `launch_agents`, v3 `tcc_grants` + `btm_items`, and v4 persisted TCC `auth_value` (the `*_kind` TEXT + nullable `*_raw` INTEGER pattern preserves `unknown(rawValue:)` losslessly). Defines `StoreError`.
 - Depends on `PermissionsCore` + GRDB. No UI, no scanning.
 
 ### `PermissionsUI`
@@ -75,16 +75,18 @@ The app target uses Xcode 26's `PBXFileSystemSynchronizedRootGroup`, so any `.sw
 Coordination lives in the App target (not a package) and is split across focused `@MainActor` objects, all owned by `AppDelegate`:
 
 - **`ScanCoordinator`** runs the three scanners (`TCCScannerSQLite`, `LaunchAgentScannerFS`, `BTMScannerDirect`) in parallel via `async let`, then applies results to `AppViewModel`. TCC/BTM errors surface on the view model; LaunchAgent errors degrade to an empty list.
-- **`SnapshotCoordinator`** writes one snapshot per calendar day (only when TCC + BTM both succeeded), prunes by the configured retention window, then recomputes the yesterday/week diffs and the stale-app list.
+- **`SnapshotCoordinator`** writes one snapshot per calendar day (only when TCC + BTM both succeeded), prunes by the configured retention window, then recomputes the yesterday/week diffs and the stale-app list. It reads retention and stale thresholds from the live preference store exactly once at the start of each scan-completion boundary. An edit therefore affects the next scan without recreating the coordinator, while both values remain stable inside a scan already in progress; the captured stale threshold is also published to the view model so UI copy matches the computation.
 - **`MediaUseCoordinator`** runs the mic/cam `AsyncStream` loop and updates `AppViewModel`.
-- **`WeeklyDigestCoordinator`** reconciles the `UNUserNotificationCenter` weekly schedule.
-- **`ResetAllDataService`** performs the destructive full wipe on demand.
+- **`WeeklyDigestCoordinator`** reconciles the `UNUserNotificationCenter` weekly schedule. Enabled day/time edits persist first, debounce superseded picker events, then enter a coordinator-local FIFO that serializes cancel/schedule/read mutations. A successful reconcile leaves one replacement request and publishes its actual next-fire date. Failures retain the selected values and reach Preferences as an orange Retry state. Digest copy counts TCC authorization transitions alongside BTM and launch-agent changes.
+- **`ResetAllDataService`** performs the destructive full wipe on demand as an ordered, idempotent state machine: cancel owned weekly/test notifications; release the open history runtime; remove `snapshots.db`, `snapshots.db-wal`, and `snapshots.db-shm`; reset the live preference and dismissal stores; clear only Permission Pulse-prefixed defaults; recreate and migrate the history store; clear presentation state; run a fresh scan; and reconcile against the reset default `digestEnabled == false`. Missing history files are success. Other failures report the exact `.deleteHistory`, `.clearDefaults`, or `.recreateHistory` phase and stop at the appropriate dependency boundary, so a stale in-memory digest preference cannot recreate a schedule. A completed storage reset whose recovery scan fails is a distinct completed-reset outcome and produces a separate Refresh warning.
 
 On launch the app kicks off a scan and reconciles the digest; user-initiated refresh re-runs the scan. There is no background timer — the daily-write guard keys off the calendar date at scan time.
 
 ## Concurrency
 
 - App target and `PermissionsUI`: MainActor-by-default (Xcode 26 setting). View models, stores, and all coordinators are `@MainActor`.
+- `AppDelegate` reserves scan/reset lifecycle ownership synchronously: it rejects reset while a scan is active, rejects rescan while reset is reserved or active, ignores overlapping reset requests, and prevents duplicate scans. Reset's own recovery scan uses the same guarded scan primitive without opening an external overlap window.
+- `WeeklyDigestCoordinator` serializes all weekly schedule mutations in one FIFO. Canceled owners retain the mutation boundary until any late scheduler effect is cleaned up; next-fire reads wait for active mutations, so an older reconcile cannot remove a newer request or publish its date.
 - `PermissionsScanners`: the four scanners are `nonisolated` `Sendable` structs whose `scan()` runs on the cooperative pool. `MediaUseObserverCMIO` is a `final class` marked `@unchecked Sendable` (it guards mutable state with an `NSLock` because the CoreMediaIO/CoreAudio callbacks arrive on a private dispatch queue). `MockWeeklyDigestScheduler` is an `actor`.
 - `PermissionsStore`: GRDB's `DatabaseQueue` is thread-safe; `SnapshotStore` is a `Sendable` struct exposing `async` methods.
 - Scan results cross the actor boundary as `Sendable` value arrays (`[PermissionGrant]`, `[LaunchAgentItem]`, `[BTMItem]`); media use as a `MediaUseEvent` `AsyncStream`. There is no spurious `DispatchQueue.main.async` anywhere.
@@ -123,10 +125,10 @@ All package tests use **Swift Testing**; the UITest target uses XCTest.
 - `PermissionsCore`: unit tests, no fixtures. Pure data types. (34 tests)
 - `PermissionsScanners`: golden-fixture tests (`TCCFixtures`, `BTMFixtures`) + `Mock` behavior tests. Real-scanner tests run only on developer machines (FDA-gated). (59 tests)
 - `PermissionsStore`: in-memory + on-disk GRDB tests (migrations, diff engine, retention, discovery). (35 tests)
-- `PermissionsUI`: view-model and store logic tests with injected mocks + in-memory store. (105 tests)
-- App target (`PermissionPulseTests`): coordinator-level tests (`SnapshotCoordinator`, `WeeklyDigestCoordinator`, `ResetAllDataService`) — exercised by `scripts/smoke-test.sh §4` locally and by pinned CI under `PERMISSION_PULSE_TEST_MODE=1`. (38 tests)
+- `PermissionsUI`: view-model and store logic tests with injected mocks + in-memory store. (115 tests)
+- App target (`PermissionPulseTests`): coordinator-level tests (`SnapshotCoordinator`, `WeeklyDigestCoordinator`, `ResetAllDataService`) — exercised by `scripts/smoke-test.sh §4` locally and by pinned CI under `PERMISSION_PULSE_TEST_MODE=1`. (65 tests)
 
-The four package suites total 233 tests; with the 38 app-target tests, the automated total is 271. These counts are the v0.7.2 Workstream A gate snapshot (macOS 26.5, Xcode 26.5, Swift 6.3.2); see `docs/07-build-and-test.md`.
+The four package suites total 243 tests; with the 65 app-target tests, the automated total is 308. These counts were observed fresh at the v0.7.2 Workstream B gate (macOS 26.5, Xcode 26.5, Swift 6.3.2); see `docs/07-build-and-test.md`.
 
 ## What lives in the App target, not packages
 
