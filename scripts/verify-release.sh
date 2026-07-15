@@ -194,6 +194,9 @@ printf '%s\n' "$architectures" | /usr/bin/grep -qw arm64 \
     || fail 'missing arm64 architecture'
 printf '%s\n' "$architectures" | /usr/bin/grep -qw x86_64 \
     || fail 'missing x86_64 architecture'
+architecture_count=$(printf '%s\n' "$architectures" | /usr/bin/awk '{ print NF }')
+[[ "$architecture_count" -eq 2 ]] \
+    || fail "unexpected executable architectures: $architectures"
 
 if ! signature=$(/usr/bin/codesign -dvvv "$app" 2>&1); then
     fail 'app does not have a readable code signature'
