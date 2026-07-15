@@ -174,7 +174,16 @@ private struct DigestSettingsTab: View {
                 .toggleStyle(.switch)
                 .tint(.accentColor)
 
-                Picker(String(localized: "Day"), selection: $vm.store.digestWeekday) {
+                Picker(
+                    String(localized: "Day"),
+                    selection: Binding(
+                        get: { vm.store.digestWeekday },
+                        set: { newValue in
+                            vm.store.digestWeekday = newValue
+                            vm.scheduleDidChange()
+                        }
+                    )
+                ) {
                     ForEach(Self.weekdayLabels, id: \.value) { entry in
                         Text(entry.label).tag(entry.value)
                     }
@@ -186,7 +195,10 @@ private struct DigestSettingsTab: View {
                     String(localized: "Time"),
                     selection: Binding(
                         get: { vm.store.digestTime() },
-                        set: { vm.store.setDigestTime($0) }
+                        set: { newValue in
+                            vm.store.setDigestTime(newValue)
+                            vm.scheduleDidChange()
+                        }
                     ),
                     displayedComponents: .hourAndMinute
                 )
@@ -265,6 +277,18 @@ private struct DigestSettingsTab: View {
                     primary: String(localized: "Weekly digest is on."),
                     secondary: nextFireSecondary(vm: vm)
                 )
+            }
+        case .failed(let message):
+            Section {
+                statusRow(
+                    icon: "exclamationmark.triangle.fill",
+                    tint: .orange,
+                    primary: String(localized: "Weekly digest couldn't be scheduled."),
+                    secondary: String(localized: "\(message) Your selected day and time were saved.")
+                )
+                Button(String(localized: "Retry")) {
+                    vm.scheduleDidChange()
+                }
             }
         case .denied:
             Section {

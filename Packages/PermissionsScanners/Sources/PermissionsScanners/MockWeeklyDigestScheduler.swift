@@ -29,6 +29,7 @@ public actor MockWeeklyDigestScheduler: WeeklyDigestScheduler {
 
     private var status: DigestAuthorizationStatus
     private var requestNextResult: DigestAuthorizationStatus?
+    private var nextScheduleError: (any Error & Sendable)?
     private var pending: [String] = []
     private var nextFireDates: [String: Date] = [:]
     public private(set) var recorded: [RecordedAction] = []
@@ -62,6 +63,10 @@ public actor MockWeeklyDigestScheduler: WeeklyDigestScheduler {
         title: String,
         body: String
     ) async throws {
+        if let error = nextScheduleError {
+            nextScheduleError = nil
+            throw error
+        }
         recorded.append(.scheduled(
             identifier: identifier,
             weekday: weekday,
@@ -130,5 +135,9 @@ public actor MockWeeklyDigestScheduler: WeeklyDigestScheduler {
 
     public func setNextFireDate(_ date: Date, for identifier: String) {
         nextFireDates[identifier] = date
+    }
+
+    public func setNextScheduleError(_ error: (any Error & Sendable)?) {
+        nextScheduleError = error
     }
 }

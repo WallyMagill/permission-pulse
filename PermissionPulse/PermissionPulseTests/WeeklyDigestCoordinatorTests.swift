@@ -9,8 +9,9 @@ import PermissionsUI
 @Suite @MainActor struct WeeklyDigestCoordinatorTests {
     @Test func reconcileScheduleWhenDisabledCancelsAndDoesNotSchedule() async throws {
         let env = makeEnv(digestEnabled: false, status: .authorized)
-        await env.coordinator.reconcileSchedule()
+        let result = await env.coordinator.reconcileSchedule()
 
+        #expect(result == .disabled)
         let actions = await env.scheduler.recorded
         #expect(actions.contains { if case .canceledAll = $0 { true } else { false } })
         #expect(!actions.contains { if case .scheduled = $0 { true } else { false } })
@@ -18,17 +19,86 @@ import PermissionsUI
 
     @Test func reconcileScheduleWhenEnabledAndAuthorizedSchedulesOnce() async throws {
         let env = makeEnv(digestEnabled: true, status: .authorized)
-        await env.coordinator.reconcileSchedule()
+        let result = await env.coordinator.reconcileSchedule()
 
+        guard case .scheduled(let nextFire) = result else {
+            Issue.record("Expected .scheduled, got \(result)")
+            return
+        }
+        #expect(nextFire != nil)
         let pending = await env.scheduler.pendingIdentifiers()
         #expect(pending.count == 1)
         #expect(pending.first == WeeklyDigestCoordinator.weeklyIdentifier)
     }
 
+    @Test func reconcileScheduleWhenNotAuthorizedReturnsTypedResult() async throws {
+        let env = makeEnv(digestEnabled: true, status: .denied)
+
+        let result = await env.coordinator.reconcileSchedule()
+
+        #expect(result == .notAuthorized)
+        #expect(await env.scheduler.pendingIdentifiers().isEmpty)
+    }
+
+    @Test func changedScheduleReplacesPendingRequestAndRefreshesNextFire() async throws {
+        let env = makeEnv(digestEnabled: true, status: .authorized)
+        env.preferencesStore.digestWeekday = 2
+        env.preferencesStore.digestHour = 9
+        env.preferencesStore.digestMinute = 0
+        let initialResult = await env.coordinator.reconcileSchedule()
+        guard case .scheduled(let initialNextFire) = initialResult else {
+            Issue.record("Expected initial schedule, got \(initialResult)")
+            return
+        }
+
+        env.preferencesStore.digestWeekday = 6
+        env.preferencesStore.digestHour = 17
+        env.preferencesStore.digestMinute = 45
+        let changedResult = await env.coordinator.reconcileSchedule()
+
+        guard case .scheduled(let changedNextFire) = changedResult else {
+            Issue.record("Expected changed schedule, got \(changedResult)")
+            return
+        }
+        let pending = await env.scheduler.pendingIdentifiers()
+        let actualNextFire = await env.coordinator.nextWeeklyFireDate()
+        let scheduledActions: [(weekday: Int, hour: Int, minute: Int)] =
+            await env.scheduler.recorded.compactMap { action in
+                guard case .scheduled(_, let weekday, let hour, let minute, _, _) = action else {
+                    return nil
+                }
+                return (weekday: weekday, hour: hour, minute: minute)
+            }
+        #expect(pending == [WeeklyDigestCoordinator.weeklyIdentifier])
+        #expect(scheduledActions.last?.0 == 6)
+        #expect(scheduledActions.last?.1 == 17)
+        #expect(scheduledActions.last?.2 == 45)
+        #expect(changedNextFire == actualNextFire)
+        #expect(changedNextFire != initialNextFire)
+    }
+
+    @Test func schedulingFailureReturnsExactMessageAndCanBeRetried() async throws {
+        let env = makeEnv(digestEnabled: true, status: .authorized)
+        await env.scheduler.setNextScheduleError(InjectedSchedulingError())
+
+        let failed = await env.coordinator.reconcileSchedule()
+
+        #expect(failed == .failed("injected scheduling failure"))
+        #expect(await env.scheduler.pendingIdentifiers().isEmpty)
+
+        let retried = await env.coordinator.reconcileSchedule()
+        guard case .scheduled(let nextFire) = retried else {
+            Issue.record("Expected retry to schedule, got \(retried)")
+            return
+        }
+        #expect(nextFire != nil)
+        #expect(await env.scheduler.pendingIdentifiers() == [WeeklyDigestCoordinator.weeklyIdentifier])
+    }
+
     @Test func reconcileScheduleCalledTwiceIsIdempotent() async throws {
         let env = makeEnv(digestEnabled: true, status: .authorized)
-        await env.coordinator.reconcileSchedule()
-        await env.coordinator.reconcileSchedule()
+        _ = await env.coordinator.reconcileSchedule()
+        _ = await env.coordinator.reconcileSchedule()
 
         let pending = await env.scheduler.pendingIdentifiers()
         #expect(pending.count == 1, "Expected exactly one pending after double reconcile")
@@ -151,7 +221,7 @@ import PermissionsUI
     @Test func handleAuthorizationToggleOffCancelsPending() async throws {
         let env = makeEnv(digestEnabled: true, status: .authorized)
         env.preferencesStore.digestEnabled = true
-        await env.coordinator.reconcileSchedule()
+        _ = await env.coordinator.reconcileSchedule()
         var pending = await env.scheduler.pendingIdentifiers()
         #expect(pending.count == 1)
 
@@ -184,7 +254,7 @@ import PermissionsUI
 
     @Test func nextWeeklyFireDateReturnsPendingDate() async throws {
         let env = makeEnv(digestEnabled: true, status: .authorized)
-        await env.coordinator.reconcileSchedule()
+        _ = await env.coordinator.reconcileSchedule()
         let date = await env.coordinator.nextWeeklyFireDate()
         #expect(date != nil)
     }
@@ -248,4 +318,8 @@ private func demoLaunchAgent() -> LaunchAgentItem {
         runAtLoad: true,
         keepAlive: false
     )
+}
+
+private struct InjectedSchedulingError: LocalizedError, Sendable {
+    var errorDescription: String? { "injected scheduling failure" }
 }

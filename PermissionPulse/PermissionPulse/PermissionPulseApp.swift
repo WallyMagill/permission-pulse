@@ -109,6 +109,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             let result = await self.weeklyDigestCoordinator.handleAuthorizationToggle(turnOn: turnOn)
             return Self.hint(for: result)
         },
+        onDigestScheduleChange: { [weak self] in
+            guard let self else { return .disabled }
+            let result = await self.weeklyDigestCoordinator.reconcileSchedule()
+            return Self.hint(for: result)
+        },
         onSendTestNotification: { [weak self] in
             guard let self else { return .idle }
             let result = await self.weeklyDigestCoordinator.sendTestNotification()
@@ -188,6 +193,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
+    private static func hint(
+        for result: WeeklyDigestCoordinator.ScheduleResult
+    ) -> PreferencesViewModel.AuthorizationHint {
+        switch result {
+        case .disabled:              return .disabled
+        case .scheduled:             return .scheduled(nextFireDescription: "")
+        case .notAuthorized:         return .denied
+        case .failed(let message):   return .failed(message)
+        }
+    }
+
     private static func testResult(
         for result: WeeklyDigestCoordinator.TestSendResult
     ) -> PreferencesViewModel.TestNotificationResult {
@@ -230,7 +246,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             await updateSnapshotHistoryAfterScan()
             viewModel.lastScanDate = Date()
             viewModel.scanInProgress = false
-            await weeklyDigestCoordinator.reconcileSchedule()
+            _ = await weeklyDigestCoordinator.reconcileSchedule()
         }
 
         mediaCoordinator = MediaUseCoordinator(viewModel: viewModel)

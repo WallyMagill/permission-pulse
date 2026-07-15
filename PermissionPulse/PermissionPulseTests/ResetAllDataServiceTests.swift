@@ -19,7 +19,7 @@ import PermissionsUI
         env.preferencesStore.digestMinute = 45
         env.dismissedDiffEntries.dismissForever(key: "diff-key")
         env.dismissedStaleApps.skipForever(bundleID: "com.example.stale")
-        await env.weeklyDigestCoordinator.reconcileSchedule()
+        _ = await env.weeklyDigestCoordinator.reconcileSchedule()
         try await env.scheduler.scheduleOneShot(
             identifier: "\(WeeklyDigestCoordinator.testIdentifierPrefix).seed",
             after: 5,

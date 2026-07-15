@@ -165,7 +165,7 @@ final class ResetAllDataService {
 
         clearPresentationState()
         let scanSucceeded = await rescan()
-        await weeklyDigestCoordinator.reconcileSchedule()
+        _ = await weeklyDigestCoordinator.reconcileSchedule()
         return .completed(scanSucceeded: scanSucceeded)
     }
 

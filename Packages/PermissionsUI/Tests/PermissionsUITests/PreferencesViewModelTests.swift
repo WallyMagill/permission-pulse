@@ -92,6 +92,118 @@ import Testing
         #expect(vm.nextWeeklyFireDate == target)
     }
 
+    @Test func zeroDebounceBurstInvokesScheduleChangeOnce() async {
+        let store = PreferencesStore(defaults: fresh())
+        store.digestEnabled = true
+        var callCount = 0
+        let vm = PreferencesViewModel(
+            store: store,
+            onDigestScheduleChange: {
+                callCount += 1
+                return .scheduled(nextFireDescription: "")
+            },
+            scheduleDebounce: .zero
+        )
+
+        vm.scheduleDidChange()
+        vm.scheduleDidChange()
+        vm.scheduleDidChange()
+        await yieldUntil { callCount == 1 }
+        for _ in 0 ..< 10 { await Task.yield() }
+
+        #expect(callCount == 1)
+    }
+
+    @Test func failedScheduleChangeClearsStaleNextFireAndSurfacesExactHint() async {
+        let store = PreferencesStore(defaults: fresh())
+        store.digestEnabled = true
+        let staleDate = Date(timeIntervalSince1970: 1_700_000_000)
+        let vm = PreferencesViewModel(
+            store: store,
+            onDigestScheduleChange: { .failed("injected scheduling failure") },
+            onFetchNextFireDate: { staleDate },
+            scheduleDebounce: .zero
+        )
+        vm.nextWeeklyFireDate = staleDate
+
+        vm.scheduleDidChange()
+        await yieldUntil { vm.authorizationHint == .failed("injected scheduling failure") }
+
+        #expect(vm.authorizationHint == .failed("injected scheduling failure"))
+        #expect(vm.nextWeeklyFireDate == nil)
+    }
+
+    @Test func disablingDuringDebounceCannotReschedule() async {
+        let store = PreferencesStore(defaults: fresh())
+        store.digestEnabled = true
+        var scheduleCallCount = 0
+        let vm = PreferencesViewModel(
+            store: store,
+            onDigestToggle: { _ in .disabled },
+            onDigestScheduleChange: {
+                scheduleCallCount += 1
+                return .scheduled(nextFireDescription: "")
+            },
+            scheduleDebounce: .seconds(60)
+        )
+
+        vm.scheduleDidChange()
+        await vm.handleDigestToggle(to: false)
+        for _ in 0 ..< 10 { await Task.yield() }
+
+        #expect(scheduleCallCount == 0)
+        #expect(vm.authorizationHint == .disabled)
+        #expect(vm.nextWeeklyFireDate == nil)
+    }
+
+    @Test func retryClearsScheduleFailureAndRefreshesNextFire() async {
+        let store = PreferencesStore(defaults: fresh())
+        store.digestEnabled = true
+        let target = Date(timeIntervalSince1970: 1_800_000_000)
+        var callCount = 0
+        let vm = PreferencesViewModel(
+            store: store,
+            onDigestScheduleChange: {
+                callCount += 1
+                return callCount == 1
+                    ? .failed("injected scheduling failure")
+                    : .scheduled(nextFireDescription: "")
+            },
+            onFetchNextFireDate: { target },
+            scheduleDebounce: .zero
+        )
+
+        vm.scheduleDidChange()
+        await yieldUntil { vm.authorizationHint == .failed("injected scheduling failure") }
+        vm.scheduleDidChange()
+        await yieldUntil { callCount == 2 && vm.nextWeeklyFireDate == target }
+
+        #expect(vm.authorizationHint == .scheduled(nextFireDescription: ""))
+        #expect(vm.nextWeeklyFireDate == target)
+    }
+
+    @Test func deinitializingDuringDebounceCancelsPendingScheduleChange() async {
+        let store = PreferencesStore(defaults: fresh())
+        store.digestEnabled = true
+        var callCount = 0
+        var vm: PreferencesViewModel? = PreferencesViewModel(
+            store: store,
+            onDigestScheduleChange: {
+                callCount += 1
+                return .scheduled(nextFireDescription: "")
+            },
+            scheduleDebounce: .seconds(60)
+        )
+        weak let weakViewModel = vm
+
+        vm?.scheduleDidChange()
+        vm = nil
+        for _ in 0 ..< 10 { await Task.yield() }
+
+        #expect(weakViewModel == nil)
+        #expect(callCount == 0)
+    }
+
     @Test("Launch-at-login toggle applies the system result, not the request")
     @MainActor
     func launchAtLoginAppliesSystemResult() async {
@@ -116,5 +228,12 @@ import Testing
 
     private func fresh() -> UserDefaults {
         UserDefaults(suiteName: "prefs-vm-test-\(UUID().uuidString)")!
+    }
+
+    private func yieldUntil(_ condition: @MainActor () -> Bool) async {
+        for _ in 0 ..< 1_000 {
+            if condition() { return }
+            await Task.yield()
+        }
     }
 }

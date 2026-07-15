@@ -22,6 +22,13 @@ final class WeeklyDigestCoordinator {
         case disabled
     }
 
+    enum ScheduleResult: Sendable, Equatable {
+        case disabled
+        case scheduled(nextFire: Date?)
+        case notAuthorized
+        case failed(String)
+    }
+
     enum TestSendResult: Sendable, Equatable {
         case scheduled(in: TimeInterval)
         case notAuthorized
@@ -49,16 +56,16 @@ final class WeeklyDigestCoordinator {
     /// cancel-then-schedule a fresh weekly request (if enabled and
     /// authorized). Idempotent — safe to call on every boot and after
     /// the user toggles a preference.
-    func reconcileSchedule() async {
+    func reconcileSchedule() async -> ScheduleResult {
         await scheduler.cancelAll(matchingPrefix: Self.identifierPrefix)
-        guard preferencesStore.digestEnabled else { return }
+        guard preferencesStore.digestEnabled else { return .disabled }
 
         let status = await scheduler.currentAuthorizationStatus()
         guard status == .authorized || status == .provisional else {
             Self.logger.info(
                 "Skipping schedule — digest enabled but status is \(String(describing: status), privacy: .public)"
             )
-            return
+            return .notAuthorized
         }
 
         let composed = composeDigestBody(diff: viewModel.latestDiffWeek)
@@ -71,10 +78,12 @@ final class WeeklyDigestCoordinator {
                 title: composed.title,
                 body: composed.body
             )
+            return .scheduled(nextFire: await nextWeeklyFireDate())
         } catch {
             Self.logger.error(
                 "Failed to schedule weekly digest: \(error.localizedDescription, privacy: .public)"
             )
+            return .failed(error.localizedDescription)
         }
     }
 
@@ -103,7 +112,7 @@ final class WeeklyDigestCoordinator {
 
         switch final {
         case .authorized, .provisional:
-            await reconcileSchedule()
+            _ = await reconcileSchedule()
             return .scheduled
         case .denied, .notDetermined, .unknown:
             return .deniedNeedsSystemSettings
