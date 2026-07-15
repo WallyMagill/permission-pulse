@@ -20,12 +20,41 @@ enum ResetResult: Sendable, Equatable {
     case failed(phase: ResetPhase, message: String)
 }
 
+@MainActor
 protocol ResetFileManaging: Sendable {
-    func fileExists(atPath path: String) -> Bool
     func removeItem(at url: URL) throws
 }
 
 extension FileManager: ResetFileManaging {}
+
+@MainActor
+protocol ResetDefaultsManaging: Sendable {
+    func resetKeys() -> [String]
+    func removeResetValue(forKey key: String) throws
+    func containsResetValue(forKey key: String) -> Bool
+}
+
+extension UserDefaults: ResetDefaultsManaging {
+    func resetKeys() -> [String] {
+        Array(dictionaryRepresentation().keys)
+    }
+
+    func removeResetValue(forKey key: String) throws {
+        removeObject(forKey: key)
+    }
+
+    func containsResetValue(forKey key: String) -> Bool {
+        object(forKey: key) != nil
+    }
+}
+
+private struct ResetDefaultsVerificationError: LocalizedError {
+    let key: String
+
+    var errorDescription: String? {
+        String(localized: "Could not clear reset preference \(key).")
+    }
+}
 
 /// Orchestrates the "Reset all data" cascade triggered from Preferences.
 ///
@@ -57,8 +86,9 @@ final class ResetAllDataService {
     private let dismissedDiffEntries: DismissedDiffEntryStore
     private let dismissedStaleApps: DismissedStaleAppStore
     private let fileManager: any ResetFileManaging
-    private let defaults: UserDefaults
+    private let defaults: any ResetDefaultsManaging
     private let rescan: @MainActor () async -> Bool
+    private var resetInProgress = false
 
     init(
         viewModel: AppViewModel,
@@ -70,7 +100,7 @@ final class ResetAllDataService {
         dismissedDiffEntries: DismissedDiffEntryStore,
         dismissedStaleApps: DismissedStaleAppStore,
         fileManager: any ResetFileManaging = FileManager.default,
-        defaults: UserDefaults = .standard,
+        defaults: any ResetDefaultsManaging = UserDefaults.standard,
         rescan: @MainActor @escaping () async -> Bool
     ) {
         self.viewModel = viewModel
@@ -88,6 +118,15 @@ final class ResetAllDataService {
 
     @discardableResult
     func reset() async -> ResetResult {
+        guard !resetInProgress else {
+            return .failed(
+                phase: .cancelNotifications,
+                message: String(localized: "Reset All Data is already in progress.")
+            )
+        }
+        resetInProgress = true
+        defer { resetInProgress = false }
+
         await weeklyDigestCoordinator.scheduler.cancelAll(
             matchingPrefix: WeeklyDigestCoordinator.identifierPrefix
         )
@@ -106,7 +145,14 @@ final class ResetAllDataService {
         }
 
         resetLiveStores()
-        clearPrefixedDefaults()
+        do {
+            try clearPrefixedDefaults()
+        } catch {
+            Self.logger.error(
+                "Reset failed while clearing preferences: \(error.localizedDescription, privacy: .public)"
+            )
+            return .failed(phase: .clearDefaults, message: error.localizedDescription)
+        }
 
         do {
             try recreateHistory()
@@ -129,9 +175,19 @@ final class ResetAllDataService {
             URL(fileURLWithPath: snapshotPathURL.path + "-wal"),
             URL(fileURLWithPath: snapshotPathURL.path + "-shm"),
         ]
-        for url in urls where fileManager.fileExists(atPath: url.path) {
-            try fileManager.removeItem(at: url)
+        for url in urls {
+            do {
+                try fileManager.removeItem(at: url)
+            } catch where Self.isNoSuchFileError(error) {
+                continue
+            }
         }
+    }
+
+    private static func isNoSuchFileError(_ error: Error) -> Bool {
+        let nsError = error as NSError
+        return (nsError.domain == NSCocoaErrorDomain && nsError.code == NSFileNoSuchFileError)
+            || (nsError.domain == NSPOSIXErrorDomain && nsError.code == Int(ENOENT))
     }
 
     private func resetLiveStores() {
@@ -140,11 +196,14 @@ final class ResetAllDataService {
         dismissedStaleApps.removeAll()
     }
 
-    private func clearPrefixedDefaults() {
-        let keys = defaults.dictionaryRepresentation().keys
+    private func clearPrefixedDefaults() throws {
+        let keys = defaults.resetKeys()
             .filter { $0.hasPrefix(Self.bundlePrefix) }
         for key in keys {
-            defaults.removeObject(forKey: key)
+            try defaults.removeResetValue(forKey: key)
+        }
+        for key in keys where defaults.containsResetValue(forKey: key) {
+            throw ResetDefaultsVerificationError(key: key)
         }
     }
 

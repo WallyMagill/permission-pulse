@@ -70,6 +70,29 @@ import PermissionsUI
         #expect(env.state.rescanCount == 0)
     }
 
+    @Test(arguments: MissingFileErrorKind.allCases)
+    func fileDisappearingBeforeRemovalIsIdempotent(
+        errorKind: MissingFileErrorKind
+    ) async throws {
+        let fileManager = MissingOnRemoveFileManager(errorKind: errorKind)
+        let env = try Environment(fileManager: fileManager)
+        defer { env.cleanUp() }
+        try Data("main".utf8).write(to: env.dbURL)
+        try Data("wal".utf8).write(to: env.walURL)
+        try Data("shm".utf8).write(to: env.shmURL)
+
+        let result = await env.service.reset()
+
+        #expect(result == .completed(scanSucceeded: true))
+        #expect(fileManager.removedURLs.map(\.lastPathComponent) == [
+            "snapshots.db",
+            "snapshots.db-wal",
+            "snapshots.db-shm",
+        ])
+        #expect(env.state.reinitCount == 1)
+        #expect(env.state.rescanCount == 1)
+    }
+
     @Test(arguments: ["-wal", "-shm"])
     func sidecarDeletionFailureStopsRemainingPhases(failingSuffix: String) async throws {
         let fileManager = ThrowingResetFileManager(
@@ -240,6 +263,27 @@ import PermissionsUI
         #expect(env.defaults.string(forKey: "NSStatusItem Preferred Position Item-0") == "preserve")
     }
 
+    @Test(arguments: ResetDefaultsFailureMode.allCases)
+    func defaultsClearingFailureStopsBeforeRecreateAndRescan(
+        failureMode: ResetDefaultsFailureMode
+    ) async throws {
+        let resetDefaults = FailingResetDefaults(mode: failureMode)
+        let env = try Environment(resetDefaults: resetDefaults)
+        defer { env.cleanUp() }
+
+        let result = await env.service.reset()
+
+        guard case .failed(phase: .clearDefaults, message: let message) = result else {
+            Issue.record("Expected clear-defaults failure, got \(result)")
+            return
+        }
+        #expect(!message.isEmpty)
+        #expect(resetDefaults.removedKeys == ["com.wallymagill.permissionpulse.seed"])
+        #expect(resetDefaults.value(forKey: "unrelated.key") == "preserve")
+        #expect(env.state.reinitCount == 0)
+        #expect(env.state.rescanCount == 0)
+    }
+
     @Test func cancelsPendingDigestNotifications() async throws {
         let env = try Environment()
         defer { env.cleanUp() }
@@ -267,9 +311,38 @@ import PermissionsUI
     @Test func idempotentOnSecondCallWithEmptyState() async throws {
         let env = try Environment()
         defer { env.cleanUp() }
-        await env.service.reset() // clean state
-        await env.service.reset() // should not throw / no-op
+        let first = await env.service.reset()
+        let second = await env.service.reset()
+        #expect(first == .completed(scanSucceeded: true))
+        #expect(second == .completed(scanSucceeded: true))
         #expect(env.state.reinitCount == 2, "Re-init runs each call even when DB absent")
+    }
+
+    @Test func overlappingResetIsRejectedBeforeAnySecondPhaseSideEffects() async throws {
+        let scheduler = SuspendingWeeklyDigestScheduler()
+        let env = try Environment(weeklyDigestScheduler: scheduler)
+        defer { env.cleanUp() }
+
+        let firstTask = Task { await env.service.reset() }
+        await scheduler.waitUntilFirstCancellationSuspends()
+
+        let second = await env.service.reset()
+
+        #expect(second == .failed(
+            phase: .cancelNotifications,
+            message: "Reset All Data is already in progress."
+        ))
+        #expect(await scheduler.cancellationCallCount == 1)
+        #expect(env.state.releaseCount == 0)
+        #expect(env.state.reinitCount == 0)
+        #expect(env.state.rescanCount == 0)
+
+        await scheduler.resumeFirstCancellation()
+        let first = await firstTask.value
+        #expect(first == .completed(scanSucceeded: true))
+        #expect(env.state.releaseCount == 1)
+        #expect(env.state.reinitCount == 1)
+        #expect(env.state.rescanCount == 1)
     }
 
     @Test func resetReportsFailureWhenStoreCannotReinit() async throws {
@@ -294,6 +367,7 @@ import PermissionsUI
             preferencesStore: env.preferencesStore,
             dismissedDiffEntries: env.dismissedDiffEntries,
             dismissedStaleApps: env.dismissedStaleApps,
+            fileManager: MissingOnRemoveFileManager(errorKind: .cocoa),
             defaults: env.defaults,
             rescan: {
                 rescanCalled = true
@@ -325,7 +399,7 @@ import PermissionsUI
         let preferencesStore: PreferencesStore
         let dismissedDiffEntries: DismissedDiffEntryStore
         let dismissedStaleApps: DismissedStaleAppStore
-        let scheduler: MockWeeklyDigestScheduler
+        let scheduler: any WeeklyDigestScheduler
         let weeklyDigestCoordinator: WeeklyDigestCoordinator
         let defaults: UserDefaults
         let dbURL: URL
@@ -338,6 +412,8 @@ import PermissionsUI
 
         init(
             fileManager: any ResetFileManaging = FileManager.default,
+            resetDefaults: (any ResetDefaultsManaging)? = nil,
+            weeklyDigestScheduler: (any WeeklyDigestScheduler)? = nil,
             scanSucceeded: Bool = true
         ) throws {
             self.viewModel = AppViewModel()
@@ -346,7 +422,9 @@ import PermissionsUI
             self.preferencesStore = PreferencesStore(defaults: defaults)
             self.dismissedDiffEntries = DismissedDiffEntryStore(defaults: defaults)
             self.dismissedStaleApps = DismissedStaleAppStore(defaults: defaults)
-            self.scheduler = MockWeeklyDigestScheduler(initialStatus: .authorized)
+            let scheduler = weeklyDigestScheduler
+                ?? MockWeeklyDigestScheduler(initialStatus: .authorized)
+            self.scheduler = scheduler
             self.weeklyDigestCoordinator = WeeklyDigestCoordinator(
                 viewModel: viewModel,
                 preferencesStore: preferencesStore,
@@ -372,7 +450,7 @@ import PermissionsUI
                 dismissedDiffEntries: dismissedDiffEntries,
                 dismissedStaleApps: dismissedStaleApps,
                 fileManager: fileManager,
-                defaults: defaults,
+                defaults: resetDefaults ?? defaults,
                 rescan: {
                     state.rescanCount += 1
                     return scanSucceeded
@@ -392,6 +470,78 @@ private struct InjectedResetError: LocalizedError {
     var errorDescription: String? { message }
 }
 
+enum MissingFileErrorKind: CaseIterable, Sendable {
+    case cocoa
+    case posix
+}
+
+enum ResetDefaultsFailureMode: CaseIterable, Sendable {
+    case retained
+    case throwing
+}
+
+@MainActor
+private final class FailingResetDefaults: ResetDefaultsManaging {
+    private let mode: ResetDefaultsFailureMode
+    private var values = [
+        "com.wallymagill.permissionpulse.seed": "delete",
+        "unrelated.key": "preserve",
+    ]
+    private(set) var removedKeys: [String] = []
+
+    init(mode: ResetDefaultsFailureMode) {
+        self.mode = mode
+    }
+
+    func resetKeys() -> [String] {
+        Array(values.keys)
+    }
+
+    func removeResetValue(forKey key: String) throws {
+        removedKeys.append(key)
+        switch mode {
+        case .retained:
+            return
+        case .throwing:
+            throw InjectedResetError(message: "injected defaults removal failure")
+        }
+    }
+
+    func containsResetValue(forKey key: String) -> Bool {
+        values[key] != nil
+    }
+
+    func value(forKey key: String) -> String? {
+        values[key]
+    }
+}
+
+private final class MissingOnRemoveFileManager: ResetFileManaging, @unchecked Sendable {
+    private let lock = NSLock()
+    private let errorKind: MissingFileErrorKind
+    private var storedRemovedURLs: [URL] = []
+
+    init(errorKind: MissingFileErrorKind) {
+        self.errorKind = errorKind
+    }
+
+    var removedURLs: [URL] {
+        lock.withLock { storedRemovedURLs }
+    }
+
+    func removeItem(at url: URL) throws {
+        lock.withLock { storedRemovedURLs.append(url) }
+        // Simulate another process removing the file after this call begins.
+        try? FileManager.default.removeItem(at: url)
+        switch errorKind {
+        case .cocoa:
+            throw NSError(domain: NSCocoaErrorDomain, code: NSFileNoSuchFileError)
+        case .posix:
+            throw NSError(domain: NSPOSIXErrorDomain, code: Int(ENOENT))
+        }
+    }
+}
+
 private final class ThrowingResetFileManager: ResetFileManaging, @unchecked Sendable {
     private let failingSuffix: String
     private let message: String
@@ -399,10 +549,6 @@ private final class ThrowingResetFileManager: ResetFileManaging, @unchecked Send
     init(failingSuffix: String, message: String) {
         self.failingSuffix = failingSuffix
         self.message = message
-    }
-
-    func fileExists(atPath path: String) -> Bool {
-        FileManager.default.fileExists(atPath: path)
     }
 
     func removeItem(at url: URL) throws {
@@ -432,10 +578,6 @@ private final class LockedTrace: @unchecked Sendable {
 
 private struct TracingResetFileManager: ResetFileManaging {
     let trace: LockedTrace
-
-    func fileExists(atPath path: String) -> Bool {
-        FileManager.default.fileExists(atPath: path)
-    }
 
     func removeItem(at url: URL) throws {
         trace.append("delete:\(url.lastPathComponent)")
@@ -471,6 +613,57 @@ private actor TracingWeeklyDigestScheduler: WeeklyDigestScheduler {
     }
     func pendingIdentifiers() async -> [String] { [] }
     func nextFireDate(for identifier: String) async -> Date? { nil }
+}
+
+private actor SuspendingWeeklyDigestScheduler: WeeklyDigestScheduler {
+    private var firstCancellationContinuation: CheckedContinuation<Void, Never>?
+    private var suspensionWaiters: [CheckedContinuation<Void, Never>] = []
+    private var firstCancellationIsSuspended = false
+    private(set) var cancellationCallCount = 0
+
+    func currentAuthorizationStatus() async -> DigestAuthorizationStatus { .authorized }
+    func requestAuthorization() async throws -> DigestAuthorizationStatus { .authorized }
+    func scheduleWeekly(
+        identifier: String,
+        weekday: Int,
+        hour: Int,
+        minute: Int,
+        title: String,
+        body: String
+    ) async throws {}
+    func scheduleOneShot(
+        identifier: String,
+        after seconds: TimeInterval,
+        title: String,
+        body: String
+    ) async throws {}
+    func cancelAll(matchingPrefix prefix: String) async {
+        cancellationCallCount += 1
+        guard cancellationCallCount == 1 else { return }
+        firstCancellationIsSuspended = true
+        let waiters = suspensionWaiters
+        suspensionWaiters.removeAll()
+        for waiter in waiters {
+            waiter.resume()
+        }
+        await withCheckedContinuation { continuation in
+            firstCancellationContinuation = continuation
+        }
+    }
+    func pendingIdentifiers() async -> [String] { [] }
+    func nextFireDate(for identifier: String) async -> Date? { nil }
+
+    func waitUntilFirstCancellationSuspends() async {
+        guard !firstCancellationIsSuspended else { return }
+        await withCheckedContinuation { continuation in
+            suspensionWaiters.append(continuation)
+        }
+    }
+
+    func resumeFirstCancellation() {
+        firstCancellationContinuation?.resume()
+        firstCancellationContinuation = nil
+    }
 }
 
 @MainActor

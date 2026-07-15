@@ -3,6 +3,7 @@ import OSLog
 import ServiceManagement
 import SwiftUI
 import UserNotifications
+import PermissionsCore
 import PermissionsScanners
 import PermissionsStore
 import PermissionsUI
@@ -89,6 +90,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         "com.wallymagill.permissionpulse.test-host.\(ProcessInfo.processInfo.processIdentifier)"
 
     private let runtimeEnvironment: AppRuntimeEnvironment
+    private let runtimeDefaults: UserDefaults
     let viewModel: AppViewModel
     let preferencesStore: PreferencesStore
     // UNUserNotificationCenter.delegate is weak — must be retained here.
@@ -97,7 +99,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     let dismissedStaleApps: DismissedStaleAppStore
     lazy var weeklyDigestCoordinator = WeeklyDigestCoordinator(
         viewModel: viewModel,
-        preferencesStore: preferencesStore
+        preferencesStore: preferencesStore,
+        scheduler: weeklyDigestScheduler
     )
     lazy var preferencesViewModel = PreferencesViewModel(
         store: preferencesStore,
@@ -133,19 +136,32 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var snapshotStore: SnapshotStore?
     private var snapshotCoordinator: SnapshotCoordinator?
     private var welcomeWindow: NSWindow?
+    private let resetMessagePresenter: (@MainActor (String) -> Void)?
+    private let resetOperation: (@MainActor () async -> Void)?
+    private let weeklyDigestScheduler: any WeeklyDigestScheduler
+    private var resetTask: Task<Void, Never>?
 
     override convenience init() {
         self.init(runtimeEnvironment: AppRuntimeEnvironment())
     }
 
-    init(runtimeEnvironment: AppRuntimeEnvironment) {
+    init(
+        runtimeEnvironment: AppRuntimeEnvironment,
+        resetMessagePresenter: (@MainActor (String) -> Void)? = nil,
+        resetOperation: (@MainActor () async -> Void)? = nil,
+        weeklyDigestScheduler: any WeeklyDigestScheduler = LiveWeeklyDigestScheduler()
+    ) {
         let defaults = Self.makeRuntimeDefaults(for: runtimeEnvironment)
         self.runtimeEnvironment = runtimeEnvironment
+        self.runtimeDefaults = defaults
         self.viewModel = AppViewModel()
         self.preferencesStore = PreferencesStore(defaults: defaults)
         self.notificationPresentationDelegate = NotificationPresentationDelegate()
         self.dismissedDiffEntries = DismissedDiffEntryStore(defaults: defaults)
         self.dismissedStaleApps = DismissedStaleAppStore(defaults: defaults)
+        self.resetMessagePresenter = resetMessagePresenter
+        self.resetOperation = resetOperation
+        self.weeklyDigestScheduler = weeklyDigestScheduler
         super.init()
     }
 
@@ -203,7 +219,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             viewModel.snapshotStoreUnavailable = true
         }
         if let snapshotStore {
-            snapshotCoordinator = makeSnapshotCoordinator(store: snapshotStore)
+            installSnapshotRuntime(snapshotStore)
         }
 
         coordinator = ScanCoordinator(viewModel: viewModel)
@@ -211,7 +227,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         Task { @MainActor in
             viewModel.scanInProgress = true
             await coordinator?.runScan()
-            await snapshotCoordinator?.onScanCompleted()
+            await updateSnapshotHistoryAfterScan()
             viewModel.lastScanDate = Date()
             viewModel.scanInProgress = false
             await weeklyDigestCoordinator.reconcileSchedule()
@@ -220,7 +236,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         mediaCoordinator = MediaUseCoordinator(viewModel: viewModel)
         mediaCoordinator?.start()
 
-        if !UserDefaults.standard.bool(forKey: Self.hasSeenWelcomeKey) {
+        if !runtimeDefaults.bool(forKey: Self.hasSeenWelcomeKey) {
             showWelcomeWindow()
         }
     }
@@ -237,7 +253,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         viewModel.scanInProgress = true
         viewModel.staleThresholdDays = preferencesStore.staleThresholdDays
         await coordinator?.rescan()
-        await snapshotCoordinator?.onScanCompleted()
+        await updateSnapshotHistoryAfterScan()
         viewModel.lastScanDate = Date()
         viewModel.scanInProgress = false
     }
@@ -247,7 +263,23 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func requestResetAllData() {
-        Task { await performReset() }
+        guard resetTask == nil else {
+            Self.logger.debug("Reset request ignored — a reset is already in progress")
+            return
+        }
+        resetTask = Task { @MainActor [weak self] in
+            guard let self else { return }
+            defer { self.resetTask = nil }
+            if let resetOperation = self.resetOperation {
+                await resetOperation()
+            } else {
+                await self.performReset()
+            }
+        }
+    }
+
+    func waitForResetCompletion() async {
+        await resetTask?.value
     }
 
     private func performReset() async {
@@ -261,23 +293,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             )
             return
         }
-        let service = ResetAllDataService(
-            viewModel: viewModel,
-            snapshotPathURL: url,
-            releaseSnapshotStore: { [weak self] in
-                self?.snapshotCoordinator = nil
-                self?.snapshotStore = nil
-            },
-            onSnapshotStoreReinit: { [weak self] newStore in
-                guard let self else { return }
-                self.snapshotStore = newStore
-                self.snapshotCoordinator = self.makeSnapshotCoordinator(store: newStore)
-            },
-            weeklyDigestCoordinator: weeklyDigestCoordinator,
-            preferencesStore: preferencesStore,
-            dismissedDiffEntries: dismissedDiffEntries,
-            dismissedStaleApps: dismissedStaleApps,
-            defaults: .standard,
+        _ = await performReset(
+            at: url,
+            fileManager: FileManager.default,
             rescan: { [weak self] in
                 guard let self, !self.viewModel.scanInProgress else { return false }
                 await self.rescan()
@@ -286,9 +304,44 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                     && self.viewModel.launchAgentScanError == nil
             }
         )
-        switch await service.reset() {
+    }
+
+    @discardableResult
+    func performReset(
+        at url: URL,
+        fileManager: any ResetFileManaging,
+        rescan: @MainActor @escaping () async -> Bool
+    ) async -> ResetResult {
+        let service = ResetAllDataService(
+            viewModel: viewModel,
+            snapshotPathURL: url,
+            releaseSnapshotStore: { [weak self] in
+                self?.snapshotCoordinator = nil
+                self?.snapshotStore = nil
+            },
+            onSnapshotStoreReinit: { [weak self] newStore in
+                self?.installSnapshotRuntime(newStore)
+            },
+            weeklyDigestCoordinator: weeklyDigestCoordinator,
+            preferencesStore: preferencesStore,
+            dismissedDiffEntries: dismissedDiffEntries,
+            dismissedStaleApps: dismissedStaleApps,
+            fileManager: fileManager,
+            defaults: runtimeDefaults,
+            rescan: rescan
+        )
+        let result = await service.reset()
+        handleResetResult(result)
+        return result
+    }
+
+    func handleResetResult(_ result: ResetResult) {
+        switch result {
         case .completed(scanSucceeded: false):
             Self.logger.error("Reset completed, but the fresh scan did not fully succeed")
+            presentResetError(
+                message: String(localized: "Data was reset, but the fresh scan didn't complete. Choose Refresh to try the scan again.")
+            )
         case .completed(scanSucceeded: true):
             break
         case .failed(let phase, let message):
@@ -306,6 +359,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         SnapshotCoordinator(
             viewModel: viewModel,
             store: store,
+            defaults: runtimeDefaults,
             snapshotRetentionDays: { [weak preferencesStore] in
                 preferencesStore?.snapshotRetentionDays
                     ?? SnapshotCoordinator.defaultSnapshotRetentionDays
@@ -316,6 +370,23 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             },
             dismissedStaleApps: dismissedStaleApps
         )
+    }
+
+    var hasSnapshotRuntime: Bool {
+        snapshotStore != nil && snapshotCoordinator != nil
+    }
+
+    var snapshotRuntimeReferences: (hasStore: Bool, hasCoordinator: Bool) {
+        (snapshotStore != nil, snapshotCoordinator != nil)
+    }
+
+    func installSnapshotRuntime(_ store: SnapshotStore) {
+        snapshotStore = store
+        snapshotCoordinator = makeSnapshotCoordinator(store: store)
+    }
+
+    func updateSnapshotHistoryAfterScan() async {
+        await snapshotCoordinator?.onScanCompleted()
     }
 
     private static func resetFailureMessage(for phase: ResetPhase) -> String {
@@ -332,6 +403,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     // AppKit: NSAlert is the idiomatic one-shot modal error dialog; SwiftUI has
     // no equivalent for an app-level (non-window-hosted) modal here.
     private func presentResetError(message: String) {
+        if let resetMessagePresenter {
+            resetMessagePresenter(message)
+            return
+        }
         let alert = NSAlert()
         alert.messageText = String(localized: "Reset Permission Pulse")
         alert.informativeText = message
