@@ -89,6 +89,23 @@ struct PermissionPulseTests {
         )
     }
 
+    @Test func welcomeDismissalUsesTheRuntimeIsolatedDefaults() throws {
+        let suiteName = AppDelegate.testDefaultsSuiteName
+        let isolatedDefaults = try #require(UserDefaults(suiteName: suiteName))
+        let delegate = AppDelegate(
+            runtimeEnvironment: AppRuntimeEnvironment(
+                environment: ["PERMISSION_PULSE_TEST_MODE": "1"]
+            )
+        )
+        defer { isolatedDefaults.removePersistentDomain(forName: suiteName) }
+
+        #expect(!isolatedDefaults.bool(forKey: AppDelegate.hasSeenWelcomeKey))
+
+        delegate.welcomeDismissAction()()
+
+        #expect(isolatedDefaults.bool(forKey: AppDelegate.hasSeenWelcomeKey))
+    }
+
     @Test func overlappingResetRequestsStartOnlyOneOperation() async {
         let gate = SuspendingResetOperation()
         let delegate = AppDelegate(

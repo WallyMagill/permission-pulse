@@ -56,13 +56,13 @@ From Xcode: ⌘U runs the per-package suites and the app-level test target.
 From the CLI:
 
 ```bash
-# Package-level tests (run without the Xcode project) — 280 tests total
+# Package-level tests (run without the Xcode project) — 282 tests total
 swift test --package-path Packages/PermissionsCore       # 40
 swift test --package-path Packages/PermissionsScanners   # 65
 swift test --package-path Packages/PermissionsStore      # 39
 swift test --package-path Packages/PermissionsUI         # 136
 
-# App build + app-target tests via xcodebuild — 74 tests
+# App build + app-target tests via xcodebuild — 75 tests
 PERMISSION_PULSE_TEST_MODE=1 xcodebuild test \
   -project PermissionPulse/PermissionPulse.xcodeproj \
   -scheme PermissionPulse \
@@ -70,7 +70,7 @@ PERMISSION_PULSE_TEST_MODE=1 xcodebuild test \
   -only-testing:PermissionPulseTests CODE_SIGNING_ALLOWED=NO
 ```
 
-Tests use **Swift Testing** (`import Testing`); the UITest target uses XCTest. The four package suites contain 280 tests and the app target contains 74 tests, for 354 automated tests total. These are fresh observed counts from the v0.7.2 Workstream C Task 7 gate on macOS 26.5 with Xcode 26.5 / Swift 6.3.2, not estimates.
+Tests use **Swift Testing** (`import Testing`); the UITest target uses XCTest. The four package suites contain 282 tests and the app target contains 75 tests, for 357 automated tests total. These are fresh observed counts after the v0.7.2 final-findings regressions on macOS 26.5 with Xcode 26.5 / Swift 6.3.2, not estimates.
 
 ### Runtime-correctness contract
 
@@ -123,8 +123,8 @@ The packaging script produces a universal arm64 + x86_64, ad-hoc-signed, entitle
 
 GitHub Actions (`.github/workflows/ci.yml`) runs on every PR and every push to `main`. Both jobs use `macos-26` and `/Applications/Xcode_26.5.app/Contents/Developer`, and print the macOS, Xcode, and Swift versions:
 
-- **`packages` job** — runs all 280 tests in the four SwiftPM packages.
-- **`app` job** — runs all 74 app-target tests in isolated test mode, performs static analysis, proves `smoke-test.sh --keep` preserves live state, then builds and independently verifies the exact v0.7.2/build 12 archive from the clean checkout.
+- **`packages` job** — runs all 282 tests in the four SwiftPM packages.
+- **`app` job** — runs all 75 app-target tests in isolated test mode, performs static analysis, proves `smoke-test.sh --keep` preserves live state, then builds and independently verifies the exact v0.7.2/build 12 archive from the clean checkout.
 
 CI never tags, publishes, or uploads that verified artifact. GitHub Releases remains a separate manual boundary.
 

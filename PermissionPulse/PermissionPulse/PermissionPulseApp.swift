@@ -471,11 +471,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             NSApp.activate(ignoringOtherApps: true)
             return
         }
-        let view = WelcomeWindowView(onDismiss: { [weak self] in
-            UserDefaults.standard.set(true, forKey: Self.hasSeenWelcomeKey)
-            self?.welcomeWindow?.close()
-            self?.welcomeWindow = nil
-        })
+        let view = WelcomeWindowView(onDismiss: welcomeDismissAction())
         let window = NSWindow(
             contentRect: NSRect(x: 0, y: 0, width: 480, height: 440),
             styleMask: [.titled, .closable],
@@ -489,5 +485,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         window.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)
         welcomeWindow = window
+    }
+
+    func welcomeDismissAction() -> () -> Void {
+        { [weak self] in
+            guard let self else { return }
+            self.runtimeDefaults.set(true, forKey: Self.hasSeenWelcomeKey)
+            self.welcomeWindow?.close()
+            self.welcomeWindow = nil
+        }
     }
 }

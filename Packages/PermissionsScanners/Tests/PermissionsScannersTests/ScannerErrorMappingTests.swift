@@ -34,4 +34,26 @@ import PermissionsCore
         }
         #expect(reason.contains("disk"))
     }
+
+    @Test func unrecognizedDatabaseErrorMapsToTemporarilyUnavailable() {
+        let mapped = TCCScannerSQLite.mapDatabaseError(
+            DatabaseError(resultCode: .SQLITE_CONSTRAINT, message: "injected constraint")
+        )
+        guard case .temporarilyUnavailable(let reason) = mapped else {
+            Issue.record("Expected .temporarilyUnavailable, got \(mapped)"); return
+        }
+        #expect(reason.contains("Refresh"))
+    }
+
+    @Test func nonDatabaseReadErrorMapsToTemporarilyUnavailable() {
+        let mapped = TCCScannerSQLite.mapReadError(InjectedReadError())
+        guard case .temporarilyUnavailable(let reason) = mapped else {
+            Issue.record("Expected .temporarilyUnavailable, got \(mapped)"); return
+        }
+        #expect(reason.contains("Refresh"))
+    }
+}
+
+private struct InjectedReadError: LocalizedError {
+    var errorDescription: String? { "injected non-database failure" }
 }

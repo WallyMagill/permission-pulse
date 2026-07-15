@@ -130,9 +130,9 @@ All package tests use **Swift Testing**; the UITest target uses XCTest.
 - `PermissionsScanners`: golden-fixture tests (`TCCFixtures`, `BTMFixtures`) + `Mock` behavior tests. Real-scanner tests run only on developer machines (FDA-gated). (65 tests)
 - `PermissionsStore`: in-memory + on-disk GRDB tests (migrations, diff engine, retention, discovery). (39 tests)
 - `PermissionsUI`: view-model and store logic tests with injected mocks + in-memory store. (136 tests)
-- App target (`PermissionPulseTests`): coordinator-level tests (`SnapshotCoordinator`, `WeeklyDigestCoordinator`, `ResetAllDataService`) — exercised by `scripts/smoke-test.sh §4` locally and by pinned CI under `PERMISSION_PULSE_TEST_MODE=1`. (74 tests)
+- App target (`PermissionPulseTests`): coordinator-level tests (`SnapshotCoordinator`, `WeeklyDigestCoordinator`, `ResetAllDataService`) — exercised by `scripts/smoke-test.sh §4` locally and by pinned CI under `PERMISSION_PULSE_TEST_MODE=1`. (75 tests)
 
-The four package suites total 280 tests; with the 74 app-target tests, the automated total is 354. These counts were observed fresh at the v0.7.2 Workstream C Task 7 gate on macOS 26.5 with Xcode 26.5 / Swift 6.3.2; see `docs/07-build-and-test.md`.
+The four package suites total 282 tests; with the 75 app-target tests, the automated total is 357. These counts were observed fresh after the v0.7.2 final-findings regressions on macOS 26.5 with Xcode 26.5 / Swift 6.3.2; see `docs/07-build-and-test.md`.
 
 ## What lives in the App target, not packages
 

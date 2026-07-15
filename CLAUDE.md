@@ -6,7 +6,7 @@ Future Claude sessions: read this file before touching the code. It encodes deci
 
 **Permission Pulse** — a free, MIT-licensed, open-source macOS menu-bar app for permission hygiene. Read-only inspection of TCC permissions, LaunchAgents, BTM background items, and mic/cam usage, plus a daily diff. Distributed via GitHub Releases as a verified, ad-hoc-signed `.app` archive (`PermissionPulse-vX.Y.Z.app.zip`) that a maintainer publishes manually; no paid Apple Developer ID.
 
-**v0.7.2** is the configured supported release line; do not publish it until all required workstream gates pass. v0.7.1 remains an immutable historical release whose development-signed artifact is superseded by v0.7.2. All v1-scope features are implemented. `docs/09-roadmap.md` is the source of truth for milestone status; `docs/03-architecture.md` and `docs/04-data-sources.md` describe the implemented system.
+**v0.7.2** is the configured release candidate; do not publish it until all required workstream gates pass. v0.7.1 remains the latest published, immutable historical release until v0.7.2 is actually published. All v1-scope features are implemented. `docs/09-roadmap.md` is the source of truth for milestone status; `docs/03-architecture.md` and `docs/04-data-sources.md` describe the implemented system.
 
 ## Hard rules — never violate
 
@@ -52,13 +52,13 @@ These are the spots where AI codegen most often invents APIs or assumes behavior
 | Surface | Risk | Mitigation |
 |---|---|---|
 | TCC.db schema reads | Apple can rename columns in point releases | Read-only SQLite via GRDB. Version-check the schema before depending on a column. |
-| BTM enumeration | No public API. `BackgroundItems-v*.btm` filename has bumped before. | Hide behind a `BTMScanner` protocol. Ship two implementations: direct `.btm` parsing (FDA, no sudo, fragile) and `sfltool dumpbtm` (sudo, text-parsed, more stable). Degrade gracefully. |
+| BTM enumeration | No public API. `BackgroundItems-v*.btm` filename has bumped before. | Hide behind a `BTMScanner` protocol. The shipping path reads `.btm` files directly under FDA and never invokes `sudo` or `sfltool`. Degrade gracefully. |
 | `SMAppService` | Bundled-helper plist layout is the trap | Hand-test on a real machine before committing. |
 | LaunchAgents enumeration | Mostly stable | `PropertyListDecoder` over `~/Library/LaunchAgents/`, `/Library/LaunchAgents/`, `/Library/LaunchDaemons/`. No FDA needed. |
-| `sfltool` / `tccutil` output parsing | Output format undocumented | Golden-output test fixtures. Re-record on each macOS major. |
+| TCC/BTM protected-data access | Direct reads require FDA and Apple can change private schemas or paths. | Validate schemas, under-flag uncertain evidence, and surface degraded coverage without adding a privileged fallback. |
 | Mic/cam current use | Public APIs | CoreMediaIO + CoreAudio `…DeviceIsRunningSomewhere` property listeners (`MediaUseObserverCMIO`) — **not** AVFoundation. Drives the menu-bar dot. |
 | `LastUsedProbeHybrid` (Spotlight via `mdls`) | Spotlight metadata returns `(null)` on many apps even when they've been used recently. Sandbox-on path will need replacement. | Hybrid fallback to `URL.contentModificationDateKey`. Skip the app if both miss (under-flag, never over-flag). Future-tag: replace `Process(/usr/bin/mdls)` with `MDItemCreate` in-process when sandboxing turns on. |
-| Snapshot store schema v4 (current at the Workstream B gate) | GRDB migration drift if Apple changes underlying TCC/BTM enum bits | Per-domain `*_kind` TEXT + nullable `*_raw` INTEGER captures `unknown(rawValue:)` losslessly; v4 persists TCC `auth_value`. Schema v5 is approved for Data Fidelity Workstream C Task 6 but is not current until that task is implemented. |
+| Snapshot store schema v5 | GRDB migration drift if Apple changes underlying TCC/BTM enum bits | Per-domain `*_kind` TEXT + nullable `*_raw` INTEGER captures `unknown(rawValue:)` losslessly; v5 persists TCC `auth_value`, LaunchAgent disabled state, and its per-snapshot capture marker while retaining v4 history. |
 | `UNUserNotificationCenter` on ad-hoc-signed bundles | An ad-hoc-signed `.app` may register oddly with the notification system. The system prompt and delivered banner *should* show "Permission Pulse" (the `INFOPLIST_KEY_CFBundleDisplayName`) but may fall back to a generic bundle label. | Hand-test on Tahoe before any release that ships the weekly digest. If the label is wrong and unfixable without a Developer ID, ship the slice without the digest and defer to a follow-up. Never add entitlements to "fix" this — crosses the Developer-ID line. |
 
 ## UserDefaults keys (current through v0.7.2)
@@ -72,7 +72,7 @@ In addition to `hasSeenWelcome`, `lastSnapshotDate`, `lastReviewedSnapshotID` fr
 - `com.wallymagill.permissionpulse.digestHour` — Int (0…23, default 9)
 - `com.wallymagill.permissionpulse.digestMinute` — Int (0…59, default 0)
 - `com.wallymagill.permissionpulse.dismissedDiffEntries` — JSON `[String: Date]` (semantic-key → expiry; `.distantFuture` = forever)
-- `com.wallymagill.permissionpulse.dismissedStaleApps` — `[String]` (bundleIDs the user skipped forever)
+- `com.wallymagill.permissionpulse.dismissedStaleApps` — `[String]` (`bundle:<bundle-id>` or `path:<standardized-file-path>` stable keys; legacy raw bundle IDs migrate without losing dismissals)
 
 "Reset All Data" wipes everything matching `com.wallymagill.permissionpulse.*` while preserving `NSWindow`/`NSStatusItem`/`NSSplitView` keys macOS auto-writes under our bundle domain.
 

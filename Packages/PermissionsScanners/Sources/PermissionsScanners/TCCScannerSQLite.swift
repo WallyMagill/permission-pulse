@@ -161,7 +161,7 @@ public struct TCCScannerSQLite: TCCScanner, Sendable {
         } catch let dbError as DatabaseError {
             throw mapDatabaseError(dbError)
         } catch {
-            throw ScannerError.permissionDenied(reason: permissionDeniedReason)
+            throw mapReadError(error)
         }
 
         do {
@@ -174,7 +174,7 @@ public struct TCCScannerSQLite: TCCScanner, Sendable {
         } catch let dbError as DatabaseError {
             throw mapDatabaseError(dbError)
         } catch {
-            throw ScannerError.permissionDenied(reason: permissionDeniedReason)
+            throw mapReadError(error)
         }
     }
 
@@ -318,8 +318,20 @@ public struct TCCScannerSQLite: TCCScanner, Sendable {
         case .SQLITE_IOERR:
             return .temporarilyUnavailable(reason: ioErrorReason)
         default:
-            return .permissionDenied(reason: permissionDeniedReason)
+            return .temporarilyUnavailable(reason: unexpectedReadReason)
         }
+    }
+
+    // internal (not private): exercises the non-GRDB catch path without
+    // fabricating a protected-database failure in tests.
+    static func mapReadError(_ error: any Error) -> ScannerError {
+        if let scannerError = error as? ScannerError {
+            return scannerError
+        }
+        if let databaseError = error as? DatabaseError {
+            return mapDatabaseError(databaseError)
+        }
+        return .temporarilyUnavailable(reason: unexpectedReadReason)
     }
 
     private static let permissionDeniedReason = String(
@@ -336,6 +348,10 @@ public struct TCCScannerSQLite: TCCScanner, Sendable {
 
     private static let ioErrorReason = String(
         localized: "A disk I/O error occurred reading the TCC database. Check available disk space and try Refresh."
+    )
+
+    private static let unexpectedReadReason = String(
+        localized: "The TCC database is temporarily unavailable. Try Refresh in a moment."
     )
 
     private struct TCCRow: Sendable {
