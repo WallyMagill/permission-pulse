@@ -79,13 +79,13 @@ struct PermissionPulseTests {
 
         delegate.preferencesStore.snapshotRetentionDays = 123
         delegate.dismissedDiffEntries.dismissForever(key: "test-entry")
-        delegate.dismissedStaleApps.skipForever(bundleID: "com.example.test")
+        delegate.dismissedStaleApps.skipForever(stableKey: "bundle:com.example.test")
 
         #expect(observedDefaults.integer(forKey: preferenceKey) == 123)
         #expect(observedDefaults.data(forKey: dismissedDiffKey) != nil)
         #expect(
             observedDefaults.array(forKey: dismissedStaleKey) as? [String]
-                == ["com.example.test"]
+                == ["bundle:com.example.test"]
         )
     }
 

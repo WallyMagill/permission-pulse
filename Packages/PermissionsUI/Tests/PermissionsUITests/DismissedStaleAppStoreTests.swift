@@ -113,6 +113,24 @@ import Testing
         ])
     }
 
+    @Test func legacyBundleProjectionIsSortedReadOnlyAndExcludesPathKeys() throws {
+        let defaults = fresh()
+        let original = [
+            "path:/Applications/Path Only.app",
+            "com.example.legacy",
+            "bundle:com.example.current",
+        ]
+        defaults.set(original, forKey: DismissedStaleAppStore.key)
+        let store = DismissedStaleAppStore(defaults: defaults)
+
+        #expect(store.allBundleIDs() == [
+            "com.example.current",
+            "com.example.legacy",
+        ])
+        #expect(store.allStableKeys().contains("path:/Applications/Path Only.app"))
+        #expect(try #require(defaults.stringArray(forKey: DismissedStaleAppStore.key)) == original)
+    }
+
     // MARK: - Helpers
 
     private func fresh() -> UserDefaults {

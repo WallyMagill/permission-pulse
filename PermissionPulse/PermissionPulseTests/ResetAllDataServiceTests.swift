@@ -18,7 +18,7 @@ import PermissionsUI
         env.preferencesStore.digestHour = 17
         env.preferencesStore.digestMinute = 45
         env.dismissedDiffEntries.dismissForever(key: "diff-key")
-        env.dismissedStaleApps.skipForever(bundleID: "com.example.stale")
+        env.dismissedStaleApps.skipForever(stableKey: "bundle:com.example.stale")
         _ = await env.weeklyDigestCoordinator.reconcileSchedule()
         try await env.scheduler.scheduleOneShot(
             identifier: "\(WeeklyDigestCoordinator.testIdentifierPrefix).seed",
@@ -40,7 +40,7 @@ import PermissionsUI
         #expect(env.preferencesStore.digestHour == 9)
         #expect(env.preferencesStore.digestMinute == 0)
         #expect(env.dismissedDiffEntries.allEntries().isEmpty)
-        #expect(env.dismissedStaleApps.allBundleIDs().isEmpty)
+        #expect(env.dismissedStaleApps.allStableKeys().isEmpty)
         #expect(await env.scheduler.pendingIdentifiers().isEmpty)
         #expect(env.state.releaseCount == 1)
         #expect(env.state.reinitCount == 1)
@@ -189,7 +189,7 @@ import PermissionsUI
         try await seedPresentationState(viewModel)
         preferences.digestEnabled = true
         dismissedDiffEntries.dismissForever(key: "diff-key")
-        dismissedStaleApps.skipForever(bundleID: "com.example.stale")
+        dismissedStaleApps.skipForever(stableKey: "bundle:com.example.stale")
         defaults.set("seed", forKey: "com.wallymagill.permissionpulse.seed")
 
         let service = ResetAllDataService(
@@ -199,7 +199,7 @@ import PermissionsUI
             onSnapshotStoreReinit: { _ in
                 #expect(preferences.digestEnabled == false)
                 #expect(dismissedDiffEntries.allEntries().isEmpty)
-                #expect(dismissedStaleApps.allBundleIDs().isEmpty)
+                #expect(dismissedStaleApps.allStableKeys().isEmpty)
                 #expect(defaults.object(forKey: "com.wallymagill.permissionpulse.seed") == nil)
                 trace.append("recreate")
             },

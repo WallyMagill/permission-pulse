@@ -140,7 +140,7 @@ import PermissionsUI
         let dismissed = DismissedStaleAppStore(
             defaults: UserDefaults(suiteName: "dismissed-stale-\(UUID().uuidString)")!
         )
-        dismissed.skipForever(bundleID: "com.example.skipped")
+        dismissed.skipForever(stableKey: "bundle:com.example.skipped")
         let env = try await Environment(now: fixedNow, probe: probe, dismissedStaleApps: dismissed)
 
         env.viewModel.grants = [
