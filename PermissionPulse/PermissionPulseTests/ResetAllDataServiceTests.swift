@@ -7,21 +7,226 @@ import PermissionsUI
 @testable import PermissionPulse
 
 @Suite @MainActor struct ResetAllDataServiceTests {
+    @Test func resetCascadesThroughLivePersistedAndNotificationState() async throws {
+        let env = try Environment()
+        defer { env.cleanUp() }
+
+        env.preferencesStore.snapshotRetentionDays = 120
+        env.preferencesStore.staleThresholdDays = 180
+        env.preferencesStore.digestEnabled = true
+        env.preferencesStore.digestWeekday = 6
+        env.preferencesStore.digestHour = 17
+        env.preferencesStore.digestMinute = 45
+        env.dismissedDiffEntries.dismissForever(key: "diff-key")
+        env.dismissedStaleApps.skipForever(bundleID: "com.example.stale")
+        await env.weeklyDigestCoordinator.reconcileSchedule()
+        try await env.scheduler.scheduleOneShot(
+            identifier: "\(WeeklyDigestCoordinator.testIdentifierPrefix).seed",
+            after: 5,
+            title: "Test",
+            body: "Test"
+        )
+        try Data("main".utf8).write(to: env.dbURL)
+        try Data("wal".utf8).write(to: env.walURL)
+        try Data("shm".utf8).write(to: env.shmURL)
+
+        let result = await env.service.reset()
+
+        #expect(result == .completed(scanSucceeded: true))
+        #expect(env.preferencesStore.snapshotRetentionDays == 90)
+        #expect(env.preferencesStore.staleThresholdDays == 90)
+        #expect(env.preferencesStore.digestEnabled == false)
+        #expect(env.preferencesStore.digestWeekday == 2)
+        #expect(env.preferencesStore.digestHour == 9)
+        #expect(env.preferencesStore.digestMinute == 0)
+        #expect(env.dismissedDiffEntries.allEntries().isEmpty)
+        #expect(env.dismissedStaleApps.allBundleIDs().isEmpty)
+        #expect(await env.scheduler.pendingIdentifiers().isEmpty)
+        #expect(env.state.releaseCount == 1)
+        #expect(env.state.reinitCount == 1)
+        #expect(env.state.rescanCount == 1)
+        #expect(FileManager.default.fileExists(atPath: env.dbURL.path))
+        #expect(!FileManager.default.fileExists(atPath: env.walURL.path))
+        #expect(!FileManager.default.fileExists(atPath: env.shmURL.path))
+    }
+
+    @Test func deletionFailureReportsPhaseAndStopsBeforeReinitAndRescan() async throws {
+        let fileManager = ThrowingResetFileManager(
+            failingSuffix: "snapshots.db",
+            message: "injected removal failure"
+        )
+        let env = try Environment(fileManager: fileManager)
+        defer { env.cleanUp() }
+        try Data("main".utf8).write(to: env.dbURL)
+
+        let result = await env.service.reset()
+
+        #expect(result == .failed(
+            phase: .deleteHistory,
+            message: "injected removal failure"
+        ))
+        #expect(env.state.releaseCount == 1)
+        #expect(env.state.reinitCount == 0)
+        #expect(env.state.rescanCount == 0)
+    }
+
+    @Test(arguments: ["-wal", "-shm"])
+    func sidecarDeletionFailureStopsRemainingPhases(failingSuffix: String) async throws {
+        let fileManager = ThrowingResetFileManager(
+            failingSuffix: failingSuffix,
+            message: "injected \(failingSuffix) failure"
+        )
+        let env = try Environment(fileManager: fileManager)
+        defer { env.cleanUp() }
+        env.preferencesStore.digestEnabled = true
+        try Data("main".utf8).write(to: env.dbURL)
+        try Data("wal".utf8).write(to: env.walURL)
+        try Data("shm".utf8).write(to: env.shmURL)
+
+        let result = await env.service.reset()
+
+        #expect(result == .failed(
+            phase: .deleteHistory,
+            message: "injected \(failingSuffix) failure"
+        ))
+        #expect(env.preferencesStore.digestEnabled == true)
+        #expect(env.state.reinitCount == 0)
+        #expect(env.state.rescanCount == 0)
+        if failingSuffix == "-wal" {
+            #expect(FileManager.default.fileExists(atPath: env.shmURL.path))
+        }
+    }
+
+    @Test func scanFailureIsACompletedResetOutcome() async throws {
+        let env = try Environment(scanSucceeded: false)
+        defer { env.cleanUp() }
+
+        let result = await env.service.reset()
+
+        #expect(result == .completed(scanSucceeded: false))
+        #expect(env.state.releaseCount == 1)
+        #expect(env.state.reinitCount == 1)
+        #expect(env.state.rescanCount == 1)
+    }
+
+    @Test func notificationCancellationUsesOnlyApprovedPrefixes() async throws {
+        let env = try Environment()
+        defer { env.cleanUp() }
+        try await env.scheduler.scheduleWeekly(
+            identifier: WeeklyDigestCoordinator.weeklyIdentifier,
+            weekday: 2,
+            hour: 9,
+            minute: 0,
+            title: "Weekly",
+            body: "Weekly"
+        )
+        try await env.scheduler.scheduleOneShot(
+            identifier: "\(WeeklyDigestCoordinator.testIdentifierPrefix).seed",
+            after: 5,
+            title: "Test",
+            body: "Test"
+        )
+        try await env.scheduler.scheduleOneShot(
+            identifier: "com.example.unrelated",
+            after: 5,
+            title: "Other",
+            body: "Other"
+        )
+
+        _ = await env.service.reset()
+
+        #expect(await env.scheduler.pendingIdentifiers() == ["com.example.unrelated"])
+    }
+
+    @Test func phasesRunInOrderAndPresentationStateClearsBeforeRescan() async throws {
+        let trace = LockedTrace()
+        let scheduler = TracingWeeklyDigestScheduler(trace: trace)
+        let defaultsSuite = "reset-order-test-\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: defaultsSuite)!
+        defer { defaults.removePersistentDomain(forName: defaultsSuite) }
+        let preferences = PreferencesStore(defaults: defaults)
+        let dismissedDiffEntries = DismissedDiffEntryStore(defaults: defaults)
+        let dismissedStaleApps = DismissedStaleAppStore(defaults: defaults)
+        let viewModel = AppViewModel()
+        let coordinator = WeeklyDigestCoordinator(
+            viewModel: viewModel,
+            preferencesStore: preferences,
+            scheduler: scheduler
+        )
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("reset-order-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let dbURL = directory.appendingPathComponent("snapshots.db")
+        let walURL = URL(fileURLWithPath: dbURL.path + "-wal")
+        let shmURL = URL(fileURLWithPath: dbURL.path + "-shm")
+        try Data("main".utf8).write(to: dbURL)
+        try Data("wal".utf8).write(to: walURL)
+        try Data("shm".utf8).write(to: shmURL)
+        try await seedPresentationState(viewModel)
+        preferences.digestEnabled = true
+        dismissedDiffEntries.dismissForever(key: "diff-key")
+        dismissedStaleApps.skipForever(bundleID: "com.example.stale")
+        defaults.set("seed", forKey: "com.wallymagill.permissionpulse.seed")
+
+        let service = ResetAllDataService(
+            viewModel: viewModel,
+            snapshotPathURL: dbURL,
+            releaseSnapshotStore: { trace.append("release") },
+            onSnapshotStoreReinit: { _ in
+                #expect(preferences.digestEnabled == false)
+                #expect(dismissedDiffEntries.allEntries().isEmpty)
+                #expect(dismissedStaleApps.allBundleIDs().isEmpty)
+                #expect(defaults.object(forKey: "com.wallymagill.permissionpulse.seed") == nil)
+                trace.append("recreate")
+            },
+            weeklyDigestCoordinator: coordinator,
+            preferencesStore: preferences,
+            dismissedDiffEntries: dismissedDiffEntries,
+            dismissedStaleApps: dismissedStaleApps,
+            fileManager: TracingResetFileManager(trace: trace),
+            defaults: defaults,
+            rescan: {
+                expectPresentationStateCleared(viewModel)
+                trace.append("rescan")
+                return true
+            }
+        )
+
+        let result = await service.reset()
+
+        #expect(result == .completed(scanSucceeded: true))
+        #expect(trace.values == [
+            "cancel:\(WeeklyDigestCoordinator.identifierPrefix)",
+            "cancel:\(WeeklyDigestCoordinator.testIdentifierPrefix)",
+            "release",
+            "delete:snapshots.db",
+            "delete:snapshots.db-wal",
+            "delete:snapshots.db-shm",
+            "recreate",
+            "rescan",
+            "cancel:\(WeeklyDigestCoordinator.identifierPrefix)",
+        ])
+    }
+
     @Test func removesSnapshotsDBAndReInitsStore() async throws {
         let env = try Environment()
+        defer { env.cleanUp() }
 
         try Data("seed".utf8).write(to: env.dbURL)
         #expect(FileManager.default.fileExists(atPath: env.dbURL.path))
 
-        await env.service.reset()
+        let result = await env.service.reset()
 
         // SnapshotStore init re-creates the file (empty SQLite).
         #expect(FileManager.default.fileExists(atPath: env.dbURL.path))
-        #expect(env.counter.reinitCount == 1)
+        #expect(env.state.reinitCount == 1)
+        #expect(result == .completed(scanSucceeded: true))
     }
 
     @Test func removesAllPPDefaultsKeysPreservingNonPPKeys() async throws {
         let env = try Environment()
+        defer { env.cleanUp() }
         env.defaults.set("a", forKey: "com.wallymagill.permissionpulse.hasSeenWelcome")
         env.defaults.set("b", forKey: "com.wallymagill.permissionpulse.lastSnapshotDate")
         env.defaults.set("preserve", forKey: "NSWindow Frame detail-AppWindow-1")
@@ -37,6 +242,7 @@ import PermissionsUI
 
     @Test func cancelsPendingDigestNotifications() async throws {
         let env = try Environment()
+        defer { env.cleanUp() }
         try await env.scheduler.scheduleWeekly(
             identifier: WeeklyDigestCoordinator.weeklyIdentifier,
             weekday: 2, hour: 9, minute: 0,
@@ -53,15 +259,17 @@ import PermissionsUI
 
     @Test func resetReportsReinitSuccess() async throws {
         let env = try Environment()
-        let succeeded = await env.service.reset()
-        #expect(succeeded == true)
+        defer { env.cleanUp() }
+        let result = await env.service.reset()
+        #expect(result == .completed(scanSucceeded: true))
     }
 
     @Test func idempotentOnSecondCallWithEmptyState() async throws {
         let env = try Environment()
+        defer { env.cleanUp() }
         await env.service.reset() // clean state
         await env.service.reset() // should not throw / no-op
-        #expect(env.counter.reinitCount == 2, "Re-init runs each call even when DB absent")
+        #expect(env.state.reinitCount == 2, "Re-init runs each call even when DB absent")
     }
 
     @Test func resetReportsFailureWhenStoreCannotReinit() async throws {
@@ -74,42 +282,70 @@ import PermissionsUI
         let badPath = tmp.appendingPathComponent("snapshots.db")  // parent is a file
 
         var reinitCalled = false
+        var rescanCalled = false
         let env = try Environment()
+        defer { env.cleanUp() }
         let service = ResetAllDataService(
             viewModel: env.viewModel,
             snapshotPathURL: badPath,
+            releaseSnapshotStore: { },
             onSnapshotStoreReinit: { _ in reinitCalled = true },
             weeklyDigestCoordinator: env.weeklyDigestCoordinator,
+            preferencesStore: env.preferencesStore,
+            dismissedDiffEntries: env.dismissedDiffEntries,
+            dismissedStaleApps: env.dismissedStaleApps,
             defaults: env.defaults,
-            rescan: { }
+            rescan: {
+                rescanCalled = true
+                return true
+            }
         )
-        let ok = await service.reset()
-        #expect(ok == false)
+        let result = await service.reset()
+        guard case .failed(phase: .recreateHistory, message: let message) = result else {
+            Issue.record("Expected recreation failure, got \(result)")
+            return
+        }
+        #expect(!message.isEmpty)
         #expect(reinitCalled == false)
+        #expect(rescanCalled == false)
     }
 
     // MARK: - Env
 
     @MainActor
-    final class ReinitCounter {
+    final class ResetState {
+        var releaseCount = 0
         var reinitCount: Int = 0
+        var rescanCount: Int = 0
     }
 
     @MainActor
     final class Environment {
         let viewModel: AppViewModel
         let preferencesStore: PreferencesStore
+        let dismissedDiffEntries: DismissedDiffEntryStore
+        let dismissedStaleApps: DismissedStaleAppStore
         let scheduler: MockWeeklyDigestScheduler
         let weeklyDigestCoordinator: WeeklyDigestCoordinator
         let defaults: UserDefaults
         let dbURL: URL
-        let counter = ReinitCounter()
+        var walURL: URL { URL(fileURLWithPath: dbURL.path + "-wal") }
+        var shmURL: URL { URL(fileURLWithPath: dbURL.path + "-shm") }
+        let directoryURL: URL
+        let defaultsSuiteName: String
+        let state = ResetState()
         let service: ResetAllDataService
 
-        init() throws {
+        init(
+            fileManager: any ResetFileManaging = FileManager.default,
+            scanSucceeded: Bool = true
+        ) throws {
             self.viewModel = AppViewModel()
-            self.defaults = UserDefaults(suiteName: "reset-test-\(UUID().uuidString)")!
+            self.defaultsSuiteName = "reset-test-\(UUID().uuidString)"
+            self.defaults = UserDefaults(suiteName: defaultsSuiteName)!
             self.preferencesStore = PreferencesStore(defaults: defaults)
+            self.dismissedDiffEntries = DismissedDiffEntryStore(defaults: defaults)
+            self.dismissedStaleApps = DismissedStaleAppStore(defaults: defaults)
             self.scheduler = MockWeeklyDigestScheduler(initialStatus: .authorized)
             self.weeklyDigestCoordinator = WeeklyDigestCoordinator(
                 viewModel: viewModel,
@@ -117,20 +353,178 @@ import PermissionsUI
                 scheduler: scheduler
             )
 
-            let dir = URL(fileURLWithPath: NSTemporaryDirectory())
+            self.directoryURL = URL(fileURLWithPath: NSTemporaryDirectory())
                 .appendingPathComponent("reset-svc-\(UUID().uuidString)")
-            try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
-            self.dbURL = dir.appendingPathComponent("snapshots.db")
+            try FileManager.default.createDirectory(
+                at: directoryURL,
+                withIntermediateDirectories: true
+            )
+            self.dbURL = directoryURL.appendingPathComponent("snapshots.db")
 
-            let counterRef = counter
+            let state = state
             self.service = ResetAllDataService(
                 viewModel: viewModel,
                 snapshotPathURL: dbURL,
-                onSnapshotStoreReinit: { _ in counterRef.reinitCount += 1 },
+                releaseSnapshotStore: { state.releaseCount += 1 },
+                onSnapshotStoreReinit: { _ in state.reinitCount += 1 },
                 weeklyDigestCoordinator: weeklyDigestCoordinator,
+                preferencesStore: preferencesStore,
+                dismissedDiffEntries: dismissedDiffEntries,
+                dismissedStaleApps: dismissedStaleApps,
+                fileManager: fileManager,
                 defaults: defaults,
-                rescan: { }
+                rescan: {
+                    state.rescanCount += 1
+                    return scanSucceeded
+                }
             )
         }
+
+        func cleanUp() {
+            defaults.removePersistentDomain(forName: defaultsSuiteName)
+            try? FileManager.default.removeItem(at: directoryURL)
+        }
     }
+}
+
+private struct InjectedResetError: LocalizedError {
+    let message: String
+    var errorDescription: String? { message }
+}
+
+private final class ThrowingResetFileManager: ResetFileManaging, @unchecked Sendable {
+    private let failingSuffix: String
+    private let message: String
+
+    init(failingSuffix: String, message: String) {
+        self.failingSuffix = failingSuffix
+        self.message = message
+    }
+
+    func fileExists(atPath path: String) -> Bool {
+        FileManager.default.fileExists(atPath: path)
+    }
+
+    func removeItem(at url: URL) throws {
+        if url.path.hasSuffix(failingSuffix) {
+            throw InjectedResetError(message: message)
+        }
+        try FileManager.default.removeItem(at: url)
+    }
+}
+
+private final class LockedTrace: @unchecked Sendable {
+    private let lock = NSLock()
+    private var storage: [String] = []
+
+    func append(_ value: String) {
+        lock.lock()
+        storage.append(value)
+        lock.unlock()
+    }
+
+    var values: [String] {
+        lock.lock()
+        defer { lock.unlock() }
+        return storage
+    }
+}
+
+private struct TracingResetFileManager: ResetFileManaging {
+    let trace: LockedTrace
+
+    func fileExists(atPath path: String) -> Bool {
+        FileManager.default.fileExists(atPath: path)
+    }
+
+    func removeItem(at url: URL) throws {
+        trace.append("delete:\(url.lastPathComponent)")
+        try FileManager.default.removeItem(at: url)
+    }
+}
+
+private actor TracingWeeklyDigestScheduler: WeeklyDigestScheduler {
+    let trace: LockedTrace
+
+    init(trace: LockedTrace) {
+        self.trace = trace
+    }
+
+    func currentAuthorizationStatus() async -> DigestAuthorizationStatus { .authorized }
+    func requestAuthorization() async throws -> DigestAuthorizationStatus { .authorized }
+    func scheduleWeekly(
+        identifier: String,
+        weekday: Int,
+        hour: Int,
+        minute: Int,
+        title: String,
+        body: String
+    ) async throws {}
+    func scheduleOneShot(
+        identifier: String,
+        after seconds: TimeInterval,
+        title: String,
+        body: String
+    ) async throws {}
+    func cancelAll(matchingPrefix prefix: String) async {
+        trace.append("cancel:\(prefix)")
+    }
+    func pendingIdentifiers() async -> [String] { [] }
+    func nextFireDate(for identifier: String) async -> Date? { nil }
+}
+
+@MainActor
+private func seedPresentationState(_ viewModel: AppViewModel) async throws {
+    let grants = try await MockTCCScanner().scan()
+    let launchAgents = try await MockLaunchAgentScanner().scan()
+    let btmItems = try await MockBTMScanner().scan()
+    viewModel.grants = grants
+    viewModel.launchAgents = launchAgents
+    viewModel.btmItems = btmItems
+    viewModel.tccScanError = .permissionDenied(reason: "tcc")
+    viewModel.btmScanError = .schemaMismatch(detail: "btm")
+    viewModel.launchAgentScanError = .temporarilyUnavailable(reason: "launch")
+    viewModel.latestSnapshotID = SnapshotID(rawValue: 2)
+    viewModel.lastReviewedSnapshotID = SnapshotID(rawValue: 1)
+    let diff = SnapshotDiffs(
+        fromID: SnapshotID(rawValue: 1),
+        toID: SnapshotID(rawValue: 2),
+        tcc: TCCGrantsDiff(added: grants, removed: []),
+        btm: BTMItemsDiff(added: btmItems, removed: []),
+        launchAgents: LaunchAgentsDiff(added: launchAgents, removed: [])
+    )
+    viewModel.latestDiffYesterday = diff
+    viewModel.latestDiffWeek = diff
+    viewModel.staleApps = [StaleApp(
+        app: grants[0].app,
+        lastUsedDate: Date(timeIntervalSince1970: 1_700_000_000),
+        dateSource: .spotlight,
+        daysSinceUsed: 100,
+        grantedServices: [grants[0].service]
+    )]
+    viewModel.pendingRoute = .recentChanges
+    viewModel.lastScanDate = Date(timeIntervalSince1970: 1_700_000_000)
+    viewModel.staleThresholdDays = 180
+    viewModel.snapshotStoreUnavailable = true
+    viewModel.diffUnavailable = true
+}
+
+@MainActor
+private func expectPresentationStateCleared(_ viewModel: AppViewModel) {
+    #expect(viewModel.grants.isEmpty)
+    #expect(viewModel.launchAgents.isEmpty)
+    #expect(viewModel.btmItems.isEmpty)
+    #expect(viewModel.tccScanError == nil)
+    #expect(viewModel.btmScanError == nil)
+    #expect(viewModel.launchAgentScanError == nil)
+    #expect(viewModel.latestSnapshotID == nil)
+    #expect(viewModel.lastReviewedSnapshotID == nil)
+    #expect(viewModel.latestDiffYesterday == nil)
+    #expect(viewModel.latestDiffWeek == nil)
+    #expect(viewModel.staleApps.isEmpty)
+    #expect(viewModel.pendingRoute == nil)
+    #expect(viewModel.lastScanDate == nil)
+    #expect(viewModel.staleThresholdDays == 90)
+    #expect(viewModel.snapshotStoreUnavailable == false)
+    #expect(viewModel.diffUnavailable == false)
 }

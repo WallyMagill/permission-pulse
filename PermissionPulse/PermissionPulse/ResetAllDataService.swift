@@ -5,13 +5,33 @@ import PermissionsScanners
 import PermissionsStore
 import PermissionsUI
 
+enum ResetPhase: Sendable, Equatable {
+    case cancelNotifications
+    case releaseHistory
+    case deleteHistory
+    case resetLiveStores
+    case clearDefaults
+    case recreateHistory
+    case rescan
+}
+
+enum ResetResult: Sendable, Equatable {
+    case completed(scanSucceeded: Bool)
+    case failed(phase: ResetPhase, message: String)
+}
+
+protocol ResetFileManaging: Sendable {
+    func fileExists(atPath path: String) -> Bool
+    func removeItem(at url: URL) throws
+}
+
+extension FileManager: ResetFileManaging {}
+
 /// Orchestrates the "Reset all data" cascade triggered from Preferences.
 ///
-/// Cancels pending notifications, deletes `snapshots.db`, re-inits the
-/// store at the same path, removes every `com.wallymagill.permissionpulse.*`
-/// UserDefaults key (preserving NSWindow/NSStatusItem keys that macOS
-/// auto-writes under our bundle domain), wipes the live ViewModel state,
-/// and triggers a fresh scan + schedule reconciliation.
+/// Cancels owned notifications, releases the history runtime, deletes the
+/// SQLite main/WAL/SHM files, resets live stores and prefixed defaults, then
+/// recreates history before clearing presentation state and rescanning.
 ///
 /// Welcome window is deliberately NOT re-shown this session (the user
 /// invoked reset on purpose); on next cold launch `hasSeenWelcome` is
@@ -30,72 +50,125 @@ final class ResetAllDataService {
 
     private let viewModel: AppViewModel
     private let snapshotPathURL: URL
-    private let onSnapshotStoreReinit: (SnapshotStore) -> Void
+    private let releaseSnapshotStore: @MainActor () -> Void
+    private let onSnapshotStoreReinit: @MainActor (SnapshotStore) -> Void
     private let weeklyDigestCoordinator: WeeklyDigestCoordinator
+    private let preferencesStore: PreferencesStore
+    private let dismissedDiffEntries: DismissedDiffEntryStore
+    private let dismissedStaleApps: DismissedStaleAppStore
+    private let fileManager: any ResetFileManaging
     private let defaults: UserDefaults
-    private let rescan: @MainActor () async -> Void
+    private let rescan: @MainActor () async -> Bool
 
     init(
         viewModel: AppViewModel,
         snapshotPathURL: URL,
-        onSnapshotStoreReinit: @escaping (SnapshotStore) -> Void,
+        releaseSnapshotStore: @MainActor @escaping () -> Void,
+        onSnapshotStoreReinit: @MainActor @escaping (SnapshotStore) -> Void,
         weeklyDigestCoordinator: WeeklyDigestCoordinator,
+        preferencesStore: PreferencesStore,
+        dismissedDiffEntries: DismissedDiffEntryStore,
+        dismissedStaleApps: DismissedStaleAppStore,
+        fileManager: any ResetFileManaging = FileManager.default,
         defaults: UserDefaults = .standard,
-        rescan: @MainActor @escaping () async -> Void
+        rescan: @MainActor @escaping () async -> Bool
     ) {
         self.viewModel = viewModel
         self.snapshotPathURL = snapshotPathURL
+        self.releaseSnapshotStore = releaseSnapshotStore
         self.onSnapshotStoreReinit = onSnapshotStoreReinit
         self.weeklyDigestCoordinator = weeklyDigestCoordinator
+        self.preferencesStore = preferencesStore
+        self.dismissedDiffEntries = dismissedDiffEntries
+        self.dismissedStaleApps = dismissedStaleApps
+        self.fileManager = fileManager
         self.defaults = defaults
         self.rescan = rescan
     }
 
     @discardableResult
-    func reset() async -> Bool {
-        // 1. Cancel pending digest notifications.
+    func reset() async -> ResetResult {
         await weeklyDigestCoordinator.scheduler.cancelAll(
             matchingPrefix: WeeklyDigestCoordinator.identifierPrefix
         )
+        await weeklyDigestCoordinator.scheduler.cancelAll(
+            matchingPrefix: WeeklyDigestCoordinator.testIdentifierPrefix
+        )
 
-        // 2. Delete the snapshots DB (idempotent — try?).
-        try? FileManager.default.removeItem(at: snapshotPathURL)
-
-        // 3. Re-init the snapshot store at the same path so subsequent
-        //    scans have somewhere to write.
-        var reinitSucceeded = false
+        releaseSnapshotStore()
         do {
-            let newStore = try SnapshotStore(path: snapshotPathURL.path(percentEncoded: false))
-            onSnapshotStoreReinit(newStore)
-            reinitSucceeded = true
+            try removeHistoryFiles()
+        } catch {
+            Self.logger.error(
+                "Reset failed during database deletion: \(error.localizedDescription, privacy: .public)"
+            )
+            return .failed(phase: .deleteHistory, message: error.localizedDescription)
+        }
+
+        resetLiveStores()
+        clearPrefixedDefaults()
+
+        do {
+            try recreateHistory()
         } catch {
             Self.logger.error(
                 "Failed to re-init snapshot store after reset: \(error.localizedDescription, privacy: .public)"
             )
+            return .failed(phase: .recreateHistory, message: error.localizedDescription)
         }
 
-        // 4. Remove every PP UserDefaults key, preserve everything else
-        //    (NSWindow/NSStatusItem/NSSplitView auto-writes under our domain).
-        let keysToRemove = defaults.dictionaryRepresentation().keys
+        clearPresentationState()
+        let scanSucceeded = await rescan()
+        await weeklyDigestCoordinator.reconcileSchedule()
+        return .completed(scanSucceeded: scanSucceeded)
+    }
+
+    private func removeHistoryFiles() throws {
+        let urls = [
+            snapshotPathURL,
+            URL(fileURLWithPath: snapshotPathURL.path + "-wal"),
+            URL(fileURLWithPath: snapshotPathURL.path + "-shm"),
+        ]
+        for url in urls where fileManager.fileExists(atPath: url.path) {
+            try fileManager.removeItem(at: url)
+        }
+    }
+
+    private func resetLiveStores() {
+        preferencesStore.resetToDefaults()
+        dismissedDiffEntries.removeAll()
+        dismissedStaleApps.removeAll()
+    }
+
+    private func clearPrefixedDefaults() {
+        let keys = defaults.dictionaryRepresentation().keys
             .filter { $0.hasPrefix(Self.bundlePrefix) }
-        for key in keysToRemove {
+        for key in keys {
             defaults.removeObject(forKey: key)
         }
+    }
 
-        // 5. Wipe in-memory ViewModel state.
-        viewModel.grants = []
-        viewModel.launchAgents = []
-        viewModel.btmItems = []
-        viewModel.latestDiffYesterday = nil
-        viewModel.latestDiffWeek = nil
-        viewModel.staleApps = []
+    private func recreateHistory() throws {
+        let path = snapshotPathURL.path(percentEncoded: false)
+        onSnapshotStoreReinit(try SnapshotStore(path: path))
+    }
+
+    private func clearPresentationState() {
+        viewModel.grants.removeAll()
+        viewModel.launchAgents.removeAll()
+        viewModel.btmItems.removeAll()
+        viewModel.tccScanError = nil
+        viewModel.btmScanError = nil
+        viewModel.launchAgentScanError = nil
         viewModel.latestSnapshotID = nil
         viewModel.lastReviewedSnapshotID = nil
-
-        // 6. Trigger a fresh scan so the UI repopulates immediately.
-        await rescan()
-
-        return reinitSucceeded
+        viewModel.latestDiffYesterday = nil
+        viewModel.latestDiffWeek = nil
+        viewModel.staleApps.removeAll()
+        viewModel.pendingRoute = nil
+        viewModel.lastScanDate = nil
+        viewModel.staleThresholdDays = preferencesStore.staleThresholdDays
+        viewModel.snapshotStoreUnavailable = false
+        viewModel.diffUnavailable = false
     }
 }
-

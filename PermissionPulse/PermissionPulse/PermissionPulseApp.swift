@@ -203,19 +203,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             viewModel.snapshotStoreUnavailable = true
         }
         if let snapshotStore {
-            snapshotCoordinator = SnapshotCoordinator(
-                viewModel: viewModel,
-                store: snapshotStore,
-                snapshotRetentionDays: { [weak preferencesStore = self.preferencesStore] in
-                    preferencesStore?.snapshotRetentionDays
-                        ?? SnapshotCoordinator.defaultSnapshotRetentionDays
-                },
-                staleThresholdDays: { [weak preferencesStore = self.preferencesStore] in
-                    preferencesStore?.staleThresholdDays
-                        ?? SnapshotCoordinator.defaultStaleThresholdDays
-                },
-                dismissedStaleApps: dismissedStaleApps
-            )
+            snapshotCoordinator = makeSnapshotCoordinator(store: snapshotStore)
         }
 
         coordinator = ScanCoordinator(viewModel: viewModel)
@@ -276,42 +264,68 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let service = ResetAllDataService(
             viewModel: viewModel,
             snapshotPathURL: url,
+            releaseSnapshotStore: { [weak self] in
+                self?.snapshotCoordinator = nil
+                self?.snapshotStore = nil
+            },
             onSnapshotStoreReinit: { [weak self] newStore in
-                self?.snapshotStore = newStore
-                if let self {
-                    self.snapshotCoordinator = SnapshotCoordinator(
-                        viewModel: self.viewModel,
-                        store: newStore,
-                        snapshotRetentionDays: {
-                            [weak preferencesStore = self.preferencesStore] in
-                            preferencesStore?.snapshotRetentionDays
-                                ?? SnapshotCoordinator.defaultSnapshotRetentionDays
-                        },
-                        staleThresholdDays: {
-                            [weak preferencesStore = self.preferencesStore] in
-                            preferencesStore?.staleThresholdDays
-                                ?? SnapshotCoordinator.defaultStaleThresholdDays
-                        },
-                        dismissedStaleApps: self.dismissedStaleApps
-                    )
-                }
+                guard let self else { return }
+                self.snapshotStore = newStore
+                self.snapshotCoordinator = self.makeSnapshotCoordinator(store: newStore)
             },
             weeklyDigestCoordinator: weeklyDigestCoordinator,
+            preferencesStore: preferencesStore,
+            dismissedDiffEntries: dismissedDiffEntries,
+            dismissedStaleApps: dismissedStaleApps,
             defaults: .standard,
             rescan: { [weak self] in
-                await self?.rescan()
-                await self?.weeklyDigestCoordinator.reconcileSchedule()
+                guard let self, !self.viewModel.scanInProgress else { return false }
+                await self.rescan()
+                return self.viewModel.tccScanError == nil
+                    && self.viewModel.btmScanError == nil
+                    && self.viewModel.launchAgentScanError == nil
             }
         )
-        let reinitSucceeded = await service.reset()
-        if !reinitSucceeded {
-            // Don't let scans write to a store we couldn't recreate.
+        switch await service.reset() {
+        case .completed(scanSucceeded: false):
+            Self.logger.error("Reset completed, but the fresh scan did not fully succeed")
+        case .completed(scanSucceeded: true):
+            break
+        case .failed(let phase, let message):
             snapshotStore = nil
             snapshotCoordinator = nil
             viewModel.snapshotStoreUnavailable = true
-            presentResetError(
-                message: String(localized: "Data was cleared, but Permission Pulse couldn't recreate its database. Restart the app to recover.")
+            Self.logger.error(
+                "Reset failed in phase \(String(describing: phase), privacy: .public): \(message, privacy: .public)"
             )
+            presentResetError(message: Self.resetFailureMessage(for: phase))
+        }
+    }
+
+    private func makeSnapshotCoordinator(store: SnapshotStore) -> SnapshotCoordinator {
+        SnapshotCoordinator(
+            viewModel: viewModel,
+            store: store,
+            snapshotRetentionDays: { [weak preferencesStore] in
+                preferencesStore?.snapshotRetentionDays
+                    ?? SnapshotCoordinator.defaultSnapshotRetentionDays
+            },
+            staleThresholdDays: { [weak preferencesStore] in
+                preferencesStore?.staleThresholdDays
+                    ?? SnapshotCoordinator.defaultStaleThresholdDays
+            },
+            dismissedStaleApps: dismissedStaleApps
+        )
+    }
+
+    private static func resetFailureMessage(for phase: ResetPhase) -> String {
+        switch phase {
+        case .deleteHistory:
+            return String(localized: "Permission Pulse couldn't remove its existing history. Restart the app, then try Reset All Data again.")
+        case .recreateHistory:
+            return String(localized: "Data was cleared, but Permission Pulse couldn't recreate its database. Restart the app to recover.")
+        case .cancelNotifications, .releaseHistory, .resetLiveStores, .clearDefaults, .rescan:
+            return String(localized: "Reset All Data couldn't finish. Restart Permission Pulse, then try again.")
         }
     }
 
