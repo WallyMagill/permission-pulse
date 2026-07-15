@@ -39,7 +39,7 @@ xcodebuild \
 
 ## Run
 
-From Xcode: ⌘R. A shield icon appears in the menu bar near the clock. Click it → "Open Permission Pulse" → the detail window opens. With Full Disk Access granted it shows live TCC + BTM data; without FDA those sections show an FDA prompt / empty state (Launch Agents and mic/cam work regardless). The app always uses the live scanners — mock data only appears in tests and SwiftUI previews, badged orange `Mock`.
+From Xcode: ⌘R. A shield icon appears in the menu bar near the clock. Click it → "Open Permission Pulse" → the detail window opens. With Full Disk Access granted it shows live TCC + BTM data; without FDA those sections show degraded, last-known, or no-history failure state as the evidence warrants (Launch Agents and mic/cam work regardless). The app always uses the live scanners — mock data only appears in tests and SwiftUI previews, badged orange `Mock`.
 
 From the CLI after a Debug build:
 
@@ -56,13 +56,13 @@ From Xcode: ⌘U runs the per-package suites and the app-level test target.
 From the CLI:
 
 ```bash
-# Package-level tests (run without the Xcode project) — 243 tests total
-swift test --package-path Packages/PermissionsCore       # 34
-swift test --package-path Packages/PermissionsScanners   # 59
-swift test --package-path Packages/PermissionsStore      # 35
-swift test --package-path Packages/PermissionsUI         # 115
+# Package-level tests (run without the Xcode project) — 280 tests total
+swift test --package-path Packages/PermissionsCore       # 40
+swift test --package-path Packages/PermissionsScanners   # 65
+swift test --package-path Packages/PermissionsStore      # 39
+swift test --package-path Packages/PermissionsUI         # 136
 
-# App build + app-target tests via xcodebuild — 65 tests
+# App build + app-target tests via xcodebuild — 74 tests
 PERMISSION_PULSE_TEST_MODE=1 xcodebuild test \
   -project PermissionPulse/PermissionPulse.xcodeproj \
   -scheme PermissionPulse \
@@ -70,7 +70,7 @@ PERMISSION_PULSE_TEST_MODE=1 xcodebuild test \
   -only-testing:PermissionPulseTests CODE_SIGNING_ALLOWED=NO
 ```
 
-Tests use **Swift Testing** (`import Testing`); the UITest target uses XCTest. The four package suites contain 243 tests and the app target contains 65 tests, for 308 automated tests total. These are fresh observed counts from the v0.7.2 Workstream B gate on macOS 26.5 with Xcode 26.5 / Swift 6.3.2, not estimates.
+Tests use **Swift Testing** (`import Testing`); the UITest target uses XCTest. The four package suites contain 280 tests and the app target contains 74 tests, for 354 automated tests total. These are fresh observed counts from the v0.7.2 Workstream C Task 7 gate on macOS 26.5 with Xcode 26.5 / Swift 6.3.2, not estimates.
 
 ### Runtime-correctness contract
 
@@ -78,6 +78,18 @@ Tests use **Swift Testing** (`import Testing`); the UITest target uses XCTest. T
 - Reset clears the live and persisted preference/dismissal stores, Permission Pulse-prefixed defaults, presentation state, owned notifications, and the SQLite main/WAL/SHM files. It recreates the migrated store only after deletion/default cleanup succeeds. Tests assert the exact `deleteHistory`, `clearDefaults`, and `recreateHistory` failure phases, scan/reset serialization, and that reset's default-disabled live digest state cannot recreate a pending weekly request.
 - A reset can complete its storage lifecycle even when the recovery scan fails. That outcome is tested and presented separately with Refresh guidance instead of being reported as either storage failure or full success.
 - Weekly digest copy counts TCC-only authorization changes. Enabled day/time edits persist immediately, debounce to the final edit, serialize scheduler mutations, cancel-and-replace the pending request, refresh the actual next-fire date, and retain the selected values if scheduling fails. The orange failure state exposes Retry.
+
+### Data-fidelity contract
+
+- Stable application identity is `bundle:<bundle-id>` when available, otherwise `path:<standardized-file-path>`. Installed bundle clients retain their resolved path for stale probing; separate path-only clients remain independently grouped and dismissed. Legacy raw bundle-ID stale dismissals migrate without losing the choice.
+- Every scanner returns `ScannerOutput(items:warnings:)`. Warning-free output is complete; warnings produce a visible degraded state with retained partial rows. A thrown failure preserves and labels last-known rows or explicitly reports that no successful history exists.
+- `SnapshotCoordinator` writes only when TCC, Launch Agents, and BTM are all complete. Degraded and failed scans never persist snapshots.
+- Schema v5 adds LaunchAgent `is_disabled` and a per-snapshot capture marker. v4 history is retained; disabled-only changes are ignored across a legacy boundary but detected between two v5 snapshots.
+- Recent Changes renders TCC authorization transitions with stable dismissal keys. The badge, empty state, search filter, accessibility summary, and weekly digest all count the same event set. Search covers every rendered row's relevant summary/app/service/label/path/developer/identifier fields; Overview intentionally has no search field.
+
+### Human FDA and hardware gate
+
+The automated suites use fixtures and mocks; before release, run `scripts/smoke-test.sh` and complete Workstream C items V1–V8 on a representative Mac. This includes complete user + system TCC coverage under FDA, a controlled one-source degraded read, an installed bundle-ID stale candidate, independent path-only clients, a visible TCC authorization transition, and VoiceOver announcements for degraded data, last-known data, and a failed scan with no successful history. Intel remains explicitly unverified unless the same release artifact and UI checklist run on real Intel hardware; the x86_64 slice alone is packaging evidence.
 
 The focused Workstream B gate is:
 
@@ -111,8 +123,8 @@ The packaging script produces a universal arm64 + x86_64, ad-hoc-signed, entitle
 
 GitHub Actions (`.github/workflows/ci.yml`) runs on every PR and every push to `main`. Both jobs use `macos-26` and `/Applications/Xcode_26.5.app/Contents/Developer`, and print the macOS, Xcode, and Swift versions:
 
-- **`packages` job** — runs all 243 tests in the four SwiftPM packages.
-- **`app` job** — runs all 65 app-target tests in isolated test mode, performs static analysis, proves `smoke-test.sh --keep` preserves live state, then builds and independently verifies the exact v0.7.2/build 12 archive from the clean checkout.
+- **`packages` job** — runs all 280 tests in the four SwiftPM packages.
+- **`app` job** — runs all 74 app-target tests in isolated test mode, performs static analysis, proves `smoke-test.sh --keep` preserves live state, then builds and independently verifies the exact v0.7.2/build 12 archive from the clean checkout.
 
 CI never tags, publishes, or uploads that verified artifact. GitHub Releases remains a separate manual boundary.
 

@@ -8,10 +8,11 @@ Four real risks. None are project-killers, all need active mitigation.
 
 **Likelihood:** Medium. Apple has changed the schema roughly once per major macOS version since Catalina.
 
-**Impact:** Permission Inbox shows blank or wrong data until we ship a fix. The rest of the app (LaunchAgents, mic/cam, What Changed against earlier snapshots) keeps working.
+**Impact:** Permission Inbox reports schema failure and, when available, keeps last-known rows labeled stale until we ship a fix. The rest of the app (LaunchAgents, mic/cam, What Changed against earlier snapshots) keeps working.
 
 **Mitigation:**
 - Probe the column list at read time. If we see unexpected columns or missing expected columns, fall back to "schema unknown" banner.
+- Model complete/degraded/failed coverage explicitly; never convert schema failure to a valid empty list, and never snapshot incomplete evidence.
 - Pin a known-good schema per macOS major in `PermissionsCore`.
 - Test fixture: a snapshot of the schema (sql dump of the `access` table structure) per macOS major. Re-record at each major's first beta.
 - Maintain a small "what macOS is this" diagnostic in the app's own log file so the user can paste it into a bug report.
@@ -22,11 +23,12 @@ Four real risks. None are project-killers, all need active mitigation.
 
 **Likelihood:** High that one of the two breaks per macOS major; low that both break simultaneously.
 
-**Impact:** "Background items" surface degrades or shows empty. LaunchAgents/Daemons still work.
+**Impact:** Background Items becomes explicitly degraded or failed. Last-known data remains labeled when available; LaunchAgents/Daemons still work independently.
 
 **Mitigation:**
-- `BTMScanner` protocol with two implementations (direct .btm parse + sfltool). Try direct first; fall back to sfltool only if user explicitly opts in.
-- Graceful empty state if both fail: "Background items enumeration unavailable on this macOS — we'll add support as soon as we figure out the new format."
+- `BTMScanner` protocol isolates the shipping direct `.btm` reader. The app does not ship an `sfltool` implementation, invoke `sudo`, or mutate the store.
+- Typed complete/degraded/failed availability prevents a scanner failure from looking like a valid empty result. Any degraded or failed domain suppresses snapshot persistence.
+- A future manual `sfltool` implementation remains an explicit product decision rather than an automatic fallback.
 - Pin the expected `.btm` filename version per macOS major.
 - Watch `objective-see/DumpBTM` for upstream fixes; we're not vendoring but the README is a useful smoke signal.
 

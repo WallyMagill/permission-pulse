@@ -67,7 +67,7 @@ Once per week at the user-selected local day and time (default Monday 09:00). Lo
 ## Stretch — possibly v1, more likely v1.1
 
 - **Export to JSON/Markdown** for the user's own records. (Not yet shipped.)
-- **Search and filter** in the Inbox. (Shipped — the detail window has a toolbar search that filters every page.)
+- **Search and filter** in the Inbox. (Shipped — contextual search covers Permissions, Launch Agents, Background Items, Recent Changes, and Stale Apps; Overview intentionally has no search affordance.)
 - **Quick revoke helper** showing the bundle ID for `tccutil reset` next to the System Settings deep link. (Not yet shipped.)
 
 ## Anti-scope — never in this product

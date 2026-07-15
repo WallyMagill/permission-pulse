@@ -110,14 +110,17 @@ Landed after the v0.7.1 tag; ships in the next release:
 - Thread B visual overhaul + Thread C native redesign: `OverviewPage`, non-modal inspectors replacing the detail sheets, native Settings-style Preferences tabs, singleton `Window(id:)` scenes. ✅
 - Export to JSON/Markdown via `NSSavePanel` (`ExportToolbar`) — pulled forward from the old v1.1 list. ✅
 - Launch at login via `SMAppService` (Preferences → General). ✅
-- TCC `auth_value` change tracking in the diff engine (snapshot schema v4). ✅
+- TCC `auth_value` change tracking in the diff engine and rendered authorization-transition rows, including consistent badge/search/dismiss/digest counts. ✅
+- Stable `bundle:` / `path:` identities, installed bundle-path retention, and migrated stale-app dismissals. ✅
+- Typed scanner coverage with complete/degraded/failed states, last-known failure behavior, and degraded snapshot suppression. ✅
+- Snapshot schema v5 persists LaunchAgent disabled state with a compatibility marker that preserves v4 history and suppresses false upgrade transitions. ✅
+- Section-aware search: Overview has no false affordance; Recent Changes searches every rendered TCC/BTM/LaunchAgent row kind. ✅
 - Notification banners present while the app is frontmost (`NotificationPresentationDelegate`). ✅
 
-## v0.8.x — Model fidelity (planned, deferred from v0.7.0)
+## v0.8.x — Remaining model fidelity (planned, deferred from v0.7.0)
 
 Carried over from `docs/17` "Deferred to later slices":
 
-- Render TCC `changed` rows in the UI (the diff engine now emits auth-value transitions; the UI still shows only added/removed).
 - Sub-service preservation for `.filesAndFolders` / Photos / Bluetooth (the five folder-scope TCC strings currently collapse to one grant).
 - Notification click → open Recent Changes (needs a `UNUserNotificationCenterDelegate` routing into `pendingDetailMode`).
 
@@ -132,7 +135,7 @@ Carried over from `docs/17` "Deferred to later slices":
 
 - Homebrew tap.
 - Localization for at least one non-English locale.
-- (Configurable stale-app threshold already shipped in v0.7.0; the detail window already has a toolbar search that filters every page.)
+- (Configurable stale-app threshold already shipped in v0.7.0; contextual search already covers every searchable detail section while Overview stays search-free.)
 
 ## v2 (speculative)
 

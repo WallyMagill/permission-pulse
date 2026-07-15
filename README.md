@@ -42,7 +42,7 @@ Builds are **unsigned / ad-hoc-signed** — there is no paid Apple Developer ID 
 ## Requirements
 
 - macOS 14.6 or later (the app's deployment target). Developed and tested only on **macOS 26 (Tahoe), Apple Silicon** — earlier macOS versions are untested.
-- Shipped as a universal binary (Apple Silicon + Intel); the Intel slice is built but untested.
+- Shipped as a universal binary (Apple Silicon + Intel); the Intel slice is built, but execution and UI behavior remain explicitly unverified without real Intel hardware.
 - No runtime dependencies beyond macOS itself.
 
 ## Build from source
@@ -52,6 +52,8 @@ See [`docs/07-build-and-test.md`](docs/07-build-and-test.md).
 ## How it works (one paragraph)
 
 Permission Pulse runs as a menu-bar app. On launch it scans (a) the TCC database for granted permissions, (b) `LaunchAgents` and `LaunchDaemons`, (c) BTM-managed background items, and (d) the system device-use APIs (CoreMediaIO + CoreAudio) for current mic/cam usage. Each daily snapshot is stored in a local SQLite database (via GRDB) under `~/Library/Application Support/com.wallymagill.permissionpulse/`. The "What Changed" view is a diff between today's snapshot and yesterday's (and last week's). Nothing leaves your machine.
+
+Scanner results are labeled **complete**, **degraded**, or **failed**. A degraded read keeps the evidence that was available, names the omitted source category, and never writes a historical snapshot. A failed read keeps and labels last-known data when any exists; a first-run failure says that no successful data is available instead of presenting an empty list as complete. Stable app identities use `bundle:<bundle-id>` or `path:<standardized-path>`, so installed bundle-ID apps can participate in stale review while separate path-only clients never collapse together. Snapshot schema v5 preserves v4 history, records whether LaunchAgent disabled state was captured, and suppresses false disabled-only transitions across the upgrade boundary. Recent Changes renders TCC authorization transitions alongside other changes, and its contextual search covers every rendered row kind; Overview intentionally has no search field.
 
 ## Runtime settings and recovery
 

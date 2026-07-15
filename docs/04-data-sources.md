@@ -35,8 +35,9 @@ Each scanner is documented as: **what it reads, which API, what permission is ne
 - Pin a schema version per macOS major in `PermissionsCore`.
 
 **Failure mode:**
-- FDA not granted → show a clear "Grant Full Disk Access to enable the Permission Inbox" empty state. The rest of the app continues to function.
-- Schema mismatch → show the banner above; still render columns we recognize.
+- One user/system database unreadable → return the other database's rows with a source warning; the page shows degraded data and the scan cannot write a snapshot.
+- Both databases unreadable (including FDA denial) → throw. Preserve and label last-known rows when available; otherwise show a clear no-successful-data state with the FDA action.
+- Schema mismatch → show the banner above and preserve prior successful rows rather than relabeling the error as permission denial.
 
 ---
 
@@ -61,8 +62,9 @@ Each scanner is documented as: **what it reads, which API, what permission is ne
 **Fragility:** Low. The plist format is stable; the file locations have been the same since Lion.
 
 **Failure mode:**
-- File permissions denied on a specific plist → log and skip; continue with the rest.
-- Malformed plist → log and skip.
+- An existing source directory unreadable → retain results from readable sources and return a source warning.
+- A malformed or unreadable entry → retain valid items and return a material omitted-entry warning/count.
+- A full scan failure preserves and labels last-known rows. Any warning or failure suppresses snapshot persistence.
 
 ---
 
@@ -91,8 +93,8 @@ Each scanner is documented as: **what it reads, which API, what permission is ne
 | any other UUID | `.perUser(uuid:)` |
 
 **Failure mode:**
-- FDA denied → BTM section shows the FDA empty-state CTA (mirroring the TCC pattern). Menu bar rolls TCC + BTM denials into a single "Full Disk Access needed" attention row.
-- Schema not recognized → schema-mismatch banner at the top of the detail window with the running macOS version interpolated; section shows "Background items unavailable — see the banner above".
+- FDA denied → BTM throws; the section preserves and labels last-known rows or shows an explicit no-history FDA state. Menu-bar attention rolls TCC + BTM denials into one action.
+- Schema not recognized → schema-mismatch banner with the running macOS version; prior successful rows remain labeled stale when available.
 
 **Deferred (later slices):**
 - `BTMScannerSFL` fallback (`sfltool dumpbtm` via user-invoked `sudo`) — deferred to a future v0.4.x slice if FDA-only proves insufficient. The shipping app must never invoke `sudo` automatically.
@@ -146,15 +148,15 @@ Each scanner is documented as: **what it reads, which API, what permission is ne
 
 | Table | Cols | Notes |
 |---|---|---|
-| `schema_version` | `version: INTEGER` | Single row, currently `4` at the Workstream B gate. Schema v5 is reserved for Data Fidelity Workstream C Task 6 and is not current yet. |
-| `snapshots` | `id: INTEGER PK AUTO`, `created_at: DOUBLE` | One row per write. |
-| `launch_agents` | snapshot_id FK CASCADE + label / source_directory / program_path / program_arguments_json / run_at_load / keep_alive | v2 migration. |
+| `schema_version` | `version: INTEGER` | Single row, currently `5`. |
+| `snapshots` | `id: INTEGER PK AUTO`, `created_at: DOUBLE`, `launch_agent_disabled_captured: INTEGER` | One row per write. Migrated v4 rows carry capture marker `0`; new v5 snapshots write `1`. |
+| `launch_agents` | snapshot_id FK CASCADE + label / source_directory / program_path / program_arguments_json / run_at_load / keep_alive / is_disabled | v2 table; v5 persists disabled state. Disabled-only comparison is enabled only when both snapshots carry the v5 marker. |
 | `tcc_grants` | snapshot_id FK CASCADE + service / bundle_id / display_name / bundle_path / last_modified / automation_target / auth_value | Created in v3; v4 adds persisted `auth_value` for authorization-transition diffs. |
 | `btm_items` | snapshot_id FK CASCADE + identifier / name / developer_name / bundle_identifier / team_identifier / type_kind + type_raw / disposition_kind + disposition_raw / scope_kind + scope_per_user_uuid / modification_date / parent_identifier | v3 migration. The `*_kind` TEXT + nullable `*_raw` INTEGER split round-trips associated-value enum cases. |
 
 **Where:** `~/Library/Application Support/com.wallymagill.permissionpulse/snapshots.db` via the `SnapshotPath` helper in the app target.
 
-**Write cadence:** Once per calendar day, gated by `UserDefaults` key `com.wallymagill.permissionpulse.lastSnapshotDate` (ISO string). Driven by `SnapshotCoordinator.onScanCompleted()` after a successful scan. If any scanner errored, the write is skipped — diff signal stays clean.
+**Write cadence:** Once per calendar day, gated by `UserDefaults` key `com.wallymagill.permissionpulse.lastSnapshotDate` (ISO string). Driven by `SnapshotCoordinator.onScanCompleted()` only when TCC, BTM, and LaunchAgent availability are all complete. Any degraded partial output or failed domain suppresses the whole write, so omitted evidence cannot become a false historical removal.
 
 **Retention:** Live user preference, 7–365 days (default 90). `SnapshotCoordinator` captures the current retention value once at each scan-completion boundary, so an edit applies to the next snapshot/prune pass and remains stable within that pass. `SnapshotStore.pruneSnapshots(olderThan:)` runs at each write; FK CASCADE drops child rows.
 
@@ -218,9 +220,9 @@ Each scanner is documented as: **what it reads, which API, what permission is ne
 
 | Source | Permission required | Fragility | If unavailable |
 |---|---|---|---|
-| TCC.db | FDA | High | Inbox shows "needs FDA" empty state (✅ implemented v0.3.0) |
+| TCC.db | FDA | High | one-source partial output is visibly degraded; full failure preserves last-known rows or reports no history |
 | LaunchAgents/Daemons (public) | None | Low | always works (✅ implemented v0.2.0) |
-| BTM (direct .btm) | FDA | Very high | section shows FDA empty state (✅ implemented v0.4.0) |
+| BTM (direct .btm) | FDA | Very high | failed read preserves labeled last-known rows or reports no successful data |
 | BTM (sfltool) | Manual sudo | High | deferred (would be a manual user step, not automation) |
 | Mic/Cam observation | None | Low | menu-bar icon stays at idle/error (✅ implemented v0.4.1) |
 | Last-launch date (hybrid) | None | Medium | app omitted from Stale review (✅ implemented v0.5.0) |

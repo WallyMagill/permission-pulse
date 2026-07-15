@@ -26,8 +26,8 @@ The first time the app actually runs, the detail window opens with a small Welco
 
 - What Permission Pulse does (three sentences).
 - That it is **read-only** and never modifies system data.
-- That the next step is granting Full Disk Access — and what we use it for ("we read the TCC database so we can list which apps you've granted permissions to").
-- A "Skip for now" button (the rest of the app works without FDA; only the Permission Inbox is degraded).
+- That the next step is granting Full Disk Access — and what we use it for (read-only access to the user/system TCC databases and the BTM background-items store).
+- A "Skip for now" button (Launch Agents and live mic/cam remain available without FDA; TCC and direct BTM coverage may degrade or fail).
 
 ### 3. Full Disk Access prompt
 
@@ -43,7 +43,7 @@ We do not auto-restart. The user restarts manually. (Auto-relaunch under Tahoe's
 
 | Permission | Used for | What we read | What we never do |
 |---|---|---|---|
-| Full Disk Access | TCC.db reads (system + user) | The `access` table | Modify, copy, or transmit the file |
+| Full Disk Access | User/system TCC and direct BTM reads | TCC `access` rows and the highest-versioned `BackgroundItems-v*.btm` archive | Modify, copy, transmit, or invoke `sudo` for either source |
 
 We never request:
 - Microphone, Camera (we observe usage state via public APIs, we don't open devices).
@@ -57,28 +57,21 @@ We never request:
 If FDA is not granted, the app still runs. The following surfaces remain functional:
 
 - LaunchAgents/Daemons (no FDA required).
-- BTM via `sfltool` fallback (user-driven sudo only; not auto).
 - Mic/Cam usage dot.
 - "What Changed" comparing snapshots from before FDA was revoked.
 
 Surfaces that degrade:
 
-- Permission Inbox shows an empty state with a clear "Grant Full Disk Access to view permissions" banner and a button to re-open the System Settings pane.
-- Stale App Review hides categories that depend on TCC data (Accessibility, Screen Recording, FDA itself).
+- Permission Inbox and direct BTM coverage can be unavailable because their protected sources require FDA. Permission Pulse never invokes `sudo` and does not ship an `sfltool` fallback.
+- If one user/system TCC source succeeds and another fails, the readable rows remain visible under a **Degraded data** banner naming the omitted source category. If all relevant sources fail, last-known rows remain visible and are labeled stale; with no prior success, the page explicitly says no successful scan is available.
+- Stale App Review is recomputed only after a fully complete scan. During degraded or failed coverage, the previous computed list is not replaced from partial evidence.
+- A degraded or failed domain suppresses the entire daily snapshot, so incomplete coverage cannot create false historical removals.
 
 ## Sandbox and entitlements
 
 App is **not sandboxed**. The sandbox forbids reading `/Library/Application Support/com.apple.TCC/TCC.db` even with FDA.
 
-Entitlements (`PermissionPulse.entitlements`):
-
-- `com.apple.security.app-sandbox` → `false`
-- `com.apple.security.cs.allow-jit` → `false` (Hardened Runtime on, no JIT needed)
-- `com.apple.security.cs.disable-library-validation` → `false`
-- `com.apple.security.files.user-selected.read-write` → not needed for v1
-- `com.apple.security.network.client` → `false` for v1 (no network access)
-
-Hardened Runtime is on. Library validation is on. We sign ad-hoc (`-`) until a Developer ID lands.
+There is no entitlements file and the release verifier rejects any embedded entitlement, including `com.apple.security.get-task-allow`. Hardened Runtime is on. Library validation is on. We sign ad hoc (`-`) until a Developer ID lands.
 
 ## What the user can do without launching the app
 

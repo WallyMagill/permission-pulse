@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# scripts/smoke-test.sh — automated v0.7.0 smoke-test runner.
+# scripts/smoke-test.sh — automated v0.7.2 smoke-test runner.
 #
 # Verifies everything that can be checked without a human. Drives:
 #   - clean-state wipe (Permission Pulse's local data only; real TCC.db
@@ -202,6 +202,31 @@ if [[ -f "$DB" ]]; then
         fi
     done
     [[ $SCHEMA_OK -eq 1 ]] && pass "snapshots.db schema present (snapshots, tcc_grants, btm_items, launch_agents)"
+    SCHEMA_VERSION=$(sqlite3 "$DB" "SELECT version FROM schema_version LIMIT 1;" 2>&1)
+    if [[ "$SCHEMA_VERSION" == "5" ]]; then
+        pass "snapshots.db schema version = 5"
+    else
+        fail "snapshots.db schema version = $SCHEMA_VERSION (expected 5)"
+    fi
+    SNAPSHOT_COLUMNS=$(sqlite3 "$DB" "PRAGMA table_info(snapshots);" 2>&1)
+    if echo "$SNAPSHOT_COLUMNS" | grep -Fq '|launch_agent_disabled_captured|'; then
+        pass "snapshots.launch_agent_disabled_captured is present"
+    else
+        fail "snapshots missing launch_agent_disabled_captured"
+    fi
+    LA_COLUMNS=$(sqlite3 "$DB" "PRAGMA table_info(launch_agents);" 2>&1)
+    if echo "$LA_COLUMNS" | grep -Fq '|is_disabled|'; then
+        pass "launch_agents.is_disabled is present"
+    else
+        fail "launch_agents missing is_disabled"
+    fi
+    INVALID_CAPTURE_MARKERS=$(sqlite3 "$DB" \
+        "SELECT COUNT(*) FROM snapshots WHERE launch_agent_disabled_captured IS NULL OR launch_agent_disabled_captured NOT IN (0, 1);" 2>&1)
+    if [[ "$INVALID_CAPTURE_MARKERS" == "0" ]]; then
+        pass "LaunchAgent capture markers are valid compatibility values"
+    else
+        fail "snapshots.db has $INVALID_CAPTURE_MARKERS invalid LaunchAgent capture marker(s)"
+    fi
     SNAP_COUNT=$(sqlite3 "$DB" "SELECT COUNT(*) FROM snapshots;" 2>&1)
     pass "snapshots.db row count: $SNAP_COUNT"
 else
@@ -370,6 +395,36 @@ passed --no-launch). Run through them and report any deviations.
   # U8. Settings: 4 tabs render; launch-at-login toggles a Login Items entry; Reset confirms via alert and wipes.
   # U9. Welcome: both steps; Open System Settings lands on Full Disk Access.
   # U10. All of the above in light + dark; large Dynamic Type in window; clamped in dropdown; Reduce Transparency + Reduce Motion honored.
+
+  # Workstream C — data fidelity, FDA, and coverage truth
+  V1. Complete TCC coverage. On an FDA-enabled representative Mac, Refresh and
+      confirm both user and system permission records are represented and the
+      Permissions banner says "Complete data" with the current timestamp.
+  V2. Controlled degraded scan. In a controlled test account, make exactly one
+      user/system TCC source unreadable without editing either database. Refresh:
+      retained rows stay visible, the omitted source is named, and no daily
+      snapshot is written for that scan.
+  V3. Bundle-ID stale candidate. Use an installed bundle-ID app with old
+      Spotlight/file evidence; confirm its resolved application path lets it
+      appear in Stale Apps after the configured threshold.
+  V4. Independent path-only identities. Exercise two client_type=1 application
+      paths with no bundle ID; both rows remain independent, and skipping one
+      stale candidate does not hide the other.
+  V5. TCC authorization transition. Between two complete snapshots, change an
+      authorization from Allowed to Limited (or back). Recent Changes must show
+      the before → after row; badge count, search, dismiss/snooze, and weekly
+      digest total must all include that same event.
+  V6. VoiceOver coverage states. With VoiceOver on, verify the domain banners
+      announce "degraded data" for partial evidence and "last-known data" with
+      its timestamp after a later full scan failure; neither state may rely on
+      color or icon alone.
+  V7. VoiceOver no-history failure. In an isolated profile with no successful
+      history, force a scanner failure and confirm VoiceOver announces that the
+      scan failed and "no successful history" is available; no empty result may
+      be presented as a successful scan.
+  V8. Intel execution remains unverified unless this exact checklist and the
+      release artifact are run on real Intel hardware. A universal x86_64 slice
+      proves packaging only, not runtime/UI behavior.
 
 EOF
 
