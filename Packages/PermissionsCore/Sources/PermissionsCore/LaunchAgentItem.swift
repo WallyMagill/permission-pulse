@@ -22,11 +22,9 @@ public struct LaunchAgentItem: Sendable, Hashable, Identifiable {
     public let runAtLoad: Bool
     public let keepAlive: Bool
     // launchd `Disabled` key. A disabled agent is registered but NOT loaded by
-    // launchd; surfaced in the detail view so it isn't mistaken for active.
-    // NOT persisted in snapshots this slice (live-display only): the store reads
-    // it back as `false`. It participates in Hashable/Equatable, so do NOT compare
-    // a live-scan item against a store-read item by value — diffs run store-vs-
-    // store (both false), so there's no diff noise today. (D4)
+    // launchd; persisted in schema-v5 snapshots and surfaced in the detail view
+    // so it isn't mistaken for active. Legacy snapshots did not capture this
+    // field, so store diffing compares it only between two v5 snapshots.
     public let isDisabled: Bool
 
     public init(

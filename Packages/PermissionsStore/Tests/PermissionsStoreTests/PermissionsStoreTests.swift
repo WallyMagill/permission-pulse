@@ -7,20 +7,20 @@ import PermissionsCore
     @Test func inMemoryStoreOpensAndMigratesToLatestSchema() throws {
         let store = try SnapshotStore.inMemory()
         let version = try store.schemaVersion()
-        #expect(version == 4)
+        #expect(version == 5)
     }
 
     @Test func inMemoryStoreIsIdempotentOnReopen() throws {
         // Each in-memory store is independent; re-opening returns a fresh schema.
         let a = try SnapshotStore.inMemory()
         let b = try SnapshotStore.inMemory()
-        #expect(try a.schemaVersion() == 4)
-        #expect(try b.schemaVersion() == 4)
+        #expect(try a.schemaVersion() == 5)
+        #expect(try b.schemaVersion() == 5)
     }
 
-    @Test func authValueRoundTripsAndSchemaIsV4() async throws {
+    @Test func authValueRoundTripsAndSchemaIsV5() async throws {
         let store = try SnapshotStore.inMemory()
-        #expect(try store.schemaVersion() == 4)
+        #expect(try store.schemaVersion() == 5)
         let limited = PermissionGrant(
             service: .photos,
             app: AppIdentity(bundleID: "com.example.photoapp", displayName: "PhotoApp"),

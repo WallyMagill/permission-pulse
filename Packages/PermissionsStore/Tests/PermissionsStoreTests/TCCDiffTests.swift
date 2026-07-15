@@ -6,7 +6,7 @@ import PermissionsCore
 @Suite struct TCCDiffTests {
     @Test func migrationV3CreatesTCCGrantsTable() async throws {
         let store = try SnapshotStore.inMemory()
-        #expect(try store.schemaVersion() == 4)
+        #expect(try store.schemaVersion() == 5)
         let id = try await store.writeTCCGrantsSnapshot([])
         let grants = try await store.readTCCGrants(snapshotID: id)
         #expect(grants.isEmpty)

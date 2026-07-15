@@ -90,6 +90,18 @@ public struct SnapshotStore: Sendable {
             try db.execute(sql: "UPDATE schema_version SET version = 4")
         }
 
+        migrator.registerMigration("v5") { db in
+            try db.alter(table: "launch_agents") { table in
+                table.add(column: "is_disabled", .integer).notNull().defaults(to: false)
+            }
+            try db.alter(table: "snapshots") { table in
+                table.add(column: "launch_agent_disabled_captured", .integer)
+                    .notNull()
+                    .defaults(to: false)
+            }
+            try db.execute(sql: "UPDATE schema_version SET version = 5")
+        }
+
         try migrator.migrate(queue)
     }
 
@@ -160,7 +172,7 @@ public struct SnapshotStore: Sendable {
         try await dbQueue.read { db in
             let rows = try Row.fetchAll(db, sql: """
                 SELECT label, source_directory, program_path,
-                       program_arguments_json, run_at_load, keep_alive
+                       program_arguments_json, run_at_load, keep_alive, is_disabled
                 FROM launch_agents
                 WHERE snapshot_id = ?
                 ORDER BY source_directory, label
@@ -257,10 +269,14 @@ public struct SnapshotStore: Sendable {
     ) async throws -> LaunchAgentsDiff {
         let before = try await readLaunchAgents(snapshotID: from)
         let after = try await readLaunchAgents(snapshotID: to)
+        let compareDisabled = try await launchAgentDisabledCaptured(from: from, to: to)
         return Self.computeDiff(
             before: before,
             after: after,
             identity: Self.launchAgentIdentityKey,
+            equivalent: {
+                Self.launchAgentsEquivalent($0, $1, compareDisabled: compareDisabled)
+            },
             wrap: { LaunchAgentsDiff(added: $0, removed: $1, changed: $2) }
         )
     }
@@ -275,6 +291,7 @@ public struct SnapshotStore: Sendable {
             before: before,
             after: after,
             identity: Self.tccGrantIdentityKey,
+            equivalent: { $0 == $1 },
             wrap: { TCCGrantsDiff(added: $0, removed: $1, changed: $2) }
         )
     }
@@ -289,6 +306,7 @@ public struct SnapshotStore: Sendable {
             before: before,
             after: after,
             identity: Self.btmItemIdentityKey,
+            equivalent: { $0 == $1 },
             wrap: { BTMItemsDiff(added: $0, removed: $1, changed: $2) }
         )
     }
@@ -297,7 +315,10 @@ public struct SnapshotStore: Sendable {
 
     private static func insertSnapshot(db: Database, date: Date) throws -> Int64 {
         try db.execute(
-            sql: "INSERT INTO snapshots (created_at) VALUES (?)",
+            sql: """
+                INSERT INTO snapshots (created_at, launch_agent_disabled_captured)
+                VALUES (?, 1)
+                """,
             arguments: [date]
         )
         return db.lastInsertedRowID
@@ -313,8 +334,8 @@ public struct SnapshotStore: Sendable {
             try db.execute(sql: """
                 INSERT INTO launch_agents
                 (snapshot_id, label, source_directory, program_path,
-                 program_arguments_json, run_at_load, keep_alive)
-                VALUES (?, ?, ?, ?, ?, ?, ?)
+                 program_arguments_json, run_at_load, keep_alive, is_disabled)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
                 """, arguments: [
                     snapshotID,
                     item.label,
@@ -323,6 +344,7 @@ public struct SnapshotStore: Sendable {
                     argsJSON,
                     item.runAtLoad,
                     item.keepAlive,
+                    item.isDisabled,
                 ])
         }
     }
@@ -395,15 +417,14 @@ public struct SnapshotStore: Sendable {
         }
         let argsJSON: String = row["program_arguments_json"]
         let arguments = try decodeArguments(argsJSON)
-        // isDisabled is intentionally not persisted (live-display only, D4),
-        // so store reads always default it to false.
         return LaunchAgentItem(
             label: label,
             sourceDirectory: source,
             programPath: row["program_path"],
             programArguments: arguments,
             runAtLoad: row["run_at_load"],
-            keepAlive: row["keep_alive"]
+            keepAlive: row["keep_alive"],
+            isDisabled: row["is_disabled"]
         )
     }
 
@@ -460,6 +481,7 @@ public struct SnapshotStore: Sendable {
         before: [Item],
         after: [Item],
         identity: (Item) -> String,
+        equivalent: (Item, Item) -> Bool,
         wrap: ([Item], [Item], [DomainChange<Item>]) -> Diff
     ) -> Diff where Item: Sendable & Hashable {
         // Collapse on duplicate identity keys instead of trapping. Two TCC
@@ -488,7 +510,7 @@ public struct SnapshotStore: Sendable {
         let changed: [DomainChange<Item>] = shared.compactMap { key in
             let b = beforeByKey[key]!
             let a = afterByKey[key]!
-            return b == a ? nil : DomainChange(before: b, after: a)
+            return equivalent(b, a) ? nil : DomainChange(before: b, after: a)
         }
         return wrap(added, removed, changed)
     }
@@ -497,6 +519,41 @@ public struct SnapshotStore: Sendable {
 
     private static func launchAgentIdentityKey(_ item: LaunchAgentItem) -> String {
         "\(item.sourceDirectory.rawValue)|\(item.label)"
+    }
+
+    private func launchAgentDisabledCaptured(
+        from beforeSnapshotID: SnapshotID,
+        to afterSnapshotID: SnapshotID
+    ) async throws -> Bool {
+        try await dbQueue.read { db in
+            for snapshotID in [beforeSnapshotID, afterSnapshotID] {
+                let marker = try Int.fetchOne(
+                    db,
+                    sql: """
+                        SELECT launch_agent_disabled_captured
+                        FROM snapshots
+                        WHERE id = ?
+                        """,
+                    arguments: [snapshotID.rawValue]
+                ) ?? 0
+                guard marker == 1 else { return false }
+            }
+            return true
+        }
+    }
+
+    private static func launchAgentsEquivalent(
+        _ lhs: LaunchAgentItem,
+        _ rhs: LaunchAgentItem,
+        compareDisabled: Bool
+    ) -> Bool {
+        lhs.label == rhs.label
+            && lhs.sourceDirectory == rhs.sourceDirectory
+            && lhs.programPath == rhs.programPath
+            && lhs.programArguments == rhs.programArguments
+            && lhs.runAtLoad == rhs.runAtLoad
+            && lhs.keepAlive == rhs.keepAlive
+            && (!compareDisabled || lhs.isDisabled == rhs.isDisabled)
     }
 
     private static func tccGrantIdentityKey(_ grant: PermissionGrant) -> String {
