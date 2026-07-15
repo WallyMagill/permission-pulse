@@ -10,6 +10,7 @@ enum DiffWindowLabel: Sendable {
 struct DiffTabView: View {
     let diff: SnapshotDiffs?
     let windowLabel: DiffWindowLabel
+    var searchText: String = ""
     var snapshotStoreUnavailable: Bool = false
     var diffUnavailable: Bool = false
     @Environment(DismissedDiffEntryStore.self) private var dismissedStore
@@ -39,13 +40,18 @@ struct DiffTabView: View {
                 description: Text(String(localized: "A problem reading the local database prevented computing changes. Try Refresh."))
             )
         } else if let diff {
-            let tccVisible = filtered(tccRows(diff.tcc), now: now)
-            let btmVisible = filtered(btmRows(diff.btm), now: now)
-            let laVisible = filtered(launchAgentRows(diff.launchAgents), now: now)
+            let tccRows = tccRows(diff.tcc)
+            let btmRows = btmRows(diff.btm)
+            let launchAgentRows = launchAgentRows(diff.launchAgents)
+            let tccVisible = visibleRows(tccRows, now: now)
+            let btmVisible = visibleRows(btmRows, now: now)
+            let laVisible = visibleRows(launchAgentRows, now: now)
             let totalVisible = tccVisible.count + btmVisible.count + laVisible.count
 
             if totalVisible > 0 {
                 diffList(tccVisible: tccVisible, btmVisible: btmVisible, laVisible: laVisible)
+            } else if !searchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                ContentUnavailableView.search(text: searchText)
             } else {
                 ContentUnavailableView(
                     emptyContentHeadline,
@@ -134,13 +140,17 @@ struct DiffTabView: View {
         }
     }
 
-    private func filtered(_ rows: [ChangeRow.Kind], now: Date) -> [ChangeRow.Kind] {
-        rows.filter { !dismissedStore.isDismissed(key: DiffEntryKey.key(for: $0), asOf: now) }
+    private func visibleRows(_ rows: [ChangeRow.Kind], now: Date) -> [ChangeRow.Kind] {
+        let undismissed = rows.filter {
+            !dismissedStore.isDismissed(key: DiffEntryKey.key(for: $0), asOf: now)
+        }
+        return ChangeRow.filtered(undismissed, searchText: searchText)
     }
 
     private func tccRows(_ diff: TCCGrantsDiff) -> [ChangeRow.Kind] {
         diff.added.map { ChangeRow.Kind.granted($0) }
             + diff.removed.map { ChangeRow.Kind.revoked($0) }
+            + diff.changed.map { ChangeRow.Kind.permissionChanged($0) }
     }
 
     private func btmRows(_ diff: BTMItemsDiff) -> [ChangeRow.Kind] {

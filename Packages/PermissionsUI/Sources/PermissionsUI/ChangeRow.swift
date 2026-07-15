@@ -8,6 +8,7 @@ struct ChangeRow: View {
     enum Kind: Identifiable {
         case granted(PermissionGrant)
         case revoked(PermissionGrant)
+        case permissionChanged(DomainChange<PermissionGrant>)
         case btmAdded(BTMItem)
         case btmRemoved(BTMItem)
         case btmDispositionFlipped(DomainChange<BTMItem>)
@@ -65,7 +66,7 @@ struct ChangeRow: View {
                 .ppFont(.body)
                 .foregroundStyle(.red)
                 .accessibilityHidden(true)
-        case .btmDispositionFlipped, .launchAgentFlipped:
+        case .permissionChanged, .btmDispositionFlipped, .launchAgentFlipped:
             Image(systemName: "arrow.triangle.2.circlepath.circle.fill")
                 .ppFont(.body)
                 .foregroundStyle(.orange)
@@ -83,6 +84,10 @@ struct ChangeRow: View {
             return String(localized: "Granted \(g.service.displayName) to \(g.app.displayName)")
         case .revoked(let g):
             return String(localized: "Revoked \(g.service.displayName) from \(g.app.displayName)")
+        case .permissionChanged(let change):
+            let from = authorizationLabel(change.before.authValue)
+            let to = authorizationLabel(change.after.authValue)
+            return String(localized: "Permission changed: \(change.after.service.displayName) for \(change.after.app.displayName) (\(from) → \(to))")
         case .btmAdded(let i):
             return String(localized: "New background item: \(i.name)")
         case .btmRemoved(let i):
@@ -97,6 +102,70 @@ struct ChangeRow: View {
             return String(localized: "Removed launch agent: \(i.label)")
         case .launchAgentFlipped(let change):
             return launchAgentFlipDescription(change)
+        }
+    }
+
+    static func searchText(for kind: Kind) -> String {
+        let details: [String]
+        switch kind {
+        case .granted(let grant), .revoked(let grant):
+            details = permissionSearchFields(grant)
+        case .permissionChanged(let change):
+            details = permissionSearchFields(change.before) + permissionSearchFields(change.after)
+        case .btmAdded(let item), .btmRemoved(let item):
+            details = btmSearchFields(item)
+        case .btmDispositionFlipped(let change):
+            details = btmSearchFields(change.before) + btmSearchFields(change.after)
+        case .launchAgentAdded(let item), .launchAgentRemoved(let item):
+            details = launchAgentSearchFields(item)
+        case .launchAgentFlipped(let change):
+            details = launchAgentSearchFields(change.before) + launchAgentSearchFields(change.after)
+        }
+        return ([summary(for: kind)] + details).joined(separator: " ")
+    }
+
+    static func filtered(_ rows: [Kind], searchText queryText: String) -> [Kind] {
+        let query = queryText.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !query.isEmpty else { return rows }
+        return rows.filter { searchText(for: $0).localizedCaseInsensitiveContains(query) }
+    }
+
+    private static func permissionSearchFields(_ grant: PermissionGrant) -> [String] {
+        [
+            grant.app.displayName,
+            grant.app.bundleID,
+            grant.app.bundlePath?.path(percentEncoded: false),
+            grant.service.displayName,
+            grant.service.rawValue,
+            grant.automationTarget,
+        ].compactMap { $0 }
+    }
+
+    private static func btmSearchFields(_ item: BTMItem) -> [String] {
+        [
+            item.name,
+            item.developerName,
+            item.identifier,
+            item.bundleIdentifier,
+            item.teamIdentifier,
+            item.parentIdentifier,
+        ].compactMap { $0 }
+    }
+
+    private static func launchAgentSearchFields(_ item: LaunchAgentItem) -> [String] {
+        [
+            item.label,
+            item.sourceDirectory.rawValue,
+            item.sourceDirectory.path,
+            item.programPath,
+        ].compactMap { $0 } + item.programArguments
+    }
+
+    private static func authorizationLabel(_ value: Int) -> String {
+        switch value {
+        case 2: String(localized: "Allowed")
+        case 3: String(localized: "Limited")
+        default: String(localized: "Value \(value)")
         }
     }
 

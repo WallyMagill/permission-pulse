@@ -5,6 +5,15 @@ import PermissionsStore
 @testable import PermissionsUI
 
 @Suite @MainActor struct AppViewModelAccessibilityTests {
+    @Test func searchVisibilityMatchesSectionCapabilities() {
+        #expect(!SidebarItem.overview.showsSearch)
+        #expect(SidebarItem.permissions.showsSearch)
+        #expect(SidebarItem.launchAgents.showsSearch)
+        #expect(SidebarItem.backgroundItems.showsSearch)
+        #expect(SidebarItem.recentChanges.showsSearch)
+        #expect(SidebarItem.staleApps.showsSearch)
+    }
+
     @Test func defaultLabelIsAppName() {
         #expect(AppViewModel().menuBarAccessibilityLabel == String(localized: "Permission Pulse"))
     }

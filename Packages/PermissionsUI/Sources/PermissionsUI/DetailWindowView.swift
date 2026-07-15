@@ -26,9 +26,8 @@ public struct DetailWindowView: View {
 
     public var body: some View {
         NavigationSplitView {
-            DetailSidebar(selection: $section)
+            searchableSidebar
                 .navigationSplitViewColumnWidth(min: 200, ideal: 220, max: 280)
-                .searchable(text: $searchText, placement: .sidebar, prompt: searchPrompt)
         } detail: {
             detailPage
                 .navigationTitle(String(localized: "Permission Pulse"))
@@ -64,6 +63,16 @@ public struct DetailWindowView: View {
         }
         .onChange(of: inspectorSelection) { _, newValue in
             if newValue != nil { isInspectorPresented = true }
+        }
+    }
+
+    @ViewBuilder
+    private var searchableSidebar: some View {
+        if (section ?? .overview).showsSearch {
+            DetailSidebar(selection: $section)
+                .searchable(text: $searchText, placement: .sidebar, prompt: searchPrompt)
+        } else {
+            DetailSidebar(selection: $section)
         }
     }
 
@@ -124,7 +133,7 @@ public struct DetailWindowView: View {
         case .permissions: PermissionsDetailPage(searchText: searchText, selection: $inspectorSelection)
         case .launchAgents: LaunchAgentsDetailPage(searchText: searchText, selection: $inspectorSelection)
         case .backgroundItems: BackgroundItemsDetailPage(searchText: searchText, selection: $inspectorSelection)
-        case .recentChanges: RecentChangesDetailPage()
+        case .recentChanges: RecentChangesDetailPage(searchText: searchText)
         case .staleApps: StaleAppsDetailPage(searchText: searchText)
         }
     }
@@ -151,6 +160,10 @@ public struct DetailWindowView: View {
         }
         viewModel.pendingRoute = nil
     }
+}
+
+extension SidebarItem {
+    var showsSearch: Bool { self != .overview }
 }
 
 // MARK: - Sidebar (native source list)
@@ -551,6 +564,7 @@ private struct BTMListRow: View {
 private struct RecentChangesDetailPage: View {
     @Environment(AppViewModel.self) private var viewModel
     @State private var window: RecentWindow = .yesterday
+    let searchText: String
 
     var body: some View {
         // The diff content (a List or ContentUnavailableView) is the detail-pane
@@ -582,6 +596,7 @@ private struct RecentChangesDetailPage: View {
             DiffTabView(
                 diff: viewModel.latestDiffYesterday,
                 windowLabel: .yesterday,
+                searchText: searchText,
                 snapshotStoreUnavailable: viewModel.snapshotStoreUnavailable,
                 diffUnavailable: viewModel.diffUnavailable
             )
@@ -589,6 +604,7 @@ private struct RecentChangesDetailPage: View {
             DiffTabView(
                 diff: viewModel.latestDiffWeek,
                 windowLabel: .lastWeek,
+                searchText: searchText,
                 snapshotStoreUnavailable: viewModel.snapshotStoreUnavailable,
                 diffUnavailable: viewModel.diffUnavailable
             )

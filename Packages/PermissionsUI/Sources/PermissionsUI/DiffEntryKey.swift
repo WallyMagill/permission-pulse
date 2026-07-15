@@ -18,6 +18,8 @@ enum DiffEntryKey {
             return "tcc-granted|\(g.identityKey)"
         case .revoked(let g):
             return "tcc-revoked|\(g.identityKey)"
+        case .permissionChanged(let change):
+            return "tcc-changed|\(change.after.identityKey)|\(change.before.authValue)-\(change.after.authValue)"
         case .btmAdded(let i):
             return "btm-added|\(i.identifier)"
         case .btmRemoved(let i):
