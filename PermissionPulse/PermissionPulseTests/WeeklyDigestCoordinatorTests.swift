@@ -166,14 +166,80 @@ import PermissionsUI
 
         vm.scheduleDidChange()
         await scheduler.waitUntilScheduleStarted()
-        await vm.handleDigestToggle(to: false)
+        vm.digestEnabled = false
+        let disabling = Task { @MainActor in
+            await vm.handleDigestToggle(to: false)
+        }
         await scheduler.resumeSchedule()
         let result = await resultProbe.waitForResult()
+        await disabling.value
 
         #expect(result == .disabled)
         #expect(await scheduler.pendingIdentifiers().isEmpty)
         #expect(vm.authorizationHint == .disabled)
         #expect(vm.nextWeeklyFireDate == nil)
+    }
+
+    @Test func newerEnabledToggleWaitsForOlderCleanupAndOwnsFinalRequest() async throws {
+        let defaults = UserDefaults(suiteName: "digest-supersession-test-\(UUID().uuidString)")!
+        let store = PreferencesStore(defaults: defaults)
+        store.digestEnabled = true
+        store.digestWeekday = 2
+        store.digestHour = 9
+        store.digestMinute = 0
+        let scheduler = TwoReconciliationScheduler()
+        let queueProbe = MutationQueueProbe()
+        let coordinator = WeeklyDigestCoordinator(
+            viewModel: AppViewModel(),
+            preferencesStore: store,
+            scheduler: scheduler,
+            onScheduleMutationQueued: { queueProbe.recordQueuedMutation() }
+        )
+        let vm = PreferencesViewModel(
+            store: store,
+            onDigestToggle: { turnOn in
+                switch await coordinator.handleAuthorizationToggle(turnOn: turnOn) {
+                case .disabled: return .disabled
+                case .scheduled: return .scheduled(nextFireDescription: "")
+                case .notAuthorized: return .denied
+                case .failed(let message): return .failed(message)
+                }
+            },
+            onDigestScheduleChange: {
+                switch await coordinator.reconcileSchedule() {
+                case .disabled: return .disabled
+                case .scheduled: return .scheduled(nextFireDescription: "")
+                case .notAuthorized: return .denied
+                case .failed(let message): return .failed(message)
+                }
+            },
+            onFetchNextFireDate: { await coordinator.nextWeeklyFireDate() },
+            scheduleDebounce: .zero
+        )
+
+        vm.scheduleDidChange()
+        await scheduler.waitUntilFirstScheduleStarted()
+
+        store.digestWeekday = 6
+        store.digestHour = 17
+        store.digestMinute = 45
+        let newer = Task { @MainActor in
+            await vm.handleDigestToggle(to: true)
+        }
+        await queueProbe.waitForQueuedMutationCount(2)
+        await scheduler.resumeFirstSchedule()
+
+        await newer.value
+        let pending = await scheduler.pendingRequests()
+        let actualNextFire = await coordinator.nextWeeklyFireDate()
+
+        #expect(pending.count == 1)
+        #expect(pending.first?.weekday == 6)
+        #expect(pending.first?.hour == 17)
+        #expect(pending.first?.minute == 45)
+        #expect(vm.authorizationHint == .scheduled(nextFireDescription: ""))
+        #expect(vm.nextWeeklyFireDate == pending.first?.nextFire)
+        #expect(actualNextFire == pending.first?.nextFire)
     }
 
     @Test func composeEmptyWeekReturnsHeartbeatString() {
@@ -448,5 +514,95 @@ private actor ScheduleResultProbe {
     func waitForResult() async -> WeeklyDigestCoordinator.ScheduleResult {
         if let result { return result }
         return await withCheckedContinuation { waiters.append($0) }
+    }
+}
+
+@MainActor
+private final class MutationQueueProbe {
+    private var count = 0
+    private var waiters: [(count: Int, continuation: CheckedContinuation<Void, Never>)] = []
+
+    func recordQueuedMutation() {
+        count += 1
+        let ready = waiters.filter { count >= $0.count }
+        waiters.removeAll { count >= $0.count }
+        ready.forEach { $0.continuation.resume() }
+    }
+
+    func waitForQueuedMutationCount(_ target: Int) async {
+        guard count < target else { return }
+        await withCheckedContinuation { waiters.append((target, $0)) }
+    }
+}
+
+private actor TwoReconciliationScheduler: WeeklyDigestScheduler {
+    struct PendingRequest: Sendable, Equatable {
+        let weekday: Int
+        let hour: Int
+        let minute: Int
+        let nextFire: Date
+    }
+
+    private var pending: [String: PendingRequest] = [:]
+    private var scheduleCallCount = 0
+    private var firstScheduleStarted = false
+    private var startWaiters: [CheckedContinuation<Void, Never>] = []
+    private var firstScheduleContinuation: CheckedContinuation<Void, Never>?
+
+    func currentAuthorizationStatus() async -> DigestAuthorizationStatus { .authorized }
+
+    func requestAuthorization() async throws -> DigestAuthorizationStatus { .authorized }
+
+    func scheduleWeekly(
+        identifier: String,
+        weekday: Int,
+        hour: Int,
+        minute: Int,
+        title: String,
+        body: String
+    ) async throws {
+        scheduleCallCount += 1
+        if scheduleCallCount == 1 {
+            firstScheduleStarted = true
+            startWaiters.forEach { $0.resume() }
+            startWaiters.removeAll()
+            await withCheckedContinuation { firstScheduleContinuation = $0 }
+        }
+        let nextFire = Date(
+            timeIntervalSince1970: 2_000_000_000 + Double(weekday * 10_000 + hour * 100 + minute)
+        )
+        pending[identifier] = PendingRequest(
+            weekday: weekday,
+            hour: hour,
+            minute: minute,
+            nextFire: nextFire
+        )
+    }
+
+    func scheduleOneShot(
+        identifier: String,
+        after seconds: TimeInterval,
+        title: String,
+        body: String
+    ) async throws {}
+
+    func cancelAll(matchingPrefix prefix: String) async {
+        pending = pending.filter { !$0.key.hasPrefix(prefix) }
+    }
+
+    func pendingIdentifiers() async -> [String] { Array(pending.keys) }
+
+    func nextFireDate(for identifier: String) async -> Date? { pending[identifier]?.nextFire }
+
+    func pendingRequests() -> [PendingRequest] { Array(pending.values) }
+
+    func waitUntilFirstScheduleStarted() async {
+        guard !firstScheduleStarted else { return }
+        await withCheckedContinuation { startWaiters.append($0) }
+    }
+
+    func resumeFirstSchedule() {
+        firstScheduleContinuation?.resume()
+        firstScheduleContinuation = nil
     }
 }

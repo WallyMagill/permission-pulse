@@ -127,9 +127,7 @@ final class ResetAllDataService {
         resetInProgress = true
         defer { resetInProgress = false }
 
-        await weeklyDigestCoordinator.scheduler.cancelAll(
-            matchingPrefix: WeeklyDigestCoordinator.identifierPrefix
-        )
+        await weeklyDigestCoordinator.cancelWeeklySchedule()
         await weeklyDigestCoordinator.scheduler.cancelAll(
             matchingPrefix: WeeklyDigestCoordinator.testIdentifierPrefix
         )

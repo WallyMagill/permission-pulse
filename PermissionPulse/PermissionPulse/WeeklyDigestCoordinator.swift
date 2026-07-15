@@ -33,17 +33,22 @@ final class WeeklyDigestCoordinator {
     private let preferencesStore: PreferencesStore
     let scheduler: any WeeklyDigestScheduler
     private let now: @Sendable () -> Date
+    private let onScheduleMutationQueued: @MainActor () -> Void
+    private var scheduleMutationInProgress = false
+    private var scheduleMutationWaiters: [CheckedContinuation<Void, Never>] = []
 
     init(
         viewModel: AppViewModel,
         preferencesStore: PreferencesStore,
         scheduler: any WeeklyDigestScheduler = LiveWeeklyDigestScheduler(),
-        now: @Sendable @escaping () -> Date = Date.init
+        now: @Sendable @escaping () -> Date = Date.init,
+        onScheduleMutationQueued: @MainActor @escaping () -> Void = {}
     ) {
         self.viewModel = viewModel
         self.preferencesStore = preferencesStore
         self.scheduler = scheduler
         self.now = now
+        self.onScheduleMutationQueued = onScheduleMutationQueued
     }
 
     /// Read prefs and either cancel pending digests (if disabled) or
@@ -51,6 +56,10 @@ final class WeeklyDigestCoordinator {
     /// authorized). Idempotent — safe to call on every boot and after
     /// the user toggles a preference.
     func reconcileSchedule() async -> ScheduleResult {
+        await withScheduleMutation { await reconcileScheduleOwned() }
+    }
+
+    private func reconcileScheduleOwned() async -> ScheduleResult {
         await scheduler.cancelAll(matchingPrefix: Self.identifierPrefix)
         guard scheduleIsActive else { return .disabled }
 
@@ -74,7 +83,7 @@ final class WeeklyDigestCoordinator {
                 body: composed.body
             )
             guard scheduleIsActive else { return await cancelDisabledSchedule() }
-            let nextFire = await nextWeeklyFireDate()
+            let nextFire = await scheduler.nextFireDate(for: Self.weeklyIdentifier)
             guard scheduleIsActive else { return await cancelDisabledSchedule() }
             return .scheduled(nextFire: nextFire)
         } catch {
@@ -89,6 +98,12 @@ final class WeeklyDigestCoordinator {
     /// Called when the user flips the digest toggle in Preferences.
     /// Returns the resulting state so the UI can update its hint.
     func handleAuthorizationToggle(turnOn: Bool) async -> ScheduleResult {
+        await withScheduleMutation {
+            await handleAuthorizationToggleOwned(turnOn: turnOn)
+        }
+    }
+
+    private func handleAuthorizationToggleOwned(turnOn: Bool) async -> ScheduleResult {
         guard turnOn else {
             await scheduler.cancelAll(matchingPrefix: Self.identifierPrefix)
             return .disabled
@@ -111,7 +126,7 @@ final class WeeklyDigestCoordinator {
 
         switch final {
         case .authorized, .provisional:
-            return await reconcileSchedule()
+            return await reconcileScheduleOwned()
         case .denied, .notDetermined, .unknown:
             return .notAuthorized
         }
@@ -124,6 +139,39 @@ final class WeeklyDigestCoordinator {
     private func cancelDisabledSchedule() async -> ScheduleResult {
         await scheduler.cancelAll(matchingPrefix: Self.identifierPrefix)
         return .disabled
+    }
+
+    func cancelWeeklySchedule() async {
+        _ = await withScheduleMutation {
+            await scheduler.cancelAll(matchingPrefix: Self.identifierPrefix)
+            return .disabled
+        }
+    }
+
+    private func withScheduleMutation(
+        _ operation: @MainActor () async -> ScheduleResult
+    ) async -> ScheduleResult {
+        onScheduleMutationQueued()
+        await acquireScheduleMutation()
+        defer { releaseScheduleMutation() }
+        guard !Task.isCancelled else { return .disabled }
+        return await operation()
+    }
+
+    private func acquireScheduleMutation() async {
+        guard scheduleMutationInProgress else {
+            scheduleMutationInProgress = true
+            return
+        }
+        await withCheckedContinuation { scheduleMutationWaiters.append($0) }
+    }
+
+    private func releaseScheduleMutation() {
+        guard !scheduleMutationWaiters.isEmpty else {
+            scheduleMutationInProgress = false
+            return
+        }
+        scheduleMutationWaiters.removeFirst().resume()
     }
 
     /// Schedule a one-shot test notification N seconds from now. Bypasses
@@ -156,7 +204,10 @@ final class WeeklyDigestCoordinator {
     /// Next fire date for the weekly digest, if any pending. Surfaces in
     /// the Preferences hint card so users see a concrete date.
     func nextWeeklyFireDate() async -> Date? {
-        await scheduler.nextFireDate(for: Self.weeklyIdentifier)
+        await acquireScheduleMutation()
+        defer { releaseScheduleMutation() }
+        guard !Task.isCancelled else { return nil }
+        return await scheduler.nextFireDate(for: Self.weeklyIdentifier)
     }
 
     /// Pure, testable. Composes title + body from the week-long diff.
