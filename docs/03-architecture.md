@@ -127,7 +127,7 @@ Tahoe's transparent menu bar means our icon must render cleanly on both light an
 All package tests use **Swift Testing**; the UITest target uses XCTest.
 
 - `PermissionsCore`: unit tests, no fixtures. Pure data types. (40 tests)
-- `PermissionsScanners`: golden-fixture tests (`TCCFixtures`, `BTMFixtures`) + `Mock` behavior tests. Real-scanner tests run only on developer machines (FDA-gated). (65 tests)
+- `PermissionsScanners`: golden-fixture tests (`TCCFixtures`, `BTMFixtures`) + `Mock` behavior tests. Real-scanner tests run only on developer machines (FDA-gated). (67 tests)
 - `PermissionsStore`: in-memory + on-disk GRDB tests (migrations, diff engine, retention, discovery). (39 tests)
 - `PermissionsUI`: view-model and store logic tests with injected mocks + in-memory store. (136 tests)
 - App target (`PermissionPulseTests`): coordinator-level tests (`SnapshotCoordinator`, `WeeklyDigestCoordinator`, `ResetAllDataService`) — exercised by `scripts/smoke-test.sh §4` locally and by pinned CI under `PERMISSION_PULSE_TEST_MODE=1`. (75 tests)

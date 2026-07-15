@@ -58,7 +58,7 @@ From the CLI:
 ```bash
 # Package-level tests (run without the Xcode project) — 282 tests total
 swift test --package-path Packages/PermissionsCore       # 40
-swift test --package-path Packages/PermissionsScanners   # 65
+swift test --package-path Packages/PermissionsScanners   # 67
 swift test --package-path Packages/PermissionsStore      # 39
 swift test --package-path Packages/PermissionsUI         # 136
 
