@@ -44,6 +44,8 @@ import PermissionsUI
 
     @Test func skipsWriteWhenAnyScannerErrored() async throws {
         let env = try await Environment(now: fixedNow)
+        env.preferences.snapshotRetentionDays = 10
+        env.preferences.staleThresholdDays = 30
         env.viewModel.tccScanError = .permissionDenied(reason: "FDA needed")
         env.viewModel.grants = [demoGrant()]
 
@@ -53,6 +55,9 @@ import PermissionsUI
 
         #expect(afterCount == beforeCount)
         #expect(env.viewModel.latestSnapshotID == nil)
+        #expect(env.providers.snapshotRetentionReadCount == 1)
+        #expect(env.providers.staleThresholdReadCount == 1)
+        #expect(env.viewModel.staleThresholdDays == 30)
     }
 
     @Test func pushesDiffsAndStaleAppsToViewModelAfterWrite() async throws {
@@ -207,6 +212,44 @@ import PermissionsUI
         #expect(env.providers.staleThresholdReadCount == 2)
     }
 
+    @Test func preferenceChangeDuringScanAppliesAtNextBoundary() async throws {
+        let path = URL(fileURLWithPath: "/Applications/SixtyDay.app")
+        let old = fixedNow().addingTimeInterval(-60 * 86_400)
+        let probe = SuspendedLastUsedProbe(result: (old, .spotlight))
+        let env = try await Environment(
+            now: fixedNow,
+            probe: probe,
+            staleThresholdDays: 30
+        )
+        env.viewModel.grants = [
+            demoGrant(bundleID: "com.example.sixty", bundlePath: path),
+        ]
+
+        let firstScan = Task { @MainActor in
+            await env.coordinator.onScanCompleted()
+        }
+        await probe.waitUntilSuspended()
+
+        #expect(env.providers.snapshotRetentionReadCount == 1)
+        #expect(env.providers.staleThresholdReadCount == 1)
+        #expect(env.viewModel.staleThresholdDays == 30)
+        env.preferences.staleThresholdDays = 90
+
+        await probe.resume()
+        await firstScan.value
+
+        #expect(env.viewModel.staleApps.map(\.app.bundleID) == ["com.example.sixty"])
+        #expect(env.viewModel.staleThresholdDays == 30)
+        #expect(env.providers.staleThresholdReadCount == 1)
+
+        await env.coordinator.onScanCompleted()
+
+        #expect(env.viewModel.staleApps.isEmpty)
+        #expect(env.viewModel.staleThresholdDays == 90)
+        #expect(env.providers.snapshotRetentionReadCount == 2)
+        #expect(env.providers.staleThresholdReadCount == 2)
+    }
+
     @Test func markCurrentSnapshotReviewedClearsBadge() async throws {
         let env = try await Environment(now: fixedNow)
         // Force a state where hasUnreviewedChanges == true.
@@ -335,6 +378,46 @@ final class LivePreferenceProviders {
     func staleThresholdDays() -> Int {
         staleThresholdReadCount += 1
         return preferences.staleThresholdDays
+    }
+}
+
+private actor SuspendedLastUsedProbe: LastUsedProbe {
+    typealias Result = (date: Date, source: StaleApp.DateSource)
+
+    private let result: Result
+    private var shouldSuspend = true
+    private var probeContinuation: CheckedContinuation<Result?, Never>?
+    private var suspensionWaiters: [CheckedContinuation<Void, Never>] = []
+
+    init(result: Result) {
+        self.result = result
+    }
+
+    func lastUsedDate(for bundlePath: URL) async -> Result? {
+        guard shouldSuspend else { return result }
+        shouldSuspend = false
+
+        return await withCheckedContinuation { continuation in
+            probeContinuation = continuation
+            let waiters = suspensionWaiters
+            suspensionWaiters.removeAll()
+            for waiter in waiters {
+                waiter.resume()
+            }
+        }
+    }
+
+    func waitUntilSuspended() async {
+        guard probeContinuation == nil else { return }
+        await withCheckedContinuation { continuation in
+            suspensionWaiters.append(continuation)
+        }
+    }
+
+    func resume() {
+        let continuation = probeContinuation
+        probeContinuation = nil
+        continuation?.resume(returning: result)
     }
 }
 
