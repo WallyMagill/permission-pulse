@@ -92,6 +92,54 @@ import Testing
         #expect(vm.nextWeeklyFireDate == target)
     }
 
+    @Test func refreshSurfacesFailureThenRecoversWithFreshNextFire() async {
+        let store = PreferencesStore(defaults: fresh())
+        store.digestEnabled = true
+        let target = Date(timeIntervalSince1970: 1_800_000_000)
+        var refreshCount = 0
+        let vm = PreferencesViewModel(
+            store: store,
+            onDigestToggle: { _ in
+                refreshCount += 1
+                return refreshCount == 1
+                    ? .failed("injected scheduling failure")
+                    : .scheduled(nextFireDescription: "")
+            },
+            onFetchNextFireDate: { target }
+        )
+
+        await vm.refreshAuthorizationHint()
+        #expect(vm.authorizationHint == .failed("injected scheduling failure"))
+        #expect(vm.nextWeeklyFireDate == nil)
+
+        await vm.refreshAuthorizationHint()
+        #expect(vm.authorizationHint == .scheduled(nextFireDescription: ""))
+        #expect(vm.nextWeeklyFireDate == target)
+    }
+
+    @Test func supersededRefreshCannotPublishStaleHintOrDate() async {
+        let store = PreferencesStore(defaults: fresh())
+        store.digestEnabled = true
+        let target = Date(timeIntervalSince1970: 1_800_000_000)
+        let gate = RefreshHintGate()
+        let vm = PreferencesViewModel(
+            store: store,
+            onDigestToggle: { _ in await gate.nextHint() },
+            onFetchNextFireDate: { target }
+        )
+
+        let firstRefresh = Task { @MainActor in
+            await vm.refreshAuthorizationHint()
+        }
+        await gate.waitUntilFirstRefreshStarted()
+        await vm.refreshAuthorizationHint()
+        await gate.resumeFirstRefresh(with: .scheduled(nextFireDescription: ""))
+        await firstRefresh.value
+
+        #expect(vm.authorizationHint == .failed("newer scheduling failure"))
+        #expect(vm.nextWeeklyFireDate == nil)
+    }
+
     @Test func zeroDebounceBurstInvokesScheduleChangeOnce() async {
         let store = PreferencesStore(defaults: fresh())
         store.digestEnabled = true
@@ -235,5 +283,31 @@ import Testing
             if condition() { return }
             await Task.yield()
         }
+    }
+}
+
+private actor RefreshHintGate {
+    private var callCount = 0
+    private var firstStarted = false
+    private var startWaiters: [CheckedContinuation<Void, Never>] = []
+    private var firstContinuation: CheckedContinuation<PreferencesViewModel.AuthorizationHint, Never>?
+
+    func nextHint() async -> PreferencesViewModel.AuthorizationHint {
+        callCount += 1
+        guard callCount == 1 else { return .failed("newer scheduling failure") }
+        firstStarted = true
+        startWaiters.forEach { $0.resume() }
+        startWaiters.removeAll()
+        return await withCheckedContinuation { firstContinuation = $0 }
+    }
+
+    func waitUntilFirstRefreshStarted() async {
+        guard !firstStarted else { return }
+        await withCheckedContinuation { startWaiters.append($0) }
+    }
+
+    func resumeFirstRefresh(with hint: PreferencesViewModel.AuthorizationHint) {
+        firstContinuation?.resume(returning: hint)
+        firstContinuation = nil
     }
 }

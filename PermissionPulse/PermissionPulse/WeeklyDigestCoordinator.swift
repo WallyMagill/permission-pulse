@@ -16,12 +16,6 @@ final class WeeklyDigestCoordinator {
     static let weeklyIdentifier = "com.wallymagill.permissionpulse.digest.weekly.v1"
     static let testIdentifierPrefix = "com.wallymagill.permissionpulse.digest.test"
 
-    enum AuthorizationResult: Sendable, Equatable {
-        case scheduled
-        case deniedNeedsSystemSettings
-        case disabled
-    }
-
     enum ScheduleResult: Sendable, Equatable {
         case disabled
         case scheduled(nextFire: Date?)
@@ -58,9 +52,10 @@ final class WeeklyDigestCoordinator {
     /// the user toggles a preference.
     func reconcileSchedule() async -> ScheduleResult {
         await scheduler.cancelAll(matchingPrefix: Self.identifierPrefix)
-        guard preferencesStore.digestEnabled else { return .disabled }
+        guard scheduleIsActive else { return .disabled }
 
         let status = await scheduler.currentAuthorizationStatus()
+        guard scheduleIsActive else { return .disabled }
         guard status == .authorized || status == .provisional else {
             Self.logger.info(
                 "Skipping schedule — digest enabled but status is \(String(describing: status), privacy: .public)"
@@ -78,8 +73,12 @@ final class WeeklyDigestCoordinator {
                 title: composed.title,
                 body: composed.body
             )
-            return .scheduled(nextFire: await nextWeeklyFireDate())
+            guard scheduleIsActive else { return await cancelDisabledSchedule() }
+            let nextFire = await nextWeeklyFireDate()
+            guard scheduleIsActive else { return await cancelDisabledSchedule() }
+            return .scheduled(nextFire: nextFire)
         } catch {
+            guard scheduleIsActive else { return await cancelDisabledSchedule() }
             Self.logger.error(
                 "Failed to schedule weekly digest: \(error.localizedDescription, privacy: .public)"
             )
@@ -89,7 +88,7 @@ final class WeeklyDigestCoordinator {
 
     /// Called when the user flips the digest toggle in Preferences.
     /// Returns the resulting state so the UI can update its hint.
-    func handleAuthorizationToggle(turnOn: Bool) async -> AuthorizationResult {
+    func handleAuthorizationToggle(turnOn: Bool) async -> ScheduleResult {
         guard turnOn else {
             await scheduler.cancelAll(matchingPrefix: Self.identifierPrefix)
             return .disabled
@@ -104,7 +103,7 @@ final class WeeklyDigestCoordinator {
                 Self.logger.error(
                     "requestAuthorization threw: \(error.localizedDescription, privacy: .public)"
                 )
-                return .deniedNeedsSystemSettings
+                return .failed(error.localizedDescription)
             }
         } else {
             final = initial
@@ -112,11 +111,19 @@ final class WeeklyDigestCoordinator {
 
         switch final {
         case .authorized, .provisional:
-            _ = await reconcileSchedule()
-            return .scheduled
+            return await reconcileSchedule()
         case .denied, .notDetermined, .unknown:
-            return .deniedNeedsSystemSettings
+            return .notAuthorized
         }
+    }
+
+    private var scheduleIsActive: Bool {
+        preferencesStore.digestEnabled && !Task.isCancelled
+    }
+
+    private func cancelDisabledSchedule() async -> ScheduleResult {
+        await scheduler.cancelAll(matchingPrefix: Self.identifierPrefix)
+        return .disabled
     }
 
     /// Schedule a one-shot test notification N seconds from now. Bypasses

@@ -44,6 +44,7 @@ public final class PreferencesViewModel {
     // remains MainActor-isolated; only final cancellation crosses isolation.
     @ObservationIgnored
     nonisolated(unsafe) private var scheduleTask: Task<Void, Never>?
+    @ObservationIgnored private var digestOperationID: UInt = 0
 
     public init(
         store: PreferencesStore,
@@ -90,19 +91,19 @@ public final class PreferencesViewModel {
 
     public func handleDigestToggle(to newValue: Bool) async {
         scheduleTask?.cancel()
+        let operationID = beginDigestOperation()
         store.digestEnabled = newValue
         let hint = await onDigestToggle(newValue)
-        let nextFire: Date? = if case .scheduled = hint {
-            await onFetchNextFireDate()
-        } else {
-            nil
-        }
+        guard isCurrent(operationID, enabled: newValue) else { return }
+        let nextFire = await fetchNextFireDate(for: hint)
+        guard isCurrent(operationID, enabled: newValue) else { return }
         authorizationHint = hint
         nextWeeklyFireDate = nextFire
     }
 
     public func scheduleDidChange() {
         scheduleTask?.cancel()
+        let operationID = beginDigestOperation()
         guard store.digestEnabled else {
             nextWeeklyFireDate = nil
             return
@@ -115,16 +116,12 @@ public final class PreferencesViewModel {
             } catch {
                 return
             }
-            guard let self, !Task.isCancelled, self.store.digestEnabled else { return }
+            guard let self, self.isCurrent(operationID, enabled: true), !Task.isCancelled else { return }
 
             let hint = await self.onDigestScheduleChange()
-            guard !Task.isCancelled, self.store.digestEnabled else { return }
-            let nextFire: Date? = if case .scheduled = hint {
-                await self.onFetchNextFireDate()
-            } else {
-                nil
-            }
-            guard !Task.isCancelled, self.store.digestEnabled else { return }
+            guard self.isCurrent(operationID, enabled: true), !Task.isCancelled else { return }
+            let nextFire = await self.fetchNextFireDate(for: hint)
+            guard self.isCurrent(operationID, enabled: true), !Task.isCancelled else { return }
             self.authorizationHint = hint
             self.nextWeeklyFireDate = nextFire
         }
@@ -134,8 +131,29 @@ public final class PreferencesViewModel {
         // Called on appear so the hint reflects the latest OS state even if
         // the user toggled notifications in System Settings while the app
         // was alive.
-        authorizationHint = await onDigestToggle(store.digestEnabled)
-        nextWeeklyFireDate = await onFetchNextFireDate()
+        scheduleTask?.cancel()
+        let operationID = beginDigestOperation()
+        let enabled = store.digestEnabled
+        let hint = await onDigestToggle(enabled)
+        guard isCurrent(operationID, enabled: enabled) else { return }
+        let nextFire = await fetchNextFireDate(for: hint)
+        guard isCurrent(operationID, enabled: enabled) else { return }
+        authorizationHint = hint
+        nextWeeklyFireDate = nextFire
+    }
+
+    private func beginDigestOperation() -> UInt {
+        digestOperationID &+= 1
+        return digestOperationID
+    }
+
+    private func isCurrent(_ operationID: UInt, enabled: Bool) -> Bool {
+        digestOperationID == operationID && store.digestEnabled == enabled
+    }
+
+    private func fetchNextFireDate(for hint: AuthorizationHint) async -> Date? {
+        guard case .scheduled = hint else { return nil }
+        return await onFetchNextFireDate()
     }
 
     public func sendTestNotification() async {

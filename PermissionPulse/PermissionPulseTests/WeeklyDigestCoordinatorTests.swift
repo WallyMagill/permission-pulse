@@ -107,16 +107,73 @@ import PermissionsUI
     @Test func handleAuthorizationToggleOnWhenDeniedReturnsDeniedHint() async throws {
         let env = makeEnv(digestEnabled: false, status: .denied)
         let result = await env.coordinator.handleAuthorizationToggle(turnOn: true)
-        #expect(result == .deniedNeedsSystemSettings)
+        #expect(result == .notAuthorized)
     }
 
     @Test func handleAuthorizationToggleOnWhenAuthorizedSchedules() async throws {
         let env = makeEnv(digestEnabled: false, status: .authorized)
         env.preferencesStore.digestEnabled = true
         let result = await env.coordinator.handleAuthorizationToggle(turnOn: true)
-        #expect(result == .scheduled)
+        guard case .scheduled(let nextFire) = result else {
+            Issue.record("Expected .scheduled, got \(result)")
+            return
+        }
+        #expect(nextFire != nil)
         let pending = await env.scheduler.pendingIdentifiers()
         #expect(pending.count == 1)
+    }
+
+    @Test func authorizedToggleOnReturnsExactSchedulingFailure() async throws {
+        let env = makeEnv(digestEnabled: true, status: .authorized)
+        await env.scheduler.setNextScheduleError(InjectedSchedulingError())
+
+        let result = await env.coordinator.handleAuthorizationToggle(turnOn: true)
+
+        #expect(result == .failed("injected scheduling failure"))
+        #expect(await env.scheduler.pendingIdentifiers().isEmpty)
+    }
+
+    @Test func disablingAfterSchedulingStartsRemovesLatePendingRequest() async throws {
+        let defaults = UserDefaults(suiteName: "digest-race-test-\(UUID().uuidString)")!
+        let store = PreferencesStore(defaults: defaults)
+        store.digestEnabled = true
+        let scheduler = SuspendingWeeklyDigestScheduler()
+        let resultProbe = ScheduleResultProbe()
+        let coordinator = WeeklyDigestCoordinator(
+            viewModel: AppViewModel(),
+            preferencesStore: store,
+            scheduler: scheduler
+        )
+        let vm = PreferencesViewModel(
+            store: store,
+            onDigestToggle: { turnOn in
+                _ = await coordinator.handleAuthorizationToggle(turnOn: turnOn)
+                return turnOn ? .scheduled(nextFireDescription: "") : .disabled
+            },
+            onDigestScheduleChange: {
+                let result = await coordinator.reconcileSchedule()
+                await resultProbe.record(result)
+                switch result {
+                case .disabled: return .disabled
+                case .scheduled: return .scheduled(nextFireDescription: "")
+                case .notAuthorized: return .denied
+                case .failed(let message): return .failed(message)
+                }
+            },
+            onFetchNextFireDate: { await coordinator.nextWeeklyFireDate() },
+            scheduleDebounce: .zero
+        )
+
+        vm.scheduleDidChange()
+        await scheduler.waitUntilScheduleStarted()
+        await vm.handleDigestToggle(to: false)
+        await scheduler.resumeSchedule()
+        let result = await resultProbe.waitForResult()
+
+        #expect(result == .disabled)
+        #expect(await scheduler.pendingIdentifiers().isEmpty)
+        #expect(vm.authorizationHint == .disabled)
+        #expect(vm.nextWeeklyFireDate == nil)
     }
 
     @Test func composeEmptyWeekReturnsHeartbeatString() {
@@ -322,4 +379,74 @@ private func demoLaunchAgent() -> LaunchAgentItem {
 
 private struct InjectedSchedulingError: LocalizedError, Sendable {
     var errorDescription: String? { "injected scheduling failure" }
+}
+
+private actor SuspendingWeeklyDigestScheduler: WeeklyDigestScheduler {
+    private let fireDate = Date(timeIntervalSince1970: 1_900_000_000)
+    private var pending: [String] = []
+    private var scheduleStarted = false
+    private var startWaiters: [CheckedContinuation<Void, Never>] = []
+    private var scheduleContinuation: CheckedContinuation<Void, Never>?
+
+    func currentAuthorizationStatus() async -> DigestAuthorizationStatus { .authorized }
+
+    func requestAuthorization() async throws -> DigestAuthorizationStatus { .authorized }
+
+    func scheduleWeekly(
+        identifier: String,
+        weekday: Int,
+        hour: Int,
+        minute: Int,
+        title: String,
+        body: String
+    ) async throws {
+        scheduleStarted = true
+        startWaiters.forEach { $0.resume() }
+        startWaiters.removeAll()
+        await withCheckedContinuation { scheduleContinuation = $0 }
+        pending.append(identifier)
+    }
+
+    func scheduleOneShot(
+        identifier: String,
+        after seconds: TimeInterval,
+        title: String,
+        body: String
+    ) async throws {}
+
+    func cancelAll(matchingPrefix prefix: String) async {
+        pending.removeAll { $0.hasPrefix(prefix) }
+    }
+
+    func pendingIdentifiers() async -> [String] { pending }
+
+    func nextFireDate(for identifier: String) async -> Date? {
+        pending.contains(identifier) ? fireDate : nil
+    }
+
+    func waitUntilScheduleStarted() async {
+        guard !scheduleStarted else { return }
+        await withCheckedContinuation { startWaiters.append($0) }
+    }
+
+    func resumeSchedule() {
+        scheduleContinuation?.resume()
+        scheduleContinuation = nil
+    }
+}
+
+private actor ScheduleResultProbe {
+    private var result: WeeklyDigestCoordinator.ScheduleResult?
+    private var waiters: [CheckedContinuation<WeeklyDigestCoordinator.ScheduleResult, Never>] = []
+
+    func record(_ result: WeeklyDigestCoordinator.ScheduleResult) {
+        self.result = result
+        waiters.forEach { $0.resume(returning: result) }
+        waiters.removeAll()
+    }
+
+    func waitForResult() async -> WeeklyDigestCoordinator.ScheduleResult {
+        if let result { return result }
+        return await withCheckedContinuation { waiters.append($0) }
+    }
 }

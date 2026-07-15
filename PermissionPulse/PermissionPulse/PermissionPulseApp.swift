@@ -184,16 +184,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private static func hint(
-        for result: WeeklyDigestCoordinator.AuthorizationResult
-    ) -> PreferencesViewModel.AuthorizationHint {
-        switch result {
-        case .scheduled:                  return .scheduled(nextFireDescription: "")
-        case .deniedNeedsSystemSettings:  return .denied
-        case .disabled:                   return .disabled
-        }
-    }
-
-    private static func hint(
         for result: WeeklyDigestCoordinator.ScheduleResult
     ) -> PreferencesViewModel.AuthorizationHint {
         switch result {
