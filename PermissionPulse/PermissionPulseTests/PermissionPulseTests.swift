@@ -17,3 +17,17 @@ struct PermissionPulseTests {
     }
 
 }
+
+@Suite struct AppRuntimeEnvironmentTests {
+    @Test func explicitTestModeIsDetected() {
+        #expect(AppRuntimeEnvironment(environment: ["PERMISSION_PULSE_TEST_MODE": "1"]).isRunningTests)
+    }
+
+    @Test func xctestConfigurationIsDetected() {
+        #expect(AppRuntimeEnvironment(environment: ["XCTestConfigurationFilePath": "/tmp/test.xctestconfiguration"]).isRunningTests)
+    }
+
+    @Test func ordinaryLaunchIsNotTestMode() {
+        #expect(!AppRuntimeEnvironment(environment: [:]).isRunningTests)
+    }
+}

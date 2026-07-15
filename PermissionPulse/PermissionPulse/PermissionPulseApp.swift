@@ -152,6 +152,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        guard !AppRuntimeEnvironment().isRunningTests else {
+            Self.logger.debug("Skipping production launch services in test mode")
+            return
+        }
+
         // Set before anything schedules: without a willPresent delegate,
         // macOS suppresses banners while the app is frontmost, so the
         // Preferences test notification never visibly fires.
