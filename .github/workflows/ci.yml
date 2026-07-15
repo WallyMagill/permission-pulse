@@ -13,15 +13,17 @@ concurrency:
 jobs:
   packages:
     name: Test SwiftPM packages
-    runs-on: macos-latest
+    runs-on: macos-26
+    env:
+      DEVELOPER_DIR: /Applications/Xcode_26.5.app/Contents/Developer
     steps:
       - uses: actions/checkout@v4
 
       - name: Show toolchain
         run: |
-          xcode-select -p
-          swift --version
           sw_vers
+          xcodebuild -version
+          swift --version
 
       - name: Test PermissionsCore
         run: swift test --package-path Packages/PermissionsCore
@@ -37,31 +39,34 @@ jobs:
 
   app:
     name: Build and test app target
-    runs-on: macos-latest
+    runs-on: macos-26
+    env:
+      DEVELOPER_DIR: /Applications/Xcode_26.5.app/Contents/Developer
     steps:
       - uses: actions/checkout@v4
 
       - name: Show toolchain
         run: |
-          xcode-select -p
+          sw_vers
           xcodebuild -version
+          swift --version
 
-      # PermissionPulseTests holds coordinator-level Swift Testing suites
-      # (Scan/Snapshot/WeeklyDigest coordinators, ResetAllDataService) that
-      # require macOS 26 (Tahoe) to run; GitHub's macos-latest runner is on
-      # macOS 15, so they are NOT run in CI — scripts/smoke-test.sh runs
-      # them locally before each release (see docs/03-architecture.md).
-      # PermissionPulseUITests is template boilerplate. Package-level
-      # coverage runs in the `packages` job above; this job only verifies
-      # the .xcodeproj still compiles.
-      - name: Build (Debug)
+      - name: Test app target
+        env:
+          PERMISSION_PULSE_TEST_MODE: "1"
         run: |
-          xcodebuild \
+          xcodebuild test \
             -project PermissionPulse/PermissionPulse.xcodeproj \
             -scheme PermissionPulse \
-            -configuration Debug \
             -destination 'platform=macOS,arch=arm64' \
-            CODE_SIGNING_ALLOWED=NO \
-            CODE_SIGNING_REQUIRED=NO \
-            CODE_SIGN_IDENTITY="" \
-            build
+            -only-testing:PermissionPulseTests CODE_SIGNING_ALLOWED=NO
+
+      - name: Analyze app target
+        run: |
+          xcodebuild analyze \
+            -project PermissionPulse/PermissionPulse.xcodeproj \
+            -scheme PermissionPulse -configuration Debug \
+            -destination 'platform=macOS,arch=arm64' CODE_SIGNING_ALLOWED=NO
+
+      - name: Verify smoke preservation
+        run: scripts/tests/smoke-test-safety-test.sh
