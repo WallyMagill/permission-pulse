@@ -35,7 +35,10 @@ struct PermissionPulseTests {
 }
 
 @Suite @MainActor struct AppDelegateRuntimeIsolationTests {
-    @Test func testModeConstructsStoresWithIsolatedDefaults() {
+    @Test func testModeConstructsStoresWithIsolatedDefaults() throws {
+        let expectedTestSuite =
+            "com.wallymagill.permissionpulse.test-host.\(ProcessInfo.processInfo.processIdentifier)"
+        let observedDefaults = try #require(UserDefaults(suiteName: expectedTestSuite))
         let delegate = AppDelegate(
             runtimeEnvironment: AppRuntimeEnvironment(
                 environment: ["PERMISSION_PULSE_TEST_MODE": "1"]
@@ -46,21 +49,19 @@ struct PermissionPulseTests {
         let dismissedStaleKey = DismissedStaleAppStore.key
 
         defer {
-            delegate.runtimeDefaults.removeObject(forKey: preferenceKey)
-            delegate.runtimeDefaults.removeObject(forKey: dismissedDiffKey)
-            delegate.runtimeDefaults.removeObject(forKey: dismissedStaleKey)
+            observedDefaults.removePersistentDomain(forName: expectedTestSuite)
         }
 
-        #expect(delegate.runtimeDefaults !== UserDefaults.standard)
+        #expect(AppDelegate.testDefaultsSuiteName == expectedTestSuite)
 
         delegate.preferencesStore.snapshotRetentionDays = 123
         delegate.dismissedDiffEntries.dismissForever(key: "test-entry")
         delegate.dismissedStaleApps.skipForever(bundleID: "com.example.test")
 
-        #expect(delegate.runtimeDefaults.integer(forKey: preferenceKey) == 123)
-        #expect(delegate.runtimeDefaults.data(forKey: dismissedDiffKey) != nil)
+        #expect(observedDefaults.integer(forKey: preferenceKey) == 123)
+        #expect(observedDefaults.data(forKey: dismissedDiffKey) != nil)
         #expect(
-            delegate.runtimeDefaults.array(forKey: dismissedStaleKey) as? [String]
+            observedDefaults.array(forKey: dismissedStaleKey) as? [String]
                 == ["com.example.test"]
         )
     }

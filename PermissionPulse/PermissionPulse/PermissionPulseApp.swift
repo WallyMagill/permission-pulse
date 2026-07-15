@@ -85,9 +85,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     )
 
     static let hasSeenWelcomeKey = "com.wallymagill.permissionpulse.hasSeenWelcome"
+    static let testDefaultsSuiteName =
+        "com.wallymagill.permissionpulse.test-host.\(ProcessInfo.processInfo.processIdentifier)"
 
     private let runtimeEnvironment: AppRuntimeEnvironment
-    let runtimeDefaults: UserDefaults
     let viewModel: AppViewModel
     let preferencesStore: PreferencesStore
     // UNUserNotificationCenter.delegate is weak — must be retained here.
@@ -140,7 +141,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     init(runtimeEnvironment: AppRuntimeEnvironment) {
         let defaults = Self.makeRuntimeDefaults(for: runtimeEnvironment)
         self.runtimeEnvironment = runtimeEnvironment
-        self.runtimeDefaults = defaults
         self.viewModel = AppViewModel()
         self.preferencesStore = PreferencesStore(defaults: defaults)
         self.notificationPresentationDelegate = NotificationPresentationDelegate()
@@ -154,8 +154,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     ) -> UserDefaults {
         guard runtimeEnvironment.isRunningTests else { return .standard }
 
-        let suiteName =
-            "com.wallymagill.permissionpulse.test-host.\(ProcessInfo.processInfo.processIdentifier)"
+        let suiteName = testDefaultsSuiteName
         guard let defaults = UserDefaults(suiteName: suiteName) else {
             preconditionFailure("Unable to create isolated test defaults")
         }
