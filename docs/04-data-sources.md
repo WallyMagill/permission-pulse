@@ -221,7 +221,7 @@ Each scanner is documented as: **what it reads, which API, what permission is ne
 | Source | Permission required | Fragility | If unavailable |
 |---|---|---|---|
 | TCC.db | FDA | High | one-source partial output is visibly degraded; full failure preserves last-known rows or reports no history |
-| LaunchAgents/Daemons (public) | None | Low | always works (✅ implemented v0.2.0) |
+| LaunchAgents/Daemons (public) | None | Low | normally available without FDA; unreadable sources produce degraded or failed state |
 | BTM (direct .btm) | FDA | Very high | failed read preserves labeled last-known rows or reports no successful data |
 | BTM (sfltool) | Manual sudo | High | deferred (would be a manual user step, not automation) |
 | Mic/Cam observation | None | Low | menu-bar icon stays at idle/error (✅ implemented v0.4.1) |

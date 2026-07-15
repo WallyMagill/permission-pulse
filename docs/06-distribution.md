@@ -6,7 +6,7 @@
 
 **Signing:** Ad-hoc (`-`) for now. Notarization deferred indefinitely until a paid Apple Developer ID is acquired. Sparkle 2 auto-updates also deferred.
 
-## Supported v0.7.2 release flow (manual publication)
+## v0.7.2 candidate release flow (manual publication)
 
 `scripts/package-release.sh` is the only supported release-artifact entry point. It builds from the exact clean `HEAD`, creates a universal arm64 + x86_64 app, signs it ad hoc without entitlements, independently verifies the app before and after archiving, and writes the zip, SHA-256 sidecar, and manifest to the explicit output directory. Do not build or zip a release artifact by hand.
 
@@ -23,7 +23,7 @@ The output directory must then contain the independently verified archive, `Perm
 
 Publication remains an intentional manual boundary. CI builds and verifies the exact archive shape above from a clean checkout, but it never tags, creates a GitHub release, or uploads files. A maintainer must tag the manifest's exact commit as `v0.7.2`, create the GitHub release, upload the zip, checksum, and manifest, download them into a fresh directory, check the downloaded checksum, and rerun `scripts/verify-release.sh` before announcing the release. Release notes are written by hand; there is no `CHANGELOG.md` in the repository.
 
-v0.7.1 remains an immutable historical release. Its development-signed artifact is superseded by v0.7.2: amend the v0.7.1 release notes to point users to v0.7.2, but do not delete, replace, or modify the existing v0.7.1 asset.
+v0.7.1 remains the latest published release until v0.7.2 is actually tagged and published. After publication, amend the v0.7.1 release notes to point users to v0.7.2, but do not delete, replace, or modify the existing v0.7.1 asset.
 
 ## Update mechanism (v1)
 

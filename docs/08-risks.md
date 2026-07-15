@@ -53,7 +53,7 @@ Four real risks. None are project-killers, all need active mitigation.
 **Impact:** Lower install-to-active-use conversion. Acceptable for an OSS tool.
 
 **Mitigation:**
-- Welcome screen explains in plain English what FDA is and what we use it for (TCC.db read, that's it).
+- Welcome screen explains in plain English what FDA is and what we use it for: read-only access to TCC.db and the direct BTM background-items store.
 - Provide a "Skip for now" path; the rest of the app continues to function.
 - Document the unsigned-app + FDA flow with screenshots in the README.
 - When/if a Developer ID lands, this risk substantially drops.

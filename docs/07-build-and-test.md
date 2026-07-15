@@ -89,7 +89,7 @@ Tests use **Swift Testing** (`import Testing`); the UITest target uses XCTest. T
 
 ### Human FDA and hardware gate
 
-The automated suites use fixtures and mocks; before release, run `scripts/smoke-test.sh` and complete Workstream C items V1–V8 on a representative Mac. This includes complete user + system TCC coverage under FDA, a controlled one-source degraded read, an installed bundle-ID stale candidate, independent path-only clients, a visible TCC authorization transition, and VoiceOver announcements for degraded data, last-known data, and a failed scan with no successful history. Intel remains explicitly unverified unless the same release artifact and UI checklist run on real Intel hardware; the x86_64 slice alone is packaging evidence.
+The automated suites use fixtures and mocks; before release, run `scripts/smoke-test.sh` and complete the actionable Workstream C items on a representative Mac. Complete user + system TCC coverage under FDA, an installed bundle-ID stale candidate, independent path-only clients, a visible TCC authorization transition, and VoiceOver announcements remain human gates. One-source TCC degradation is covered safely by `swift test --package-path Packages/PermissionsScanners --filter scanRetainsItemsAndReportsSystemWarningWhenSecondDatabaseFails`, which uses isolated temporary databases and an injected missing source. The app has no supported live source-injection seam, so the equivalent live UI result must remain explicitly unverified; do not edit, copy back, move, delete, `chmod`, or `chown` a real TCC database, change protected permissions merely to force failure, use `sudo`, or otherwise escalate privileges for this check. Intel likewise remains unverified unless the same release artifact and UI checklist run on real Intel hardware; the x86_64 slice alone is packaging evidence.
 
 The focused Workstream B gate is:
 
@@ -104,7 +104,7 @@ git diff --check
 
 ### Full local smoke test
 
-`scripts/smoke-test.sh` is the comprehensive pre-release gate. A normal run wipes only Permission Pulse's own state (never the real TCC.db / login items), does a Release build, asserts the bundle version (`0.7.2` / build `12`), runs all package + app-target tests, verifies the on-disk `snapshots.db` schema, and prints a human checklist (§A–§I). `--keep` preserves the production snapshot database and defaults domain; `--no-launch` skips launching the built app. `scripts/seed-diff.sh` inserts a dated empty snapshot so the next scan produces a non-empty diff for exercising the dismiss/snooze flow.
+`scripts/smoke-test.sh` is the comprehensive pre-release gate. A normal run wipes only Permission Pulse's own state (never the real TCC.db / login items), does a Release build, asserts the bundle version (`0.7.2` / build `12`), runs all package + app-target tests, verifies the on-disk `snapshots.db` schema, and prints the full human checklist (A through V8). `--keep` preserves the production snapshot database and defaults domain; `--no-launch` skips launching the built app. Under the combined `--keep --no-launch` path, a structurally valid preserved schema-v4 database is reported as pending migration rather than v5-complete because the app had no migration opportunity; every schema-expected path still requires exact schema v5, both compatibility columns, and 0/1 marker values. All smoke schema reads use SQLite's read-only mode. `scripts/seed-diff.sh` inserts a dated empty snapshot so the next scan produces a non-empty diff for exercising the dismiss/snooze flow.
 
 ## Build and verify the v0.7.2 release artifact
 
@@ -117,7 +117,7 @@ scripts/verify-release.sh \
   /tmp/permission-pulse-v0.7.2/PermissionPulse-v0.7.2.app.zip 0.7.2 12
 ```
 
-The packaging script produces a universal arm64 + x86_64, ad-hoc-signed, entitlement-clean app; verifies the raw app and exact archive; and records the release commit and checksum in sidecars. Tagging, GitHub Release creation, uploading, and post-download verification remain manual steps described in `docs/06-distribution.md`. v0.7.1 and its development-signed asset remain immutable; v0.7.2 supersedes that asset.
+The packaging script produces a universal arm64 + x86_64, ad-hoc-signed, entitlement-clean app; verifies the raw app and exact archive; and records the release commit and checksum in sidecars. Tagging, GitHub Release creation, uploading, and post-download verification remain manual steps described in `docs/06-distribution.md`. v0.7.1 and its development-signed asset remain immutable and stay latest until v0.7.2 is actually published; only then do the new release notes supersede the older artifact prospectively.
 
 ## CI
 

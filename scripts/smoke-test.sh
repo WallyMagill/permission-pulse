@@ -48,6 +48,7 @@ SCHEME="PermissionPulse"
 SUPPORT_DIR="$HOME/Library/Application Support/com.wallymagill.permissionpulse"
 DB="$SUPPORT_DIR/snapshots.db"
 BUNDLE_DOMAIN="com.wallymagill.permissionpulse"
+SCHEMA_VERIFIER="$REPO_ROOT/scripts/verify-snapshot-schema.sh"
 
 PASSED=()
 FAILED=()
@@ -92,6 +93,61 @@ remove_live_state() {
     fi
     return 0
 }
+
+verify_snapshot_schema() {
+    if [[ ! -f "$DB" ]]; then
+        warn "snapshots.db not yet created (expected on a clean slate before first launch + FDA grant)"
+        return 0
+    fi
+
+    pass "snapshots.db exists"
+    local verifier_args=(--database "$DB")
+    if [[ $WIPE_STATE -eq 0 && $LAUNCH_APP -eq 0 ]]; then
+        verifier_args+=(--allow-pending-v4)
+    fi
+
+    local output
+    if ! output=$("$SCHEMA_VERIFIER" "${verifier_args[@]}" 2>&1); then
+        fail "snapshots.db schema verification failed: $output"
+        return 0
+    fi
+
+    local status
+    local snapshot_count
+    status=$(printf '%s\n' "$output" | sed -n 's/^status=//p')
+    snapshot_count=$(printf '%s\n' "$output" | sed -n 's/^snapshot_count=//p')
+    case "$status" in
+        complete-v5)
+            pass "snapshots.db schema present (snapshots, tcc_grants, btm_items, launch_agents)"
+            pass "snapshots.db schema version = 5 (complete)"
+            pass "snapshots.launch_agent_disabled_captured is present"
+            pass "launch_agents.is_disabled is present"
+            pass "LaunchAgent compatibility markers are valid 0/1 values"
+            ;;
+        pending-v4)
+            warn "snapshots.db schema version = 4 (pending app migration; not yet verified as schema v5)"
+            ;;
+        *)
+            fail "snapshot schema verifier returned unknown status: ${status:-empty}"
+            ;;
+    esac
+    pass "snapshots.db row count: ${snapshot_count:-unknown}"
+}
+
+if [[ "${SMOKE_SCHEMA_CHECK_ONLY:-0}" == "1" ]]; then
+    if [[ -z "${SMOKE_DB_PATH:-}" ]]; then
+        echo "SMOKE_SCHEMA_CHECK_ONLY requires SMOKE_DB_PATH" >&2
+        exit 2
+    fi
+    DB=$SMOKE_DB_PATH
+    section "Snapshot schema test seam"
+    verify_snapshot_schema
+    [[ ${#FAILED[@]} -eq 0 ]]
+    exit
+elif [[ -n "${SMOKE_DB_PATH:-}" ]]; then
+    echo "SMOKE_DB_PATH is only supported with SMOKE_SCHEMA_CHECK_ONLY=1" >&2
+    exit 2
+fi
 
 # ------------------------------- 0. wipe -----------------------------------
 
@@ -190,48 +246,9 @@ fi
 section "5. On-disk state checks"
 
 # Snapshots DB will only exist if the app was launched and FDA granted.
-if [[ -f "$DB" ]]; then
-    pass "snapshots.db exists"
-    SCHEMA=$(sqlite3 "$DB" ".tables" 2>&1)
-    EXPECTED_TABLES=("btm_items" "launch_agents" "snapshots" "tcc_grants")
-    SCHEMA_OK=1
-    for t in "${EXPECTED_TABLES[@]}"; do
-        if ! echo "$SCHEMA" | grep -wq "$t"; then
-            fail "snapshots.db missing table: $t"
-            SCHEMA_OK=0
-        fi
-    done
-    [[ $SCHEMA_OK -eq 1 ]] && pass "snapshots.db schema present (snapshots, tcc_grants, btm_items, launch_agents)"
-    SCHEMA_VERSION=$(sqlite3 "$DB" "SELECT version FROM schema_version LIMIT 1;" 2>&1)
-    if [[ "$SCHEMA_VERSION" == "5" ]]; then
-        pass "snapshots.db schema version = 5"
-    else
-        fail "snapshots.db schema version = $SCHEMA_VERSION (expected 5)"
-    fi
-    SNAPSHOT_COLUMNS=$(sqlite3 "$DB" "PRAGMA table_info(snapshots);" 2>&1)
-    if echo "$SNAPSHOT_COLUMNS" | grep -Fq '|launch_agent_disabled_captured|'; then
-        pass "snapshots.launch_agent_disabled_captured is present"
-    else
-        fail "snapshots missing launch_agent_disabled_captured"
-    fi
-    LA_COLUMNS=$(sqlite3 "$DB" "PRAGMA table_info(launch_agents);" 2>&1)
-    if echo "$LA_COLUMNS" | grep -Fq '|is_disabled|'; then
-        pass "launch_agents.is_disabled is present"
-    else
-        fail "launch_agents missing is_disabled"
-    fi
-    INVALID_CAPTURE_MARKERS=$(sqlite3 "$DB" \
-        "SELECT COUNT(*) FROM snapshots WHERE launch_agent_disabled_captured IS NULL OR launch_agent_disabled_captured NOT IN (0, 1);" 2>&1)
-    if [[ "$INVALID_CAPTURE_MARKERS" == "0" ]]; then
-        pass "LaunchAgent capture markers are valid compatibility values"
-    else
-        fail "snapshots.db has $INVALID_CAPTURE_MARKERS invalid LaunchAgent capture marker(s)"
-    fi
-    SNAP_COUNT=$(sqlite3 "$DB" "SELECT COUNT(*) FROM snapshots;" 2>&1)
-    pass "snapshots.db row count: $SNAP_COUNT"
-else
-    warn "snapshots.db not yet created (expected on a clean slate before first launch + FDA grant)"
-fi
+# The helper opens it read-only. A preserved v4 database is pending, not failed,
+# only when --keep --no-launch gives the app no opportunity to migrate it.
+verify_snapshot_schema
 
 # Defaults snapshot
 PP_KEY_COUNT=$(defaults read "$BUNDLE_DOMAIN" 2>&1 \
@@ -400,10 +417,15 @@ passed --no-launch). Run through them and report any deviations.
   V1. Complete TCC coverage. On an FDA-enabled representative Mac, Refresh and
       confirm both user and system permission records are represented and the
       Permissions banner says "Complete data" with the current timestamp.
-  V2. Controlled degraded scan. In a controlled test account, make exactly one
-      user/system TCC source unreadable without editing either database. Refresh:
-      retained rows stay visible, the omitted source is named, and no daily
-      snapshot is written for that scan.
+  V2. Controlled degraded scan (isolated fixture only). Run:
+        swift test --package-path Packages/PermissionsScanners \
+          --filter scanRetainsItemsAndReportsSystemWarningWhenSecondDatabaseFails
+      This supported scanner seam creates temporary fixture data and injects a
+      missing source; it does not touch either live TCC database. There is no
+      supported live UI source-injection seam, so record the equivalent live
+      banner/snapshot result as UNVERIFIED. Do not edit, copy back, move, delete,
+      chmod, or chown a real TCC database; do not change protected permissions
+      merely to force failure; and do not use sudo or otherwise escalate.
   V3. Bundle-ID stale candidate. Use an installed bundle-ID app with old
       Spotlight/file evidence; confirm its resolved application path lets it
       appear in Stale Apps after the configured threshold.

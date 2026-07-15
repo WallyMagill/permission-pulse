@@ -24,15 +24,7 @@ for required_check in \
     fi
 done
 
-for schema_check in \
-    'SELECT version FROM schema_version' \
-    'launch_agent_disabled_captured' \
-    'is_disabled'; do
-    if ! grep -Fq "$schema_check" "$repo_root/scripts/smoke-test.sh"; then
-        printf 'FAIL: schema v5 smoke check missing: %s\n' "$schema_check" >&2
-        exit 1
-    fi
-done
+"$repo_root/scripts/tests/snapshot-schema-verifier-test.sh"
 
 printf 'PASS: --keep contains no state deletion\n'
 printf 'PASS: Workstream C human checklist is present\n'
