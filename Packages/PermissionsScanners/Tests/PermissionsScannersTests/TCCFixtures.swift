@@ -165,16 +165,18 @@ enum TCCFixtures {
         }
     }
 
-    static func makeRepeatedBundleFixture(url: URL, bundleID: String) async throws {
+    static func makeRepeatedBundleFixture(
+        url: URL,
+        bundleID: String,
+        services: [String] = ["kTCCServiceCamera", "kTCCServiceMicrophone"]
+    ) async throws {
         try await makeFixture(url: url, schema: fullSchema) { db in
-            try db.execute(sql: insertSQL, arguments: [
-                "kTCCServiceCamera", bundleID,
-                ClientType.bundleID, AuthValue.allowed, 1_715_000_000,
-            ])
-            try db.execute(sql: insertSQL, arguments: [
-                "kTCCServiceMicrophone", bundleID,
-                ClientType.bundleID, AuthValue.allowed, 1_714_000_000,
-            ])
+            for (index, service) in services.enumerated() {
+                try db.execute(sql: insertSQL, arguments: [
+                    service, bundleID,
+                    ClientType.bundleID, AuthValue.allowed, 1_715_000_000 - index,
+                ])
+            }
         }
     }
 

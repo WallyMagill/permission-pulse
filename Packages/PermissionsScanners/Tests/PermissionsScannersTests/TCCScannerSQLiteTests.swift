@@ -235,23 +235,39 @@ import PermissionsCore
 
     @Test func scanResolvesEachUniqueBundleOnceAndRetainsTheResolvedURL() async throws {
         let dir = try TempDir()
-        let dbURL = dir.dbURL("resolved.db")
+        let userDB = dir.dbURL("resolved-user.db")
+        let systemDB = dir.dbURL("resolved-system.db")
         let bundleID = "com.example.installed"
         let expectedURL = dir.url.appendingPathComponent("Installed.app")
         try FileManager.default.createDirectory(
             at: expectedURL,
             withIntermediateDirectories: true
         )
-        try await TCCFixtures.makeRepeatedBundleFixture(url: dbURL, bundleID: bundleID)
+        try await TCCFixtures.makeRepeatedBundleFixture(
+            url: userDB,
+            bundleID: bundleID,
+            services: ["kTCCServiceCamera", "kTCCServiceMicrophone"]
+        )
+        try await TCCFixtures.makeRepeatedBundleFixture(
+            url: systemDB,
+            bundleID: bundleID,
+            services: ["kTCCServiceAccessibility", "kTCCServiceScreenCapture"]
+        )
         let resolver = TestApplicationResolver(urls: [bundleID: expectedURL])
 
         let scanner = TCCScannerSQLite(
-            databaseURLs: [dbURL],
+            databaseURLs: [userDB, systemDB],
             applicationResolver: resolver
         )
         let grants = try await scanner.scan()
 
-        #expect(grants.count == 2)
+        #expect(grants.count == 4)
+        #expect(Set(grants.map(\.service)) == [
+            .accessibility,
+            .camera,
+            .microphone,
+            .screenRecording,
+        ])
         #expect(grants.allSatisfy { $0.app.bundlePath == expectedURL })
         let expectedName = FileManager.default.displayName(
             atPath: expectedURL.path(percentEncoded: false)
