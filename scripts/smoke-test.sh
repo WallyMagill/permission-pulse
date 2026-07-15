@@ -68,26 +68,49 @@ pass() { green "  ✓ $1"; PASSED+=("$1"); }
 fail() { red   "  ✗ $1"; FAILED+=("$1"); }
 warn() { yellow "  ⚠ $1"; WARNED+=("$1"); }
 
-# ------------------------------- 0. wipe -----------------------------------
+run_or_print() {
+    if [[ "${SMOKE_DRY_RUN:-0}" == "1" ]]; then
+        printf 'DRY-RUN'; printf ' %q' "$@"; printf '\n'
+    else
+        "$@"
+    fi
+}
 
-section "0. Wipe local state"
-
-osascript -e 'tell application "PermissionPulse" to quit' 2>/dev/null || true
-sleep 1
-
-if [[ $WIPE_STATE -eq 1 ]]; then
+remove_live_state() {
+    [[ $WIPE_STATE -eq 1 ]] || return 0
     if [[ -f "$DB" ]]; then
-        rm -f "$DB" && pass "removed $DB" || fail "could not remove $DB"
+        run_or_print rm -f "$DB" && pass "removed $DB" || fail "could not remove $DB"
     else
         pass "no prior snapshots.db (clean slate)"
     fi
     if defaults read "$BUNDLE_DOMAIN" >/dev/null 2>&1; then
-        defaults delete "$BUNDLE_DOMAIN" 2>/dev/null && pass "cleared defaults $BUNDLE_DOMAIN" || warn "defaults delete returned non-zero"
+        run_or_print defaults delete "$BUNDLE_DOMAIN" \
+            && pass "cleared defaults $BUNDLE_DOMAIN" \
+            || warn "defaults delete returned non-zero"
     else
         pass "no prior defaults (clean slate)"
     fi
+    return 0
+}
+
+# ------------------------------- 0. wipe -----------------------------------
+
+section "0. Wipe local state"
+
+if [[ "${SMOKE_DRY_RUN:-0}" != "1" ]]; then
+    osascript -e 'tell application "PermissionPulse" to quit' 2>/dev/null || true
+    sleep 1
+fi
+
+if [[ $WIPE_STATE -eq 1 ]]; then
+    remove_live_state
 else
     pass "(skipped — --keep was passed)"
+fi
+
+if [[ "${SMOKE_DRY_RUN:-0}" == "1" ]]; then
+    pass "state preservation verified"
+    exit 0
 fi
 
 # ------------------------------- 1. build ----------------------------------
@@ -149,12 +172,10 @@ done
 
 section "4. App target test bundle"
 
-# Clear DB before app-target tests — the host app boots a live scan and
-# pre-v0.6.0 snapshots can fatally error on diff (pre-existing bug).
-rm -f "$DB"
-
-APP_TESTS_OUT=$(xcodebuild test -project "$PROJECT" -scheme "$SCHEME" \
-    -only-testing:PermissionPulseTests 2>&1)
+APP_TESTS_OUT=$(PERMISSION_PULSE_TEST_MODE=1 xcodebuild test \
+    -project "$PROJECT" -scheme "$SCHEME" \
+    -destination 'platform=macOS,arch=arm64' \
+    -only-testing:PermissionPulseTests CODE_SIGNING_ALLOWED=NO 2>&1)
 APP_TEST_COUNT=$(echo "$APP_TESTS_OUT" | grep -oE "Test run with [0-9]+" | tail -1 | grep -oE "[0-9]+")
 if echo "$APP_TESTS_OUT" | grep -q "TEST SUCCEEDED"; then
     pass "App target: $APP_TEST_COUNT tests"
