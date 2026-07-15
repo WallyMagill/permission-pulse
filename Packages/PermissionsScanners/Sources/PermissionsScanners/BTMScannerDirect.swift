@@ -32,7 +32,7 @@ public struct BTMScannerDirect: BTMScanner, Sendable {
         self.directoryURL = directoryURL
     }
 
-    public func scan() async throws -> [BTMItem] {
+    public func scan() async throws -> ScannerOutput<BTMItem> {
         let fileURL = try locateLatestBTMFile()
         let data: Data
         do {
@@ -49,10 +49,11 @@ public struct BTMScannerDirect: BTMScanner, Sendable {
         }
 
         let entries = try Self.unarchiveEntries(data: data, fileName: fileURL.lastPathComponent)
-        return entries
+        let items = entries
             .compactMap(Self.mapEntryToItem)
             .filter { $0.type != .developerGroup }
             .sorted(by: Self.sortItems)
+        return ScannerOutput(items: items)
     }
 
     private func locateLatestBTMFile() throws -> URL {

@@ -4,16 +4,20 @@ import PermissionsCore
 
 @Suite struct PermissionsScannersSmokeTests {
     @Test func mockTCCScannerReturnsGrants() async throws {
-        let scanner = MockTCCScanner()
-        let grants = try await scanner.scan()
-        #expect(!grants.isEmpty)
-        #expect(grants.contains { $0.service == .screenRecording })
+        let warning = ScannerWarning(source: .userTCCDatabase)
+        let scanner = MockTCCScanner(warnings: [warning])
+        let output = try await scanner.scan()
+        #expect(!output.items.isEmpty)
+        #expect(output.items.contains { $0.service == .screenRecording })
+        #expect(output.warnings == [warning])
     }
 
     @Test func mockLaunchAgentScannerReturnsItems() async throws {
-        let scanner = MockLaunchAgentScanner()
-        let items = try await scanner.scan()
-        #expect(!items.isEmpty)
-        #expect(items.allSatisfy { !$0.label.isEmpty })
+        let warning = ScannerWarning(source: .entries, omittedCount: 1)
+        let scanner = MockLaunchAgentScanner(warnings: [warning])
+        let output = try await scanner.scan()
+        #expect(!output.items.isEmpty)
+        #expect(output.items.allSatisfy { !$0.label.isEmpty })
+        #expect(output.warnings == [warning])
     }
 }

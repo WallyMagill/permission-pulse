@@ -11,7 +11,7 @@ import PermissionsCore
         try dir.write(filename: "good3.plist", contents: PlistFixtures.runAtLoad(label: "com.test.three"))
 
         let scanner = LaunchAgentScannerFS(sources: [dir.asSource(.userLaunchAgents)])
-        let items = try await scanner.scan()
+        let items = try await scanner.scan().items
 
         #expect(items.count == 3)
         let labels = Set(items.map(\.label))
@@ -26,10 +26,11 @@ import PermissionsCore
         try dir.write(filename: "bad.plist", contents: Data("not a plist".utf8))
 
         let scanner = LaunchAgentScannerFS(sources: [dir.asSource(.userLaunchAgents)])
-        let items = try await scanner.scan()
+        let output = try await scanner.scan()
 
-        #expect(items.count == 3)
-        #expect(!items.contains { $0.label.contains("bad") })
+        #expect(output.items.count == 3)
+        #expect(!output.items.contains { $0.label.contains("bad") })
+        #expect(output.warnings == [ScannerWarning(source: .entries, omittedCount: 1)])
     }
 
     @Test func scanDefaultsMissingKeys() async throws {
@@ -37,7 +38,7 @@ import PermissionsCore
         try dir.write(filename: "minimal.plist", contents: PlistFixtures.minimal(label: "com.test.minimal"))
 
         let scanner = LaunchAgentScannerFS(sources: [dir.asSource(.userLaunchAgents)])
-        let items = try await scanner.scan()
+        let items = try await scanner.scan().items
 
         #expect(items.count == 1)
         let item = try #require(items.first)
@@ -53,7 +54,7 @@ import PermissionsCore
         try dir.write(filename: "dict.plist", contents: PlistFixtures.dictKeepAlive(label: "com.test.dict"))
 
         let scanner = LaunchAgentScannerFS(sources: [dir.asSource(.userLaunchAgents)])
-        let items = try await scanner.scan()
+        let items = try await scanner.scan().items
 
         #expect(items.count == 1)
         let item = try #require(items.first)
@@ -71,7 +72,7 @@ import PermissionsCore
         )
 
         let scanner = LaunchAgentScannerFS(sources: [dir.asSource(.userLaunchAgents)])
-        let items = try await scanner.scan()
+        let items = try await scanner.scan().items
 
         #expect(items.count == 1)
         let item = try #require(items.first)
@@ -87,9 +88,10 @@ import PermissionsCore
         )
 
         let scanner = LaunchAgentScannerFS(sources: [source])
-        let items = try await scanner.scan()
+        let output = try await scanner.scan()
 
-        #expect(items.isEmpty)
+        #expect(output.items.isEmpty)
+        #expect(output.warnings.isEmpty)
     }
 
     @Test(.disabled(if: ProcessInfo.processInfo.environment["CI"] != nil))
@@ -118,30 +120,53 @@ import PermissionsCore
         }
     }
 
-    @Test(.disabled(if: ProcessInfo.processInfo.environment["CI"] != nil))
-    func scanReturnsPartialResultsWhenOneSourceUnreadable() async throws {
+    @Test func scanRetainsItemsAndReportsWarningWhenOneExistingSourceFails() async throws {
         let readable = try TempDir()
         try readable.write(filename: "good.plist", contents: PlistFixtures.runAtLoad(label: "com.test.partial"))
-        let unreadable = try TempDir()
-        try FileManager.default.setAttributes(
-            [.posixPermissions: 0o000],
-            ofItemAtPath: unreadable.url.path
-        )
-        defer {
-            try? FileManager.default.setAttributes(
-                [.posixPermissions: 0o755],
-                ofItemAtPath: unreadable.url.path
-            )
-        }
+        let invalidDirectory = try TempDir()
+        let existingFile = invalidDirectory.url.appendingPathComponent("not-a-directory")
+        try Data().write(to: existingFile)
 
         let scanner = LaunchAgentScannerFS(sources: [
             readable.asSource(.userLaunchAgents),
-            unreadable.asSource(.libraryLaunchAgents),
+            LaunchAgentScannerFS.Source(
+                url: existingFile,
+                category: .libraryLaunchAgents
+            ),
         ])
-        let items = try await scanner.scan()
+        let output = try await scanner.scan()
 
-        #expect(items.count == 1)
-        #expect(items.first?.label == "com.test.partial")
+        #expect(output.items.count == 1)
+        #expect(output.items.first?.label == "com.test.partial")
+        #expect(output.warnings == [
+            ScannerWarning(source: .libraryLaunchAgents, omittedCount: nil),
+        ])
+    }
+
+    @Test func scanThrowsDeterministicErrorWhenAllExistingSourcesFail() async throws {
+        let dir = try TempDir()
+        let firstFile = dir.url.appendingPathComponent("first-not-a-directory")
+        let secondFile = dir.url.appendingPathComponent("second-not-a-directory")
+        try Data().write(to: firstFile)
+        try Data().write(to: secondFile)
+        let scanner = LaunchAgentScannerFS(sources: [
+            LaunchAgentScannerFS.Source(
+                url: firstFile,
+                category: .userLaunchAgents
+            ),
+            LaunchAgentScannerFS.Source(
+                url: secondFile,
+                category: .libraryLaunchDaemons
+            ),
+        ])
+
+        let firstError = await scannerError(from: scanner)
+        let secondError = await scannerError(from: scanner)
+
+        #expect(firstError == .permissionDenied(
+            reason: "A LaunchAgents directory could not be read."
+        ))
+        #expect(secondError == firstError)
     }
 
     @Test func scanAssignsCorrectSourceDirectory() async throws {
@@ -154,13 +179,26 @@ import PermissionsCore
             userDir.asSource(.userLaunchAgents),
             daemonDir.asSource(.libraryLaunchDaemons),
         ])
-        let items = try await scanner.scan()
+        let items = try await scanner.scan().items
 
         #expect(items.count == 2)
         let userItem = try #require(items.first { $0.label == "com.test.user" })
         let daemonItem = try #require(items.first { $0.label == "com.test.daemon" })
         #expect(userItem.sourceDirectory == .userLaunchAgents)
         #expect(daemonItem.sourceDirectory == .libraryLaunchDaemons)
+    }
+}
+
+private func scannerError(from scanner: LaunchAgentScannerFS) async -> ScannerError? {
+    do {
+        _ = try await scanner.scan()
+        Issue.record("Expected scan to throw")
+        return nil
+    } catch let error as ScannerError {
+        return error
+    } catch {
+        Issue.record("Expected ScannerError, got \(error)")
+        return nil
     }
 }
 

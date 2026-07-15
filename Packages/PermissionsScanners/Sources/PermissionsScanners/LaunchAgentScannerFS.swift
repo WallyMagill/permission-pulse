@@ -23,29 +23,40 @@ public struct LaunchAgentScannerFS: LaunchAgentScanner, Sendable {
         self.sources = sources
     }
 
-    public func scan() async throws -> [LaunchAgentItem] {
+    public func scan() async throws -> ScannerOutput<LaunchAgentItem> {
         var items: [LaunchAgentItem] = []
         var firstFailure: (any Error)?
-        var anyReadable = false
+        var warnings: [ScannerWarning] = []
+        var omittedEntryCount = 0
+        var anyExistingSourceSucceeded = false
         for source in sources {
             do {
-                items.append(contentsOf: try scanDirectory(source))
-                anyReadable = true
+                switch try scanDirectory(source) {
+                case .absent:
+                    break
+                case .scanned(let sourceItems, let sourceOmittedEntryCount):
+                    items.append(contentsOf: sourceItems)
+                    omittedEntryCount += sourceOmittedEntryCount
+                    anyExistingSourceSucceeded = true
+                }
             } catch {
                 if firstFailure == nil { firstFailure = error }
+                warnings.append(ScannerWarning(source: Self.scannerSource(for: source.category)))
             }
         }
-        // Only surface an error if NO source was readable — a partial result
-        // is still useful (under-flag, never over-flag).
-        if !anyReadable, let firstFailure {
+        if !anyExistingSourceSucceeded, let firstFailure {
             throw firstFailure
         }
-        return items.sorted {
+        if omittedEntryCount > 0 {
+            warnings.append(ScannerWarning(source: .entries, omittedCount: omittedEntryCount))
+        }
+        let sortedItems = items.sorted {
             if $0.sourceDirectory.rawValue == $1.sourceDirectory.rawValue {
                 return $0.label < $1.label
             }
             return $0.sourceDirectory.rawValue < $1.sourceDirectory.rawValue
         }
+        return ScannerOutput(items: sortedItems, warnings: warnings)
     }
 
     private static func defaultSources() -> [Source] {
@@ -66,7 +77,7 @@ public struct LaunchAgentScannerFS: LaunchAgentScanner, Sendable {
         ]
     }
 
-    private func scanDirectory(_ source: Source) throws -> [LaunchAgentItem] {
+    private func scanDirectory(_ source: Source) throws -> DirectoryScan {
         let fm = FileManager.default
         let contents: [URL]
         do {
@@ -86,16 +97,29 @@ public struct LaunchAgentScannerFS: LaunchAgentScanner, Sendable {
                 )
             }
             Self.logger.debug("LaunchAgent directory absent \(source.url.path, privacy: .public)")
-            return []
+            return .absent
         }
 
         var items: [LaunchAgentItem] = []
+        var omittedEntryCount = 0
         for fileURL in contents where fileURL.pathExtension.lowercased() == "plist" {
             if let item = decodePlist(at: fileURL, category: source.category) {
                 items.append(item)
+            } else {
+                omittedEntryCount += 1
             }
         }
-        return items
+        return .scanned(items: items, omittedEntryCount: omittedEntryCount)
+    }
+
+    private static func scannerSource(
+        for category: LaunchAgentItem.SourceDirectory
+    ) -> ScannerSource {
+        switch category {
+        case .userLaunchAgents: .userLaunchAgents
+        case .libraryLaunchAgents: .libraryLaunchAgents
+        case .libraryLaunchDaemons: .libraryLaunchDaemons
+        }
     }
 
     private func decodePlist(
@@ -126,6 +150,11 @@ public struct LaunchAgentScannerFS: LaunchAgentScanner, Sendable {
             return nil
         }
     }
+}
+
+private enum DirectoryScan {
+    case absent
+    case scanned(items: [LaunchAgentItem], omittedEntryCount: Int)
 }
 
 private struct DecodedPlist: Decodable {

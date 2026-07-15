@@ -2,10 +2,14 @@ import Foundation
 import PermissionsCore
 
 public struct MockLaunchAgentScanner: LaunchAgentScanner {
-    public init() {}
+    private let warnings: [ScannerWarning]
 
-    public func scan() async throws -> [LaunchAgentItem] {
-        [
+    public init(warnings: [ScannerWarning] = []) {
+        self.warnings = warnings
+    }
+
+    public func scan() async throws -> ScannerOutput<LaunchAgentItem> {
+        let items = [
             LaunchAgentItem(
                 label: "com.example.demo.helper",
                 sourceDirectory: .userLaunchAgents,
@@ -23,5 +27,6 @@ public struct MockLaunchAgentScanner: LaunchAgentScanner {
                 keepAlive: true
             ),
         ]
+        return ScannerOutput(items: items, warnings: warnings)
     }
 }

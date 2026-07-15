@@ -2,11 +2,15 @@ import Foundation
 import PermissionsCore
 
 public struct MockBTMScanner: BTMScanner {
-    public init() {}
+    private let warnings: [ScannerWarning]
 
-    public func scan() async throws -> [BTMItem] {
+    public init(warnings: [ScannerWarning] = []) {
+        self.warnings = warnings
+    }
+
+    public func scan() async throws -> ScannerOutput<BTMItem> {
         let now = Date()
-        return [
+        let items = [
             BTMItem(
                 identifier: "2.us.zoom.xos",
                 name: "zoom.us",
@@ -42,5 +46,6 @@ public struct MockBTMScanner: BTMScanner {
                 modificationDate: now.addingTimeInterval(-86_400 * 30)
             ),
         ]
+        return ScannerOutput(items: items, warnings: warnings)
     }
 }

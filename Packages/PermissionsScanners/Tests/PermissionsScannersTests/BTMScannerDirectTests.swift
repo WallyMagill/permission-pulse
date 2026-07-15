@@ -9,9 +9,11 @@ import PermissionsCore
         try BTMFixtures.makeValidFixture(at: dir.url)
 
         let scanner = BTMScannerDirect(directoryURL: dir.url)
-        let items = try await scanner.scan()
+        let output = try await scanner.scan()
+        let items = output.items
 
         #expect(items.count == 2)
+        #expect(output.warnings.isEmpty)
         let identifiers = Set(items.map(\.identifier))
         #expect(identifiers == ["2.us.zoom.xos", "16.us.zoom.ZoomDaemon"])
         #expect(!identifiers.contains("Docker"))
@@ -22,7 +24,7 @@ import PermissionsCore
         try BTMFixtures.makeValidFixture(at: dir.url)
 
         let scanner = BTMScannerDirect(directoryURL: dir.url)
-        let items = try await scanner.scan()
+        let items = try await scanner.scan().items
 
         let daemon = try #require(items.first { $0.identifier == "16.us.zoom.ZoomDaemon" })
         #expect(daemon.parentIdentifier == "2.us.zoom.xos")
@@ -62,7 +64,7 @@ import PermissionsCore
         )
 
         let scanner = BTMScannerDirect(directoryURL: dir.url)
-        let items = try await scanner.scan()
+        let items = try await scanner.scan().items
 
         #expect(items.count == 1)
         #expect(items.first?.identifier == "1.test.item")
@@ -133,7 +135,7 @@ import PermissionsCore
         try BTMFixtures.makeEmptyItemsDictFixture(at: dir.url)
 
         let scanner = BTMScannerDirect(directoryURL: dir.url)
-        let items = try await scanner.scan()
+        let items = try await scanner.scan().items
 
         #expect(items.isEmpty)
     }
@@ -143,8 +145,8 @@ import PermissionsCore
         try BTMFixtures.makeValidFixture(at: dir.url)
 
         let scanner = BTMScannerDirect(directoryURL: dir.url)
-        let first = try await scanner.scan()
-        let second = try await scanner.scan()
+        let first = try await scanner.scan().items
+        let second = try await scanner.scan().items
 
         #expect(first == second)
     }
@@ -154,7 +156,7 @@ import PermissionsCore
         try BTMFixtures.makeSentinelScopesFixture(at: dir.url)
 
         let scanner = BTMScannerDirect(directoryURL: dir.url)
-        let items = try await scanner.scan()
+        let items = try await scanner.scan().items
 
         let byIdentifier = Dictionary(uniqueKeysWithValues: items.map { ($0.identifier, $0) })
         let system = try #require(byIdentifier["system.item"])

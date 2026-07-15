@@ -10,7 +10,7 @@ import PermissionsCore
         try await TCCFixtures.makeValidFixture(url: dbURL)
 
         let scanner = TCCScannerSQLite(databaseURLs: [dbURL])
-        let grants = try await scanner.scan()
+        let grants = try await scanner.scan().items
 
         #expect(grants.count == 3)
         let bundleIDs = Set(grants.map(\.app.bundleID))
@@ -27,7 +27,7 @@ import PermissionsCore
         try await TCCFixtures.makeValidFixture(url: systemDB)
 
         let scanner = TCCScannerSQLite(databaseURLs: [userDB, systemDB])
-        let grants = try await scanner.scan()
+        let grants = try await scanner.scan().items
 
         // multi fixture: Zoom screenRecording + Zoom microphone (2)
         // valid fixture: Zoom screenRecording + Raycast accessibility + Terminal FDA (3)
@@ -44,7 +44,7 @@ import PermissionsCore
         try await TCCFixtures.makeWrongTypedFixture(url: dbURL)
 
         let scanner = TCCScannerSQLite(databaseURLs: [dbURL])
-        let grants = try await scanner.scan()
+        let grants = try await scanner.scan().items
 
         // Both anomalous rows are dropped (under-flag policy): the BLOB
         // service fails decode; the TEXT client_type decodes as nil and is
@@ -106,7 +106,7 @@ import PermissionsCore
         try await TCCFixtures.makeUnknownServiceFixture(url: dbURL)
 
         let scanner = TCCScannerSQLite(databaseURLs: [dbURL])
-        let grants = try await scanner.scan()
+        let grants = try await scanner.scan().items
 
         #expect(grants.count == 1)
         #expect(grants.first?.app.bundleID == "com.example.valid")
@@ -118,7 +118,7 @@ import PermissionsCore
         try await TCCFixtures.makeSkippedServiceFixture(url: dbURL)
 
         let scanner = TCCScannerSQLite(databaseURLs: [dbURL])
-        let grants = try await scanner.scan()
+        let grants = try await scanner.scan().items
 
         #expect(grants.isEmpty)
     }
@@ -129,7 +129,7 @@ import PermissionsCore
         try await TCCFixtures.makeEmptyFixture(url: dbURL)
 
         let scanner = TCCScannerSQLite(databaseURLs: [dbURL])
-        let grants = try await scanner.scan()
+        let grants = try await scanner.scan().items
 
         #expect(grants.isEmpty)
     }
@@ -140,7 +140,7 @@ import PermissionsCore
         try await TCCFixtures.makeMultiGrantFixture(url: dbURL)
 
         let scanner = TCCScannerSQLite(databaseURLs: [dbURL])
-        let grants = try await scanner.scan()
+        let grants = try await scanner.scan().items
 
         #expect(grants.count == 2)
         #expect(grants.allSatisfy { $0.app.bundleID == "us.zoom.xos" })
@@ -154,7 +154,7 @@ import PermissionsCore
         try await TCCFixtures.makeDeniedFixture(url: dbURL)
 
         let scanner = TCCScannerSQLite(databaseURLs: [dbURL])
-        let grants = try await scanner.scan()
+        let grants = try await scanner.scan().items
 
         #expect(grants.isEmpty)
     }
@@ -165,39 +165,68 @@ import PermissionsCore
         try await TCCFixtures.makeValidFixture(url: dbURL)
 
         let scanner = TCCScannerSQLite(databaseURLs: [dbURL])
-        let first = try await scanner.scan()
-        let second = try await scanner.scan()
+        let first = try await scanner.scan().items
+        let second = try await scanner.scan().items
 
         #expect(first == second)
     }
 
-    @Test func scanLogsErrorWhenOneDBFailsAndReturnsOther() async throws {
+    @Test func scanRetainsItemsAndReportsSystemWarningWhenSecondDatabaseFails() async throws {
         let dir = try TempDir()
         let validURL = dir.dbURL("valid.db")
         let missingURL = dir.dbURL("missing.db")
         try await TCCFixtures.makeValidFixture(url: validURL)
 
         let scanner = TCCScannerSQLite(databaseURLs: [validURL, missingURL])
-        let grants = try await scanner.scan()
+        let output = try await scanner.scan()
 
-        #expect(grants.count == 3)
+        #expect(output.items.count == 3)
+        #expect(output.warnings == [
+            ScannerWarning(source: .systemTCCDatabase, omittedCount: nil),
+        ])
     }
 
-    @Test func scanThrowsWhenBothDBsFail() async throws {
+    @Test func scanThrowsFirstMappedErrorWhenAllDatabasesFail() async throws {
         let dir = try TempDir()
-        let missing1 = dir.dbURL("a.db")
-        let missing2 = dir.dbURL("b.db")
+        let malformed = dir.dbURL("malformed.db")
+        let missing = dir.dbURL("missing.db")
+        try await TCCFixtures.makeMissingColumnFixture(url: malformed)
 
-        let scanner = TCCScannerSQLite(databaseURLs: [missing1, missing2])
+        let scanner = TCCScannerSQLite(databaseURLs: [malformed, missing])
         do {
             _ = try await scanner.scan()
             Issue.record("Expected scan to throw")
         } catch let error as ScannerError {
-            guard case .permissionDenied = error else {
-                Issue.record("Expected .permissionDenied, got \(error)")
-                return
-            }
+            #expect(error == .schemaMismatch(
+                detail: "TCC.db schema mismatch: missing columns [auth_value]. macOS may have changed the schema."
+            ))
         }
+    }
+
+    @Test func injectedDatabaseSourcesMapFirstSecondAndAdditionalURLsExactly() async throws {
+        let dir = try TempDir()
+        let userMissing = dir.dbURL("user.db")
+        let systemMissing = dir.dbURL("system.db")
+        let entriesMissing = dir.dbURL("entries.db")
+        let valid = dir.dbURL("valid.db")
+        try await TCCFixtures.makeValidFixture(url: valid)
+
+        let userOutput = try await TCCScannerSQLite(
+            databaseURLs: [userMissing, valid]
+        ).scan()
+        let systemOutput = try await TCCScannerSQLite(
+            databaseURLs: [valid, systemMissing]
+        ).scan()
+        let entriesOutput = try await TCCScannerSQLite(
+            databaseURLs: [valid, valid, entriesMissing]
+        ).scan()
+
+        #expect(userOutput.warnings.map(\.source) == [.userTCCDatabase])
+        #expect(systemOutput.warnings.map(\.source) == [.systemTCCDatabase])
+        #expect(entriesOutput.warnings.map(\.source) == [.entries])
+        #expect(userOutput.warnings.allSatisfy { $0.omittedCount == nil })
+        #expect(systemOutput.warnings.allSatisfy { $0.omittedCount == nil })
+        #expect(entriesOutput.warnings.allSatisfy { $0.omittedCount == nil })
     }
 
     @Test func scanPopulatesAutomationTarget() async throws {
@@ -206,7 +235,7 @@ import PermissionsCore
         try await TCCFixtures.makeAutomationFixture(url: dbURL)
 
         let scanner = TCCScannerSQLite(databaseURLs: [dbURL])
-        let grants = try await scanner.scan()
+        let grants = try await scanner.scan().items
 
         #expect(grants.count == 3)
 
@@ -225,7 +254,7 @@ import PermissionsCore
         try await TCCFixtures.makeNonexistentBundleFixture(url: dbURL)
 
         let scanner = TCCScannerSQLite(databaseURLs: [dbURL])
-        let grants = try await scanner.scan()
+        let grants = try await scanner.scan().items
 
         #expect(grants.count == 1)
         let grant = try #require(grants.first)
@@ -259,7 +288,7 @@ import PermissionsCore
             databaseURLs: [userDB, systemDB],
             applicationResolver: resolver
         )
-        let grants = try await scanner.scan()
+        let grants = try await scanner.scan().items
 
         #expect(grants.count == 4)
         #expect(Set(grants.map(\.service)) == [
@@ -287,7 +316,7 @@ import PermissionsCore
             databaseURLs: [dbURL],
             applicationResolver: resolver
         )
-        let grant = try #require(try await scanner.scan().first)
+        let grant = try #require(try await scanner.scan().items.first)
 
         #expect(grant.app.bundleID == bundleID)
         #expect(grant.app.displayName == bundleID)
@@ -304,7 +333,7 @@ import PermissionsCore
             databaseURLs: [dbURL],
             applicationResolver: TestApplicationResolver(urls: [:])
         )
-        let grants = try await scanner.scan()
+        let grants = try await scanner.scan().items
 
         #expect(grants.count == 3)
         #expect(Set(grants.compactMap(\.app.stableKey)) == [
@@ -328,7 +357,7 @@ import PermissionsCore
         )
 
         let scanner = TCCScannerSQLite(databaseURLs: [olderDB, newerDB])
-        let grants = try await scanner.scan()
+        let grants = try await scanner.scan().items
 
         #expect(grants.count == 1)
         let grant = try #require(grants.first)
@@ -344,7 +373,7 @@ import PermissionsCore
         try await TCCFixtures.makeLimitedAccessFixture(url: dbURL)
 
         let scanner = TCCScannerSQLite(databaseURLs: [dbURL])
-        let grants = try await scanner.scan()
+        let grants = try await scanner.scan().items
 
         // Both the limited Photos row and the allowed Camera row should appear.
         #expect(grants.count == 2)

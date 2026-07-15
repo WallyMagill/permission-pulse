@@ -53,25 +53,25 @@ public struct TCCScannerSQLite: TCCScanner, Sendable {
         self.applicationResolver = applicationResolver
     }
 
-    public func scan() async throws -> [PermissionGrant] {
+    public func scan() async throws -> ScannerOutput<PermissionGrant> {
         let results = await readAllDatabases()
 
-        let failures = results.compactMap { url, result -> (URL, any Error)? in
+        let failures = results.compactMap { index, url, result -> (Int, URL, any Error)? in
             switch result {
             case .success: return nil
-            case .failure(let error): return (url, error)
+            case .failure(let error): return (index, url, error)
             }
         }
 
-        let successes = results.compactMap { _, result -> [TCCRow]? in
+        let successes = results.compactMap { _, _, result -> [TCCRow]? in
             try? result.get()
         }
 
         if successes.isEmpty, let firstFailure = failures.first {
-            throw firstFailure.1
+            throw firstFailure.2
         }
 
-        for (url, error) in failures {
+        for (_, url, error) in failures {
             Self.logger.error("TCC read failed for \(url.path, privacy: .public): \(error.localizedDescription, privacy: .public)")
         }
 
@@ -80,7 +80,11 @@ public struct TCCScannerSQLite: TCCScanner, Sendable {
         let combined = rows.compactMap {
             Self.mapRowToGrant($0, resolvedURLs: resolvedURLs)
         }
-        return Self.dedupe(combined).sorted(by: Self.sortGrants)
+        let items = Self.dedupe(combined).sorted(by: Self.sortGrants)
+        let warnings = failures.map { index, _, _ in
+            ScannerWarning(source: Self.scannerSource(forDatabaseAt: index))
+        }
+        return ScannerOutput(items: items, warnings: warnings)
     }
 
     // TCC.db produces duplicates in two common situations:
@@ -111,25 +115,33 @@ public struct TCCScannerSQLite: TCCScanner, Sendable {
         return Array(byKey.values)
     }
 
-    private func readAllDatabases() async -> [(URL, Result<[TCCRow], any Error>)] {
+    private func readAllDatabases() async -> [(Int, URL, Result<[TCCRow], any Error>)] {
         await withTaskGroup(
-            of: (URL, Result<[TCCRow], any Error>).self
+            of: (Int, URL, Result<[TCCRow], any Error>).self
         ) { group in
-            for url in databaseURLs {
+            for (index, url) in databaseURLs.enumerated() {
                 group.addTask {
                     do {
                         let rows = try await Self.readRows(from: url)
-                        return (url, .success(rows))
+                        return (index, url, .success(rows))
                     } catch {
-                        return (url, .failure(error))
+                        return (index, url, .failure(error))
                     }
                 }
             }
-            var collected: [(URL, Result<[TCCRow], any Error>)] = []
+            var collected: [(Int, URL, Result<[TCCRow], any Error>)] = []
             for await item in group {
                 collected.append(item)
             }
-            return collected
+            return collected.sorted { $0.0 < $1.0 }
+        }
+    }
+
+    private static func scannerSource(forDatabaseAt index: Int) -> ScannerSource {
+        switch index {
+        case 0: .userTCCDatabase
+        case 1: .systemTCCDatabase
+        default: .entries
         }
     }
 

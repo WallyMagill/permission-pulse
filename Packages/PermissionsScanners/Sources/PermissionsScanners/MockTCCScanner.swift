@@ -2,11 +2,15 @@ import Foundation
 import PermissionsCore
 
 public struct MockTCCScanner: TCCScanner {
-    public init() {}
+    private let warnings: [ScannerWarning]
 
-    public func scan() async throws -> [PermissionGrant] {
+    public init(warnings: [ScannerWarning] = []) {
+        self.warnings = warnings
+    }
+
+    public func scan() async throws -> ScannerOutput<PermissionGrant> {
         let now = Date()
-        return [
+        let items = [
             PermissionGrant(
                 service: .screenRecording,
                 app: AppIdentity(bundleID: "us.zoom.xos", displayName: "Zoom"),
@@ -23,5 +27,6 @@ public struct MockTCCScanner: TCCScanner {
                 lastModified: now.addingTimeInterval(-86_400 * 30)
             ),
         ]
+        return ScannerOutput(items: items, warnings: warnings)
     }
 }
