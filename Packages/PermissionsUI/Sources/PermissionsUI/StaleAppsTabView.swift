@@ -7,13 +7,13 @@ struct StaleAppsTabView: View {
     var staleThresholdDays: Int = 90
     @Environment(DismissedStaleAppStore.self) private var dismissedStore
 
-    @State private var pendingSkipCandidate: StaleApp?
+    @State private var pendingSkipCandidate: StableStaleApp?
 
     var body: some View {
         // Defensive view-side filter for immediate post-click feedback. The
         // SnapshotCoordinator already filters on the next scan; this catches
         // the gap between click and re-render.
-        let visible = staleApps.filter { !dismissedStore.contains(bundleID: $0.app.bundleID) }
+        let visible = visibleStaleApps
 
         if visible.isEmpty {
             ContentUnavailableView(
@@ -23,28 +23,28 @@ struct StaleAppsTabView: View {
             )
         } else {
             List {
-                ForEach(visible, id: \.app.bundleID) { app in
-                    StaleAppRow(app: app)
+                ForEach(visible) { candidate in
+                    StaleAppRow(app: candidate.staleApp)
                         .help(String(localized: "Right-click to reveal or skip this app"))
                         .contextMenu {
-                            if app.app.bundlePath != nil {
+                            if candidate.staleApp.app.bundlePath != nil {
                                 Button(String(localized: "Reveal in Finder")) {
-                                    revealInFinder(app: app)
+                                    revealInFinder(app: candidate.staleApp)
                                 }
                             }
                             Button(String(localized: "Skip forever"), role: .destructive) {
-                                pendingSkipCandidate = app
+                                pendingSkipCandidate = candidate
                             }
                         }
                         // VoiceOver can't discover a context menu on its own; mirror its actions.
                         .accessibilityActions {
-                            if app.app.bundlePath != nil {
+                            if candidate.staleApp.app.bundlePath != nil {
                                 Button(String(localized: "Reveal in Finder")) {
-                                    revealInFinder(app: app)
+                                    revealInFinder(app: candidate.staleApp)
                                 }
                             }
                             Button(String(localized: "Skip forever")) {
-                                pendingSkipCandidate = app
+                                pendingSkipCandidate = candidate
                             }
                         }
                 }
@@ -59,15 +59,26 @@ struct StaleAppsTabView: View {
                 presenting: pendingSkipCandidate
             ) { candidate in
                 Button(String(localized: "Skip"), role: .destructive) {
-                    dismissedStore.skipForever(bundleID: candidate.app.bundleID)
+                    dismissedStore.skipForever(stableKey: candidate.stableKey)
                     pendingSkipCandidate = nil
                 }
                 Button(String(localized: "Cancel"), role: .cancel) {
                     pendingSkipCandidate = nil
                 }
             } message: { candidate in
-                Text(String(localized: "Permission Pulse will stop flagging \(candidate.app.displayName) in Stale Apps. Use Reset All Data in Preferences to un-skip."))
+                Text(String(localized: "Permission Pulse will stop flagging \(candidate.staleApp.app.displayName) in Stale Apps. Use Reset All Data in Preferences to un-skip."))
             }
+        }
+    }
+
+    private var visibleStaleApps: [StableStaleApp] {
+        var seenKeys = Set<String>()
+        return staleApps.compactMap { app in
+            guard let stableKey = app.app.stableKey,
+                  seenKeys.insert(stableKey).inserted,
+                  !dismissedStore.contains(stableKey: stableKey)
+            else { return nil }
+            return StableStaleApp(stableKey: stableKey, staleApp: app)
         }
     }
 
@@ -76,6 +87,13 @@ struct StaleAppsTabView: View {
         guard let url = app.app.bundlePath else { return }
         NSWorkspace.shared.activateFileViewerSelecting([url])
     }
+}
+
+private struct StableStaleApp: Identifiable {
+    let stableKey: String
+    let staleApp: StaleApp
+
+    var id: String { stableKey }
 }
 
 private struct StaleAppRow: View {

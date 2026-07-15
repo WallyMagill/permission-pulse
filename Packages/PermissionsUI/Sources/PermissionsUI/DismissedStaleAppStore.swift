@@ -2,7 +2,7 @@ import Foundation
 import OSLog
 import Observation
 
-/// Persists a set of bundle IDs the user has chosen to skip in the
+/// Persists a set of stable application keys the user has chosen to skip in the
 /// Stale Apps tab forever. Backed by a `[String]` UserDefaults array
 /// under `com.wallymagill.permissionpulse.dismissedStaleApps`.
 ///
@@ -19,53 +19,58 @@ public final class DismissedStaleAppStore {
     )
 
     private let defaults: UserDefaults
-    private var bundleIDs: Set<String>
+    private var stableKeys: Set<String>
 
     public init(defaults: UserDefaults = .standard) {
         self.defaults = defaults
-        self.bundleIDs = Self.load(from: defaults)
+        self.stableKeys = Self.load(from: defaults)
     }
 
-    public func contains(bundleID: String) -> Bool {
-        bundleIDs.contains(bundleID)
+    public func contains(stableKey: String) -> Bool {
+        stableKeys.contains(stableKey)
     }
 
-    public func skipForever(bundleID: String) {
-        guard !bundleIDs.contains(bundleID) else { return }
-        bundleIDs.insert(bundleID)
+    public func skipForever(stableKey: String) {
+        guard !stableKeys.contains(stableKey) else { return }
+        stableKeys.insert(stableKey)
         persist()
     }
 
-    public func unskip(bundleID: String) {
-        guard bundleIDs.contains(bundleID) else { return }
-        bundleIDs.remove(bundleID)
+    public func unskip(stableKey: String) {
+        guard stableKeys.contains(stableKey) else { return }
+        stableKeys.remove(stableKey)
         persist()
     }
 
-    public func allBundleIDs() -> Set<String> {
-        bundleIDs
+    public func allStableKeys() -> Set<String> {
+        stableKeys
     }
 
     public func removeAll() {
-        bundleIDs.removeAll()
+        stableKeys.removeAll()
         persist()
     }
 
     // MARK: - Private
 
     private func persist() {
-        defaults.set(Array(bundleIDs), forKey: Self.key)
+        defaults.set(stableKeys.sorted(), forKey: Self.key)
     }
 
     private static func load(from defaults: UserDefaults) -> Set<String> {
-        // UserDefaults will return nil for a missing key, but also nil if the
-        // stored value isn't an [String] (someone wrote garbage). Treat both
-        // as "empty set" and let the next write overwrite.
+        // UserDefaults returns nil for a missing key or a non-array value.
+        // Preserve valid strings in a mixed array and ignore invalid entries.
         guard let raw = defaults.array(forKey: key) else { return [] }
-        guard let strings = raw as? [String] else {
-            logger.error("Stale-app set blob has unexpected type; starting empty")
-            return []
+        let strings = raw.compactMap { $0 as? String }
+        if strings.count != raw.count {
+            logger.error("Stale-app set blob contains invalid entries; ignoring them")
         }
-        return Set(strings)
+        let migrated = strings.map { stableKey in
+            if stableKey.hasPrefix("bundle:") || stableKey.hasPrefix("path:") {
+                return stableKey
+            }
+            return "bundle:\(stableKey)"
+        }
+        return Set(migrated)
     }
 }

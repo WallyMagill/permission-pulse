@@ -6,46 +6,111 @@ import Testing
     @Test func skipForeverPersistsAcrossInits() {
         let defaults = fresh()
         let writer = DismissedStaleAppStore(defaults: defaults)
-        writer.skipForever(bundleID: "com.example.app")
+        writer.skipForever(stableKey: "bundle:com.example.app")
 
         let reader = DismissedStaleAppStore(defaults: defaults)
-        #expect(reader.contains(bundleID: "com.example.app"))
+        #expect(reader.contains(stableKey: "bundle:com.example.app"))
     }
 
-    @Test func unskipRemovesBundleID() {
+    @Test func unskipRemovesStableKey() {
         let defaults = fresh()
         let store = DismissedStaleAppStore(defaults: defaults)
-        store.skipForever(bundleID: "a")
-        store.skipForever(bundleID: "b")
+        store.skipForever(stableKey: "bundle:a")
+        store.skipForever(stableKey: "bundle:b")
 
-        store.unskip(bundleID: "a")
+        store.unskip(stableKey: "bundle:a")
 
         let reader = DismissedStaleAppStore(defaults: defaults)
-        #expect(!reader.contains(bundleID: "a"))
-        #expect(reader.contains(bundleID: "b"))
+        #expect(!reader.contains(stableKey: "bundle:a"))
+        #expect(reader.contains(stableKey: "bundle:b"))
     }
 
     @Test func corruptDefaultsReadsAsEmpty() {
         let defaults = fresh()
         defaults.set(42, forKey: DismissedStaleAppStore.key)
         let store = DismissedStaleAppStore(defaults: defaults)
-        #expect(store.allBundleIDs().isEmpty)
+        #expect(store.allStableKeys().isEmpty)
     }
 
-    @Test func removeAllClearsInMemoryAndPersistedBundleIDsIdempotently() {
+    @Test func removeAllClearsInMemoryAndPersistedStableKeysIdempotently() {
         let defaults = fresh()
         let store = DismissedStaleAppStore(defaults: defaults)
-        store.skipForever(bundleID: "com.example.app")
+        store.skipForever(stableKey: "bundle:com.example.app")
 
         store.removeAll()
 
-        #expect(store.allBundleIDs().isEmpty)
-        #expect(DismissedStaleAppStore(defaults: defaults).allBundleIDs().isEmpty)
+        #expect(store.allStableKeys().isEmpty)
+        #expect(DismissedStaleAppStore(defaults: defaults).allStableKeys().isEmpty)
 
         store.removeAll()
 
-        #expect(store.allBundleIDs().isEmpty)
-        #expect(DismissedStaleAppStore(defaults: defaults).allBundleIDs().isEmpty)
+        #expect(store.allStableKeys().isEmpty)
+        #expect(DismissedStaleAppStore(defaults: defaults).allStableKeys().isEmpty)
+    }
+
+    @Test func mixedLegacyKeysMigrateInMemoryAndPersistDeterministically() throws {
+        let defaults = fresh()
+        defaults.set(
+            ["path:/Applications/Path Only.app", "com.example.legacy", "bundle:com.example.current"],
+            forKey: DismissedStaleAppStore.key
+        )
+
+        let store = DismissedStaleAppStore(defaults: defaults)
+
+        #expect(store.contains(stableKey: "bundle:com.example.legacy"))
+        #expect(store.contains(stableKey: "bundle:com.example.current"))
+        #expect(store.contains(stableKey: "path:/Applications/Path Only.app"))
+
+        store.skipForever(stableKey: "bundle:com.example.added")
+
+        let persisted = try #require(defaults.stringArray(forKey: DismissedStaleAppStore.key))
+        #expect(persisted == [
+            "bundle:com.example.added",
+            "bundle:com.example.current",
+            "bundle:com.example.legacy",
+            "path:/Applications/Path Only.app",
+        ])
+    }
+
+    @Test func migratedKeysRemainPrefixedAfterReloadAndAnotherPersistence() throws {
+        let defaults = fresh()
+        defaults.set(["com.example.legacy", "path:/Applications/Tool.app"], forKey: DismissedStaleAppStore.key)
+
+        let first = DismissedStaleAppStore(defaults: defaults)
+        first.skipForever(stableKey: "bundle:com.example.added")
+        let second = DismissedStaleAppStore(defaults: defaults)
+        second.skipForever(stableKey: "bundle:com.example.second")
+
+        let persisted = try #require(defaults.stringArray(forKey: DismissedStaleAppStore.key))
+        #expect(persisted == [
+            "bundle:com.example.added",
+            "bundle:com.example.legacy",
+            "bundle:com.example.second",
+            "path:/Applications/Tool.app",
+        ])
+        #expect(second.allStableKeys() == Set(persisted))
+    }
+
+    @Test func pathStableKeysRemainIndependent() {
+        let defaults = fresh()
+        let store = DismissedStaleAppStore(defaults: defaults)
+
+        store.skipForever(stableKey: "path:/Applications/Tool A.app")
+
+        #expect(store.contains(stableKey: "path:/Applications/Tool A.app"))
+        #expect(!store.contains(stableKey: "path:/Applications/Tool B.app"))
+    }
+
+    @Test func corruptMixedEntryDoesNotDiscardValidKeys() {
+        let defaults = fresh()
+        defaults.set(["com.example.legacy", 42, "path:/Applications/Tool.app"], forKey: DismissedStaleAppStore.key)
+
+        let store = DismissedStaleAppStore(defaults: defaults)
+
+        #expect(store.allStableKeys() == [
+            "bundle:com.example.legacy",
+            "path:/Applications/Tool.app",
+        ])
     }
 
     // MARK: - Helpers

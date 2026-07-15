@@ -10,4 +10,11 @@ public struct AppIdentity: Sendable, Hashable {
         self.displayName = displayName
         self.bundlePath = bundlePath
     }
+
+    public var stableKey: String? {
+        if !bundleID.isEmpty { return "bundle:\(bundleID)" }
+        guard let bundlePath else { return nil }
+        let path = bundlePath.standardizedFileURL.path(percentEncoded: false)
+        return path.isEmpty ? nil : "path:\(path)"
+    }
 }
