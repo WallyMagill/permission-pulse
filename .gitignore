@@ -70,3 +70,6 @@ AuthKey_*.p8
 *.swp
 *~
 design-mockups/
+
+# Local isolated feature worktrees
+.worktrees/
