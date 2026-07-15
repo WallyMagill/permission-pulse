@@ -207,7 +207,12 @@ if printf '%s\n' "$signature" | /usr/bin/grep -Eq '^Authority=|^TeamIdentifier=[
     fail 'app signature contains an authority or team identifier'
 fi
 
-entitlements=$(/usr/bin/codesign -d --entitlements - "$app" 2>/dev/null || true)
+if [[ "${PERMISSION_PULSE_TEST_FORCE_ENTITLEMENTS_FAILURE:-0}" == '1' ]]; then
+    fail 'could not inspect code-signing entitlements'
+fi
+if ! entitlements=$(/usr/bin/codesign -d --entitlements - "$app" 2>/dev/null); then
+    fail 'could not inspect code-signing entitlements'
+fi
 if printf '%s\n' "$entitlements" \
     | /usr/bin/grep -Fq 'com.apple.security.get-task-allow'; then
     fail 'get-task-allow entitlement is forbidden'

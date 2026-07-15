@@ -133,6 +133,21 @@ expect_rejection() {
     printf 'PASS: %s rejected\n' "$name"
 }
 
+expect_entitlement_inspection_failure() {
+    local input=$1
+    if PERMISSION_PULSE_TEST_FORCE_ENTITLEMENTS_FAILURE=1 \
+        "$verifier" "$input" "$expected_version" "$expected_build" \
+        >"$temp_root/result.log" 2>&1; then
+        fail 'entitlement inspection failure was accepted'
+    fi
+    if ! /usr/bin/grep -Fq 'could not inspect code-signing entitlements' \
+        "$temp_root/result.log"; then
+        /bin/cat "$temp_root/result.log" >&2
+        fail 'entitlement inspection failure did not report a fail-closed error'
+    fi
+    printf 'PASS: entitlement inspection failure rejected\n'
+}
+
 [[ -d "$release_app" ]] || fail "release app not found: $release_app"
 
 valid_app="$temp_root/valid app/PermissionPulse.app"
@@ -140,6 +155,7 @@ valid_app="$temp_root/valid app/PermissionPulse.app"
 copy_app "$valid_app"
 sign_app "$valid_app"
 expect_success 'valid raw app' "$valid_app"
+expect_entitlement_inspection_failure "$valid_app"
 
 valid_zip="$temp_root/valid release.zip"
 (
