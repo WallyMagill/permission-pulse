@@ -1,6 +1,6 @@
 # Permission Pulse Agent Access Foundation Design
 
-**Status:** Approved in brainstorming on 2026-07-15; pending written-spec review
+**Status:** Approved in brainstorming and written-spec review on 2026-07-15
 
 **Slice:** 1 of 3 in the Agent Access program
 
