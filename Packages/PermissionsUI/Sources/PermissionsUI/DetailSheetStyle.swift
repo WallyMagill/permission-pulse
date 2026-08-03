@@ -1,11 +1,11 @@
 import SwiftUI
 import PermissionsCore
 
-// Shared visual language for every detail sheet — section labels, key/value
-// rows, risk panels, the gradient symbol tile used when an item has no real
-// app icon, the accent-blue service pill, and the close-only footer. All
-// built on top of `.vibrancyCard()` so sheets feel like part of the same
-// window, not a stranger pop-up.
+// Shared visual language for the detail inspectors — section labels,
+// key/value rows, risk panels, the gradient symbol tile used when an item
+// has no real app icon, and the accent service pill. All built on top of
+// `.vibrancyCard()` so inspector content feels like part of the same window.
+// (The `Sheet*` names date from the pre-inspector modal sheets.)
 
 struct SheetSectionLabel: View {
     let title: String

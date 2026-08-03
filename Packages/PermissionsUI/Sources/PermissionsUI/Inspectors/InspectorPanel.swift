@@ -2,7 +2,7 @@ import SwiftUI
 import PermissionsCore
 
 /// Trailing inspector content host. Resolves the current selection against
-/// live scan data; Tasks 4–5 swap the per-type placeholder for real panels.
+/// live scan data and routes to the matching per-type inspector panel.
 struct InspectorPanel: View {
     @Environment(AppViewModel.self) private var viewModel
     let selection: InspectorSelection?
