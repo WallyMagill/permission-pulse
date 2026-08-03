@@ -79,7 +79,7 @@ struct LaunchAgentInspector: View {
                 .textSelection(.enabled)
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(.horizontal, 14)
-                .padding(.vertical, 10)
+                .padding(.vertical, 9)
                 .vibrancyCard()
         }
     }

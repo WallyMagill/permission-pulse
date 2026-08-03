@@ -84,7 +84,7 @@ struct SheetGradientTile: View {
     var size: CGFloat = 44
 
     var body: some View {
-        RoundedRectangle(cornerRadius: 11, style: .continuous)
+        RoundedRectangle(cornerRadius: PPRadius.medium, style: .continuous)
             .fill(PPColor.brandGradient)
             .frame(width: size, height: size)
             .overlay(

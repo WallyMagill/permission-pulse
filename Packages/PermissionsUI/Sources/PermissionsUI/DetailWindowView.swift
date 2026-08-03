@@ -196,14 +196,33 @@ private struct DetailSidebar: View {
                     .contentTransition(.numericText())
                     .animation(reduceMotion ? nil : .default, value: changeCount)
                     .tag(SidebarItem.recentChanges)
+                    // VoiceOver otherwise announces the badge as a bare number.
+                    .accessibilityLabel(recentChangesA11yLabel(changeCount))
                 Label(String(localized: "Stale Apps"), systemImage: "hourglass")
                     .badge(staleCount)
                     .contentTransition(.numericText())
                     .animation(reduceMotion ? nil : .default, value: staleCount)
                     .tag(SidebarItem.staleApps)
+                    .accessibilityLabel(staleAppsA11yLabel(staleCount))
             }
         }
         .listStyle(.sidebar)
+    }
+
+    private func recentChangesA11yLabel(_ count: Int) -> String {
+        switch count {
+        case 0: String(localized: "Recent Changes")
+        case 1: String(localized: "Recent Changes, 1 unreviewed change")
+        default: String(localized: "Recent Changes, \(count) unreviewed changes")
+        }
+    }
+
+    private func staleAppsA11yLabel(_ count: Int) -> String {
+        switch count {
+        case 0: String(localized: "Stale Apps")
+        case 1: String(localized: "Stale Apps, 1 stale app")
+        default: String(localized: "Stale Apps, \(count) stale apps")
+        }
     }
 }
 
@@ -388,21 +407,13 @@ private struct LaunchAgentsDetailPage: View {
     }
 
     private func errorView(error: ScannerError) -> some View {
-        VStack(spacing: PPSpacing.sm) {
-            Image(systemName: "exclamationmark.triangle.fill")
-                // Decorative hero icon — keep fixed size (rule 1)
-                .font(.system(size: 36))
-                .foregroundStyle(PPColor.warning)
-                .accessibilityHidden(true)
-            Text(String(localized: "Couldn't read Launch Agents"))
-                .ppFont(.cardHeader)
+        // Same ContentUnavailableView treatment as the Permissions and
+        // Background Items error states, for cross-page consistency.
+        ContentUnavailableView {
+            Label(String(localized: "Couldn't read Launch Agents"), systemImage: "exclamationmark.triangle")
+        } description: {
             Text(error.errorDescription ?? String(localized: "An error occurred reading the LaunchAgents directories."))
-                .ppFont(.metadata)
-                .foregroundStyle(.secondary)
-                .multilineTextAlignment(.center)
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .padding(.vertical, PPSpacing.xxl)
     }
 
     private var filteredItems: [LaunchAgentItem] {
@@ -550,7 +561,7 @@ private struct BTMListRow: View {
             )
         } else {
             ZStack {
-                RoundedRectangle(cornerRadius: 7, style: .continuous)
+                RoundedRectangle(cornerRadius: PPRadius.small, style: .continuous)
                     .fill(Color.secondary.opacity(0.14))
                     .frame(width: 28, height: 28)
                 Image(systemName: item.type.symbolName)

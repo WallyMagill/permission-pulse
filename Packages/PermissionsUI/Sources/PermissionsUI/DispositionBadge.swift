@@ -10,7 +10,7 @@ struct DispositionBadge: View {
         Text(label)
             .ppFont(.badge)
             .foregroundStyle(style.foreground)
-            .padding(.horizontal, 6)
+            .padding(.horizontal, PPSpacing.xs)
             .padding(.vertical, PPSpacing.xxs)
             .background(style.background, in: .capsule)
     }

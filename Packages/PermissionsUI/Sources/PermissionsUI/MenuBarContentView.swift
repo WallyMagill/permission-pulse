@@ -146,7 +146,9 @@ private struct StatusRowButton: View {
         Button(action: action) {
             HStack(spacing: PPSpacing.sm) {
                 Image(systemName: symbolName)
-                    .font(.system(size: 12, weight: .medium))
+                    // .caption matches the previous fixed 12pt at the default
+                    // size but tracks Dynamic Type alongside the row's text.
+                    .font(.system(.caption, weight: .medium))
                     .foregroundStyle(iconColor)
                     .frame(width: 20)
                     .accessibilityHidden(true)
@@ -173,7 +175,26 @@ private struct StatusRowButton: View {
         }
         .buttonStyle(.plain)
         .onHover { isHovering = $0 }
-        .accessibilityHint(String(localized: "Opens Permission Pulse"))
+        .accessibilityHint(destinationHint)
+    }
+
+    /// VoiceOver mirror of the deep link each row follows; sighted users get
+    /// the same routing information from the row copy and chevron.
+    private var destinationHint: String {
+        switch row.route {
+        case .overview:
+            String(localized: "Opens the Overview in Permission Pulse")
+        case .permissions:
+            String(localized: "Opens Permissions in Permission Pulse")
+        case .launchAgents:
+            String(localized: "Opens Launch Agents in Permission Pulse")
+        case .backgroundItems:
+            String(localized: "Opens Background Items in Permission Pulse")
+        case .recentChanges:
+            String(localized: "Opens Recent Changes in Permission Pulse")
+        case .staleApps:
+            String(localized: "Opens Stale Apps in Permission Pulse")
+        }
     }
 
     private var isCountRow: Bool {
@@ -225,7 +246,9 @@ private struct MenuRowButton: View {
         Button(action: action) {
             HStack(spacing: PPSpacing.sm) {
                 Image(systemName: icon)
-                    .font(.system(size: 13, weight: .medium))
+                    // .footnote matches the previous fixed 13pt at the default
+                    // size but tracks Dynamic Type alongside the row's text.
+                    .font(.system(.footnote, weight: .medium))
                     .frame(width: 22, height: 22)
                     .foregroundStyle(isEnabled ? AnyShapeStyle(iconTint) : AnyShapeStyle(.tertiary))
                     .accessibilityHidden(true)
@@ -238,6 +261,9 @@ private struct MenuRowButton: View {
                         .ppFont(.metadata)
                         .foregroundStyle(.tertiary)
                         .monospacedDigit()
+                        // The real shortcut is exposed via .keyboardShortcut;
+                        // VoiceOver shouldn't read the display glyphs ("⌘R").
+                        .accessibilityHidden(true)
                 }
             }
             .padding(.horizontal, PPSpacing.sm)

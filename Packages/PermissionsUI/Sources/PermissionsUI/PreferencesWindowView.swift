@@ -152,103 +152,10 @@ private struct DigestSettingsTab: View {
         @Bindable var vm = viewModel
 
         Form {
-            Section {
-                Toggle(isOn: Binding(
-                    get: { vm.digestEnabled },
-                    set: { newValue in
-                        // Write the store before the async hop so the switch
-                        // flips on this frame instead of snapping back first.
-                        vm.digestEnabled = newValue
-                        Task { await vm.handleDigestToggle(to: newValue) }
-                    }
-                )) {
-                    VStack(alignment: .leading, spacing: PPSpacing.xxs) {
-                        Text(String(localized: "Send weekly digest"))
-                            .ppFont(.body)
-                        Text(String(localized: "A local notification summarizing this week's changes. macOS will ask for permission the first time you turn this on."))
-                            .ppFont(.metadata)
-                            .foregroundStyle(.secondary)
-                            .fixedSize(horizontal: false, vertical: true)
-                    }
-                }
-                .toggleStyle(.switch)
-                .tint(.accentColor)
-
-                Picker(
-                    String(localized: "Day"),
-                    selection: Binding(
-                        get: { vm.store.digestWeekday },
-                        set: { newValue in
-                            vm.store.digestWeekday = newValue
-                            vm.scheduleDidChange()
-                        }
-                    )
-                ) {
-                    ForEach(Self.weekdayLabels, id: \.value) { entry in
-                        Text(entry.label).tag(entry.value)
-                    }
-                }
-                .pickerStyle(.menu)
-                .disabled(!vm.digestEnabled)
-
-                DatePicker(
-                    String(localized: "Time"),
-                    selection: Binding(
-                        get: { vm.store.digestTime() },
-                        set: { newValue in
-                            vm.store.setDigestTime(newValue)
-                            vm.scheduleDidChange()
-                        }
-                    ),
-                    displayedComponents: .hourAndMinute
-                )
-                .datePickerStyle(.compact)
-                .disabled(!vm.digestEnabled)
-            } header: {
-                Text(String(localized: "Weekly Digest"))
-            }
-
+            scheduleSection(vm: vm)
             if vm.digestEnabled {
-                Section {
-                    HStack(alignment: .firstTextBaseline) {
-                        VStack(alignment: .leading, spacing: PPSpacing.xxs) {
-                            Text(String(localized: "Send test notification"))
-                                .ppFont(.body)
-                                .fontWeight(.medium)
-                            Text(String(localized: "Fires a one-off banner in 5 seconds. Useful for verifying delivery without waiting for the scheduled day."))
-                                .ppFont(.metadata)
-                                .foregroundStyle(.secondary)
-                                .fixedSize(horizontal: false, vertical: true)
-                        }
-                        Spacer(minLength: PPSpacing.md)
-                        Button {
-                            // Cancel any in-flight auto-clear so a re-tap's
-                            // result isn't wiped early by the previous timer.
-                            clearResultTask?.cancel()
-                            clearResultTask = Task {
-                                await vm.sendTestNotification()
-                                try? await Task.sleep(for: Self.testResultDisplayDuration)
-                                guard !Task.isCancelled else { return }
-                                vm.clearTestNotificationResult()
-                            }
-                        } label: {
-                            Text(String(localized: "Send"))
-                                .frame(minWidth: 60)
-                        }
-                        .buttonStyle(.borderedProminent)
-                        .controlSize(.regular)
-                        .disabled(vm.testNotificationResult == .scheduling)
-                    }
-
-                    if let resultText = testResultText(vm.testNotificationResult) {
-                        Text(resultText)
-                            .ppFont(.metadata)
-                            .foregroundStyle(testResultColor(vm.testNotificationResult))
-                            .fixedSize(horizontal: false, vertical: true)
-                    }
-                }
+                testNotificationSection(vm: vm)
             }
-
             hintSection(vm: viewModel)
         }
         .formStyle(.grouped)
@@ -262,6 +169,105 @@ private struct DigestSettingsTab: View {
             await vm.refreshAuthorizationHint()
         }
         .onDisappear { clearResultTask?.cancel() }
+    }
+
+    private func scheduleSection(vm: PreferencesViewModel) -> some View {
+        Section {
+            Toggle(isOn: Binding(
+                get: { vm.digestEnabled },
+                set: { newValue in
+                    // Write the store before the async hop so the switch
+                    // flips on this frame instead of snapping back first.
+                    vm.digestEnabled = newValue
+                    Task { await vm.handleDigestToggle(to: newValue) }
+                }
+            )) {
+                VStack(alignment: .leading, spacing: PPSpacing.xxs) {
+                    Text(String(localized: "Send weekly digest"))
+                        .ppFont(.body)
+                    Text(String(localized: "A local notification summarizing this week's changes. macOS will ask for permission the first time you turn this on."))
+                        .ppFont(.metadata)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+            .toggleStyle(.switch)
+            .tint(.accentColor)
+
+            Picker(
+                String(localized: "Day"),
+                selection: Binding(
+                    get: { vm.store.digestWeekday },
+                    set: { newValue in
+                        vm.store.digestWeekday = newValue
+                        vm.scheduleDidChange()
+                    }
+                )
+            ) {
+                ForEach(Self.weekdayLabels, id: \.value) { entry in
+                    Text(entry.label).tag(entry.value)
+                }
+            }
+            .pickerStyle(.menu)
+            .disabled(!vm.digestEnabled)
+
+            DatePicker(
+                String(localized: "Time"),
+                selection: Binding(
+                    get: { vm.store.digestTime() },
+                    set: { newValue in
+                        vm.store.setDigestTime(newValue)
+                        vm.scheduleDidChange()
+                    }
+                ),
+                displayedComponents: .hourAndMinute
+            )
+            .datePickerStyle(.compact)
+            .disabled(!vm.digestEnabled)
+        } header: {
+            Text(String(localized: "Weekly Digest"))
+        }
+    }
+
+    private func testNotificationSection(vm: PreferencesViewModel) -> some View {
+        Section {
+            HStack(alignment: .firstTextBaseline) {
+                VStack(alignment: .leading, spacing: PPSpacing.xxs) {
+                    Text(String(localized: "Send test notification"))
+                        .ppFont(.body)
+                        .fontWeight(.medium)
+                    Text(String(localized: "Fires a one-off banner in 5 seconds. Useful for verifying delivery without waiting for the scheduled day."))
+                        .ppFont(.metadata)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                Spacer(minLength: PPSpacing.md)
+                Button {
+                    // Cancel any in-flight auto-clear so a re-tap's
+                    // result isn't wiped early by the previous timer.
+                    clearResultTask?.cancel()
+                    clearResultTask = Task {
+                        await vm.sendTestNotification()
+                        try? await Task.sleep(for: Self.testResultDisplayDuration)
+                        guard !Task.isCancelled else { return }
+                        vm.clearTestNotificationResult()
+                    }
+                } label: {
+                    Text(String(localized: "Send"))
+                        .frame(minWidth: 60)
+                }
+                .buttonStyle(.borderedProminent)
+                .controlSize(.regular)
+                .disabled(vm.testNotificationResult == .scheduling)
+            }
+
+            if let resultText = testResultText(vm.testNotificationResult) {
+                Text(resultText)
+                    .ppFont(.metadata)
+                    .foregroundStyle(testResultColor(vm.testNotificationResult))
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
     }
 
     @ViewBuilder
