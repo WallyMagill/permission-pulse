@@ -180,7 +180,10 @@ else
     echo "$BUILD_OUTPUT" | tail -40
 fi
 
-APP_PATH=$(/bin/ls -d "$HOME/Library/Developer/Xcode/DerivedData/PermissionPulse-"*/Build/Products/Release/PermissionPulse.app 2>/dev/null | head -1)
+# -t: newest first. Multiple PermissionPulse-<hash> folders can coexist
+# (e.g. after the checkout moves); the alphabetical first may be a stale
+# build from an old path, which would then be plist-checked and launched.
+APP_PATH=$(/bin/ls -dt "$HOME/Library/Developer/Xcode/DerivedData/PermissionPulse-"*/Build/Products/Release/PermissionPulse.app 2>/dev/null | head -1)
 if [[ -z "$APP_PATH" ]]; then
     fail "could not locate built .app under DerivedData"
 else
@@ -315,17 +318,17 @@ passed --no-launch). Run through them and report any deviations.
   B. Menu-bar dropdown shows: What Changed (⌘W), Open Permission Pulse
      (⌘O), Preferences… (⌘,), Quit (⌘Q).
 
-  C. ⌘, opens Preferences (Tahoe MenuBarExtra regression check). Two
-     tabs — Snapshots, Notifications.
+  C. ⌘, opens Preferences (Tahoe MenuBarExtra regression check). Four
+     tabs — General, Scanning, Digest, Data.
 
-  D. Snapshots tab — drag retention + stale sliders, close and reopen.
+  D. Scanning tab — drag retention + stale sliders, close and reopen.
      Values persist. defaults read com.wallymagill.permissionpulse
      <key> confirms.
 
-  E. Notifications tab — flip toggle ON. macOS prompt should show
+  E. Digest tab — flip toggle ON. macOS prompt should show
      "Permission Pulse" as the app name. Click Allow.
 
-  F. Notifications tab — click the new "Send" button (next to "Send
+  F. Digest tab — click the new "Send" button (next to "Send
      test notification"). Switch to another app. A banner labelled
      "Permission Pulse · Test" should appear in ~5 seconds.
      ← THIS is the diagnostic for the missing-notification bug.
@@ -389,9 +392,11 @@ passed --no-launch). Run through them and report any deviations.
      design); the dropdown popover background stays readable. OFF looks normal.
 
   R. Accent color. System Settings → Appearance → Accent color → pick a
-     non-blue (e.g. Pink). Interactive elements (sidebar selection, buttons,
-     pickers, service pills) follow it; the brand badge stays blue; category
-     and status colors (green/red/orange) are unchanged.
+     non-blue (e.g. Pink). The app's asset catalog pins AccentColor to the
+     brand blue, so interactive elements (sidebar selection, buttons,
+     pickers, service pills) stay brand blue — they must NOT follow the
+     system accent; category and status colors (green/red/orange) are
+     unchanged.
 
   S. Badge contrast. The Mock / Live badges and the background-item
      disposition badges read clearly (dark text on a pale tint) in both light
