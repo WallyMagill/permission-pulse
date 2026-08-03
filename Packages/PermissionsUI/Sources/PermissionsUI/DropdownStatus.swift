@@ -49,11 +49,17 @@ public struct DropdownStatusRow: Equatable, Sendable, Identifiable {
         case .media(_, _):
             String(localized: "Camera is in use")
         case .changes(let n):
-            String(localized: "\(n) changes since your last review")
+            n == 1
+                ? String(localized: "1 change since your last review")
+                : String(localized: "\(n) changes since your last review")
         case .stale(let n):
-            String(localized: "\(n) stale apps with old permissions")
+            n == 1
+                ? String(localized: "1 stale app with old permissions")
+                : String(localized: "\(n) stale apps with old permissions")
         case .allClear(let n):
-            String(localized: "\(n) apps with permissions")
+            n == 1
+                ? String(localized: "1 app with permissions")
+                : String(localized: "\(n) apps with permissions")
         }
     }
 }

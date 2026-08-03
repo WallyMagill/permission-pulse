@@ -69,7 +69,9 @@ public struct ScanAvailabilityBanner: View {
             String(localized: "System Launch Daemons were unavailable.")
         case .entries:
             if let count = warning.omittedCount {
-                String(localized: "\(count) malformed or unreadable entries were omitted.")
+                count == 1
+                    ? String(localized: "1 malformed or unreadable entry was omitted.")
+                    : String(localized: "\(count) malformed or unreadable entries were omitted.")
             } else {
                 String(localized: "Some malformed or unreadable entries were omitted.")
             }

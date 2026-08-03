@@ -291,7 +291,13 @@ private struct PermissionsDetailPage: View {
         guard !viewModel.grants.isEmpty else { return "" }
         let appCount = Set(viewModel.grants.map(\.appKey)).count
         let serviceCount = Set(viewModel.grants.map(\.service)).count
-        return String(localized: "\(appCount) apps · \(serviceCount) services")
+        let apps = appCount == 1
+            ? String(localized: "1 app")
+            : String(localized: "\(appCount) apps")
+        let services = serviceCount == 1
+            ? String(localized: "1 service")
+            : String(localized: "\(serviceCount) services")
+        return String(localized: "\(apps) · \(services)")
     }
 
     private struct AppGrantRow: View {
@@ -410,7 +416,10 @@ private struct LaunchAgentsDetailPage: View {
 
     private var subtitle: String {
         guard !viewModel.launchAgents.isEmpty else { return "" }
-        return String(localized: "\(viewModel.launchAgents.count) agents across user and system scopes")
+        let count = viewModel.launchAgents.count
+        return count == 1
+            ? String(localized: "1 agent across user and system scopes")
+            : String(localized: "\(count) agents across user and system scopes")
     }
 }
 
@@ -505,7 +514,10 @@ private struct BackgroundItemsDetailPage: View {
     private var subtitle: String {
         guard !viewModel.btmItems.isEmpty else { return "" }
         let enabled = viewModel.btmItems.filter { $0.disposition == .enabled }.count
-        return String(localized: "\(viewModel.btmItems.count) items · \(enabled) enabled")
+        let items = viewModel.btmItems.count == 1
+            ? String(localized: "1 item")
+            : String(localized: "\(viewModel.btmItems.count) items")
+        return String(localized: "\(items) · \(enabled) enabled")
     }
 }
 

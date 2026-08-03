@@ -85,4 +85,17 @@ struct DropdownStatusTests {
         let result = rows(changeCount: 3, hasUnreviewed: false)
         #expect(!result.contains { if case .changes = $0.kind { true } else { false } })
     }
+
+    @Test("Count row titles agree in number at one and at many")
+    func countTitlesPluralize() {
+        func title(_ kind: DropdownStatusRow.Kind) -> String {
+            DropdownStatusRow(kind: kind, route: .overview).title
+        }
+        #expect(title(.changes(count: 1)) == "1 change since your last review")
+        #expect(title(.changes(count: 2)) == "2 changes since your last review")
+        #expect(title(.stale(count: 1)) == "1 stale app with old permissions")
+        #expect(title(.stale(count: 3)) == "3 stale apps with old permissions")
+        #expect(title(.allClear(appCount: 1)) == "1 app with permissions")
+        #expect(title(.allClear(appCount: 42)) == "42 apps with permissions")
+    }
 }

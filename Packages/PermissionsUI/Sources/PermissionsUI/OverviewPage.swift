@@ -104,7 +104,9 @@ struct OverviewPage: View {
         }
         if hasCountedUnreviewedChanges {
             attentionRow(
-                String(localized: "\(viewModel.recentChangeEventCount) unreviewed changes"),
+                viewModel.recentChangeEventCount == 1
+                    ? String(localized: "1 unreviewed change")
+                    : String(localized: "\(viewModel.recentChangeEventCount) unreviewed changes"),
                 target: .recentChanges
             )
         }
