@@ -19,12 +19,15 @@ Permission Pulse is a menu-bar app that gives you the missing view:
 - **Stale App Review** — apps with powerful permissions you haven't opened in 90+ days (threshold is configurable).
 - **One-click Fixes** — deep links to the right System Settings pane.
 - **Weekly Digest** — an opt-in local notification with what's new.
+- **Overview** — one landing page with anything needing attention, per-section counts, and the last scan time.
+- **Export** — save the current permission state as JSON or Markdown to a location you choose.
+- **Launch at Login** — optional, from Settings → General.
 
 Read-only. No cleaner-tier nonsense. No analytics. No phoning home. Free and open-source under MIT.
 
 ## Status
 
-**v0.7.1 is the latest published release. v0.7.2 is an unreleased candidate.** The v0.7.2 source currently implements the TCC permission inbox, Launch Agents / Launch Daemons / BTM background-item scanners, the live mic/cam indicator, daily and weekly "What Changed" diffs with per-row dismiss/snooze, plain-English risk explanations, stale-app review, one-click System Settings deep links, a preferences pane (retention + stale threshold + reset), and an opt-in weekly digest notification. It is not a supported release until its remaining human gates pass and the version is actually tagged and published. See [`docs/09-roadmap.md`](docs/09-roadmap.md) for the full milestone history and what remains before a tagged `v1.0.0`.
+**v0.7.1 is the latest published release. v0.7.2 is an unreleased candidate.** The v0.7.2 source currently implements an Overview landing page, the TCC permission inbox, Launch Agents / Launch Daemons / BTM background-item scanners, the live mic/cam indicator, daily and weekly "What Changed" diffs with per-row dismiss/snooze, plain-English risk explanations, stale-app review, one-click System Settings deep links, export to JSON/Markdown, launch at login, a settings window (retention + stale threshold + digest schedule + reset), an opt-in weekly digest notification, and the app's first icon. It is not a supported release until its remaining human gates pass and the version is actually tagged and published. See [`docs/09-roadmap.md`](docs/09-roadmap.md) for the full milestone history and what remains before a tagged `v1.0.0`.
 
 The published v0.7.1 asset remains immutable. If v0.7.2 passes the release gates and is published, its release notes will supersede the development-signed v0.7.1 artifact prospectively; until then, the repository's verified v0.7.2 archive is only a local release candidate. Maintainers must use the single manual build-and-verification path in [`docs/06-distribution.md`](docs/06-distribution.md); CI verifies the same artifact shape but never tags, publishes, or uploads a release.
 
@@ -33,10 +36,10 @@ Builds are **unsigned / ad-hoc-signed** — there is no paid Apple Developer ID 
 ## Install
 
 1. Download `PermissionPulse-vX.Y.Z.app.zip` from the [Releases page](https://github.com/WallyMagill/permission-pulse/releases) and unzip it (Finder unzips with a double-click).
-2. Drag **Permission Pulse.app** into `/Applications`.
+2. Drag **PermissionPulse.app** into `/Applications`.
 3. **First launch:** double-click the app. macOS shows an "Apple could not verify…" dialog — Permission Pulse is not notarized because there is no paid Apple Developer ID behind it. Click **Done** (not "Move to Trash"), then open **System Settings → Privacy & Security**, scroll down to the *"Permission Pulse" was blocked* notice, and click **Open Anyway**. Confirm the follow-up dialog (macOS asks you to authenticate). After the first launch it opens normally.
    - On **macOS 14 (Sonoma)** the older shortcut still works: right-click the app → **Open** → **Open**. macOS 15 (Sequoia) and later removed that shortcut for unsigned apps.
-   - Terminal alternative: `xattr -d com.apple.quarantine "/Applications/Permission Pulse.app"` removes the quarantine flag so the app opens directly.
+   - Terminal alternative: `xattr -d com.apple.quarantine /Applications/PermissionPulse.app` removes the quarantine flag so the app opens directly.
 4. On the first-run prompt, grant **Full Disk Access** in System Settings → Privacy & Security → Full Disk Access; macOS may ask you to quit and reopen the app for it to take effect. FDA is required to read the TCC database (app permissions) and the BTM background-items store — Permission Pulse only ever *reads* these files, never writes to them. The Launch Agents and live mic/cam features work without FDA.
 
 ## Requirements
@@ -70,3 +73,7 @@ Issues and PRs welcome. Read [`docs/03-architecture.md`](docs/03-architecture.md
 ## License
 
 [MIT](LICENSE).
+
+## Next version
+
+Before v0.7.2 is tagged, this page gets screenshots (light and dark) of the dropdown, Overview, Permission Inbox, Recent Changes, Stale Apps, and Digest settings, and the release itself goes through the human gates in [`docs/superpowers/prompts/v0.7.2-release-runbook.md`](docs/superpowers/prompts/v0.7.2-release-runbook.md). Later work is tracked in [`docs/09-roadmap.md`](docs/09-roadmap.md).

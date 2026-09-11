@@ -315,8 +315,10 @@ passed --no-launch). Run through them and report any deviations.
   A. Welcome window appears + FDA-grant flow works
      → After granting, click Refresh in the detail-window toolbar.
 
-  B. Menu-bar dropdown shows: What Changed (⌘W), Open Permission Pulse
-     (⌘O), Preferences… (⌘,), Quit (⌘Q).
+  B. Menu-bar dropdown shows the status rows (attention / mic-cam /
+     changes / stale / all-clear, each a deep link into the window), then
+     Open Permission Pulse (⌘O), Rescan Now (⌘R), Settings… (⌘,),
+     Welcome & About, Quit (⌘Q).
 
   C. ⌘, opens Preferences (Tahoe MenuBarExtra regression check). Four
      tabs — General, Scanning, Digest, Data.
@@ -333,13 +335,14 @@ passed --no-launch). Run through them and report any deviations.
      "Permission Pulse · Test" should appear in ~5 seconds.
      ← THIS is the diagnostic for the missing-notification bug.
 
-  G. Recent Changes — trailing ellipsis menu → Dismiss / Snooze 7 days
-     work. To force a non-empty diff, run scripts/seed-diff.sh (which
-     writes a 2-day-old empty snapshot in GRDB's TEXT date format), then
-     click Refresh in the detail-window toolbar.
+  G. Recent Changes — right-click a row → Snooze 7 days / Dismiss forever
+     work (the row tooltip says "Right-click for dismiss options"). To
+     force a non-empty diff, run scripts/seed-diff.sh (which writes a
+     2-day-old empty snapshot in GRDB's TEXT date format), then click
+     Refresh in the detail-window toolbar.
 
-  H. Stale Apps — trailing ellipsis menu → Skip forever, confirmation
-     alert appears.
+  H. Stale Apps — right-click a row → Reveal in Finder / Skip forever;
+     Skip forever shows the "Skip this app forever?" confirmation alert.
 
   I. Reset All Data — confirmation sheet, cascade works, NSWindow
      keys preserved.
@@ -365,10 +368,11 @@ passed --no-launch). Run through them and report any deviations.
      and the Preferences tabs: it announces "selected" on the active item/
      tab, and the announcement moves when you change selection.
 
-  M. Action menus (A2). Recent Changes and Stale Apps rows: VoiceOver reads
-     the trailing menu as "Options, pop up button" with the hint ("Dismiss
-     or snooze this change" / "Skip this app forever"), and the menu is
-     reachable by keyboard (no mouse).
+  M. Row actions (A2). Recent Changes and Stale Apps rows expose their
+     context-menu actions as VoiceOver accessibility actions: with VO on a
+     row, the Actions rotor (VO+⌘+Space) lists "Snooze 7 days" / "Dismiss
+     forever" (changes) and "Reveal in Finder" / "Skip forever" (stale),
+     and each runs without a mouse.
 
   N. No symbol-name noise (A5). VoiceOver should NOT read decorative icon
      names: section labels are reachable via the Headings rotor (VO+U →

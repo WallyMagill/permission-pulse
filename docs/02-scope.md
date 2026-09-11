@@ -66,9 +66,9 @@ Once per week at the user-selected local day and time (default Monday 09:00). Lo
 
 ## Stretch — possibly v1, more likely v1.1
 
-- **Export to JSON/Markdown** for the user's own records. (Not yet shipped.)
+- **Export to JSON/Markdown** for the user's own records. (Shipped — the detail-window toolbar's `ExportToolbar` writes JSON or Markdown to a user-chosen location via `NSSavePanel`.)
 - **Search and filter** in the Inbox. (Shipped — contextual search covers Permissions, Launch Agents, Background Items, Recent Changes, and Stale Apps; Overview intentionally has no search affordance.)
-- **Quick revoke helper** showing the bundle ID for `tccutil reset` next to the System Settings deep link. (Not yet shipped.)
+- **Quick revoke helper** showing the bundle ID for `tccutil reset` next to the System Settings deep link. (Shipped — `AppPermissionsInspector` copies the exact `tccutil reset` commands to the clipboard for the user to run in Terminal; the app never runs them itself.)
 
 ## Anti-scope — never in this product
 

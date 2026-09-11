@@ -2,7 +2,7 @@
 
 **Channel:** GitHub Releases only.
 
-**Form (current):** a `.zip` of `Permission Pulse.app` — `PermissionPulse-vX.Y.Z.app.zip`. The `.dmg` packaging described below is planned but not yet built.
+**Form (current):** a `.zip` of `PermissionPulse.app` — `PermissionPulse-vX.Y.Z.app.zip`. The `.dmg` packaging described below is planned but not yet built.
 
 **Signing:** Ad-hoc (`-`) for now. Notarization deferred indefinitely until a paid Apple Developer ID is acquired. Sparkle 2 auto-updates also deferred.
 
@@ -38,7 +38,7 @@ When we add a Developer ID, we revisit. The architecture leaves room for Sparkle
 ## First-install instructions (replicated in README)
 
 1. Download `PermissionPulse-vX.Y.Z.app.zip` from the Releases page and unzip it.
-2. Drag `Permission Pulse.app` to `/Applications`.
+2. Drag `PermissionPulse.app` to `/Applications`.
 3. **First launch:** double-click → dismiss the "Apple could not verify…" dialog with **Done** → System Settings → Privacy & Security → **Open Anyway** → authenticate. macOS 15 (Sequoia) removed the right-click → Open override for unsigned apps; that shortcut only still works on macOS 14. The `xattr -d com.apple.quarantine` CLI route is the alternative.
 4. Grant Full Disk Access when the app asks (required for TCC + BTM reads; macOS may ask you to quit and reopen).
 

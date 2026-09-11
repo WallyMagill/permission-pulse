@@ -34,8 +34,10 @@ xcodebuild \
   -scheme PermissionPulse \
   -configuration Debug \
   -destination 'platform=macOS,arch=arm64' \
-  build
+  CODE_SIGNING_ALLOWED=NO build
 ```
+
+`CODE_SIGNING_ALLOWED=NO` matters on machines other than the maintainer's: the project carries the maintainer's `DEVELOPMENT_TEAM` with automatic signing, so a checkout without that team's certificate fails the signing step otherwise. CI and `scripts/package-release.sh` disable signing the same way and ad-hoc sign the release build afterwards.
 
 ## Run
 
@@ -56,11 +58,11 @@ From Xcode: ⌘U runs the per-package suites and the app-level test target.
 From the CLI:
 
 ```bash
-# Package-level tests (run without the Xcode project) — 282 tests total
+# Package-level tests (run without the Xcode project) — 283 tests total
 swift test --package-path Packages/PermissionsCore       # 40
 swift test --package-path Packages/PermissionsScanners   # 67
 swift test --package-path Packages/PermissionsStore      # 39
-swift test --package-path Packages/PermissionsUI         # 136
+swift test --package-path Packages/PermissionsUI         # 137
 
 # App build + app-target tests via xcodebuild — 75 tests
 PERMISSION_PULSE_TEST_MODE=1 xcodebuild test \
@@ -70,7 +72,7 @@ PERMISSION_PULSE_TEST_MODE=1 xcodebuild test \
   -only-testing:PermissionPulseTests CODE_SIGNING_ALLOWED=NO
 ```
 
-Tests use **Swift Testing** (`import Testing`); the UITest target uses XCTest. The four package suites contain 282 tests and the app target contains 75 tests, for 357 automated tests total. These are fresh observed counts after the v0.7.2 final-findings regressions on macOS 26.5 with Xcode 26.5 / Swift 6.3.2, not estimates.
+Tests use **Swift Testing** (`import Testing`); the UITest target uses XCTest. The four package suites contain 283 tests and the app target contains 75 tests, for 358 automated tests total. These are observed counts from 2026-09-11 at the v0.7.2 candidate on macOS 26.6.2 with Xcode 26.6 / Swift 6.3.3, not estimates.
 
 ### Runtime-correctness contract
 
@@ -123,7 +125,7 @@ The packaging script produces a universal arm64 + x86_64, ad-hoc-signed, entitle
 
 GitHub Actions (`.github/workflows/ci.yml`) runs on every PR and every push to `main`. Both jobs use `macos-26` and `/Applications/Xcode_26.5.app/Contents/Developer`, and print the macOS, Xcode, and Swift versions:
 
-- **`packages` job** — runs all 282 tests in the four SwiftPM packages.
+- **`packages` job** — runs all 283 tests in the four SwiftPM packages.
 - **`app` job** — runs all 75 app-target tests in isolated test mode, performs static analysis, proves `smoke-test.sh --keep` preserves live state, then builds and independently verifies the exact v0.7.2/build 12 archive from the clean checkout.
 
 CI never tags, publishes, or uploads that verified artifact. GitHub Releases remains a separate manual boundary.
@@ -137,7 +139,7 @@ The Xcode project at `PermissionPulse/PermissionPulse.xcodeproj` is committed. A
 For reference, the original bootstrap (one-time, recorded for posterity in `git log`):
 
 - File → New → Project → macOS → App
-- Product Name `PermissionPulse`, Bundle ID `com.wallymagill.permissionpulse`, Interface SwiftUI, Language Swift, Storage None, Team None, **Include Tests** yes (the auto-generated test targets started as no-op hosts but now carry the app-target coordinator tests).
+- Product Name `PermissionPulse`, Bundle ID `com.wallymagill.permissionpulse`, Interface SwiftUI, Language Swift, Storage None, Team None at bootstrap (the project now carries the maintainer's `DEVELOPMENT_TEAM` with automatic signing; see the build note above), **Include Tests** yes (the auto-generated test targets started as no-op hosts but now carry the app-target coordinator tests).
 - Min Deployments → macOS 14, App Category Utilities.
 - App Sandbox OFF; Hardened Runtime ON with no exception checkboxes ticked.
 - Add the four local packages via **File → Add Package Dependencies → Add Local…** and link each to the app target.
