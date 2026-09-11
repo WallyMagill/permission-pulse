@@ -313,14 +313,14 @@ These cannot be verified by a script; the app is open now (unless you
 passed --no-launch). Run through them and report any deviations.
 
   A. Welcome window appears + FDA-grant flow works
-     → After granting, click Refresh in the detail-window toolbar.
+     → After granting, click Rescan in the detail-window toolbar.
 
   B. Menu-bar dropdown shows the status rows (attention / mic-cam /
      changes / stale / all-clear, each a deep link into the window), then
      Open Permission Pulse (⌘O), Rescan Now (⌘R), Settings… (⌘,),
      Welcome & About, Quit (⌘Q).
 
-  C. ⌘, opens Preferences (Tahoe MenuBarExtra regression check). Four
+  C. ⌘, opens Settings (Tahoe MenuBarExtra regression check). Four
      tabs — General, Scanning, Digest, Data.
 
   D. Scanning tab — drag retention + stale sliders, close and reopen.
@@ -339,7 +339,7 @@ passed --no-launch). Run through them and report any deviations.
      work (the row tooltip says "Right-click for dismiss options"). To
      force a non-empty diff, run scripts/seed-diff.sh (which writes a
      2-day-old empty snapshot in GRDB's TEXT date format), then click
-     Refresh in the detail-window toolbar.
+     Rescan in the detail-window toolbar.
 
   H. Stale Apps — right-click a row → Reveal in Finder / Skip forever;
      Skip forever shows the "Skip this app forever?" confirmation alert.
@@ -360,12 +360,13 @@ passed --no-launch). Run through them and report any deviations.
      modifier in PermissionPulseApp.swift.
 
   K. Reduce Motion (A4). System Settings → Accessibility → Display →
-     Reduce Motion ON. In the detail window, click Refresh: the icon must
-     NOT spin — it dims and VoiceOver reads "Refreshing". Turn Reduce
-     Motion OFF and confirm the icon spins again.
+     Reduce Motion ON. In the detail window, click Rescan: the toolbar
+     button dims until the scan finishes and VoiceOver reads it as
+     "Rescan, dimmed"; nothing in the window may spin. Turn Reduce Motion
+     OFF and confirm the dropdown's Scanning… indicator animates again.
 
   L. Selected state (A3). VoiceOver/Tab through the detail-window sidebar
-     and the Preferences tabs: it announces "selected" on the active item/
+     and the Settings tabs: it announces "selected" on the active item/
      tab, and the announcement moves when you change selection.
 
   M. Row actions (A2). Recent Changes and Stale Apps rows expose their
@@ -383,12 +384,12 @@ passed --no-launch). Run through them and report any deviations.
 
   O. Type scale & Dynamic Type. System Settings → Accessibility → Display →
      larger text (or Displays → Larger Text). Detail window, sheets,
-     Preferences, Welcome all scale and reflow cleanly. The menu-bar dropdown
+     Settings, Welcome all scale and reflow cleanly. The menu-bar dropdown
      scales only modestly (clamped at xLarge) and never blows past its 320pt
      width.
 
   P. Light & dark. Toggle System Settings → Appearance. Every surface —
-     dropdown, detail window, sidebar, each sheet, Preferences, Welcome —
+     dropdown, detail window, sidebar, each sheet, Settings, Welcome —
      looks intentional in BOTH; no washed-out or unreadable text.
 
   Q. Reduce Transparency. Accessibility → Display → Reduce Transparency ON.
@@ -423,7 +424,7 @@ passed --no-launch). Run through them and report any deviations.
   # U10. All of the above in light + dark; large Dynamic Type in window; clamped in dropdown; Reduce Transparency + Reduce Motion honored.
 
   # Workstream C — data fidelity, FDA, and coverage truth
-  V1. Complete TCC coverage. On an FDA-enabled representative Mac, Refresh and
+  V1. Complete TCC coverage. On an FDA-enabled representative Mac, Rescan and
       confirm both user and system permission records are represented and the
       Permissions banner says "Complete data" with the current timestamp.
   V2. Controlled degraded scan (isolated fixture only). Run:

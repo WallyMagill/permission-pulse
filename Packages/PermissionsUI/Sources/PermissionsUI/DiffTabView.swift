@@ -31,13 +31,13 @@ struct DiffTabView: View {
             ContentUnavailableView(
                 String(localized: "History Unavailable"),
                 systemImage: "externaldrive.badge.exclamationmark",
-                description: Text(String(localized: "Permission Pulse couldn't open its local database, so it can't track changes. Try Reset All Data in Preferences."))
+                description: Text(String(localized: "Permission Pulse couldn't open its local database, so it can't track changes. Try Reset All Data in Settings → Data."))
             )
         } else if diffUnavailable {
             ContentUnavailableView(
                 String(localized: "Couldn't Read Changes"),
                 systemImage: "externaldrive.badge.exclamationmark",
-                description: Text(String(localized: "A problem reading the local database prevented computing changes. Try Refresh."))
+                description: Text(String(localized: "A problem reading the local database prevented computing changes. Try Rescan."))
             )
         } else if let diff {
             let tccRows = tccRows(diff.tcc)
@@ -114,7 +114,7 @@ struct DiffTabView: View {
                 pendingDismiss = nil
             }
         } message: { candidate in
-            Text(String(localized: "Permission Pulse will stop showing this change: \(candidate.summary). Use Reset All Data in Preferences to bring it back."))
+            Text(String(localized: "Permission Pulse will stop showing this change: \(candidate.summary). Use Reset All Data in Settings → Data to bring it back."))
         }
     }
 

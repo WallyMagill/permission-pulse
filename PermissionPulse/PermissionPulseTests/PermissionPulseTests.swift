@@ -54,7 +54,7 @@ struct PermissionPulseTests {
         ))
 
         #expect(presentedMessages.count == 2)
-        #expect(presentedMessages[0].localizedCaseInsensitiveContains("Refresh"))
+        #expect(presentedMessages[0].localizedCaseInsensitiveContains("Rescan"))
         #expect(presentedMessages[0] != presentedMessages[1])
     }
 

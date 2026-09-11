@@ -155,9 +155,17 @@ struct OverviewPage: View {
     }
 
     private var fdaStatusText: String {
+        // Before the first completed scan (fresh launch, or right after Reset
+        // All Data) attention is .clean by default, which would read as a
+        // false "Granted"; say so instead of asserting a status we don't have.
+        guard viewModel.lastScanDate != nil else {
+            return viewModel.scanInProgress
+                ? String(localized: "Checking…")
+                : String(localized: "Unknown")
+        }
         switch viewModel.attentionState {
-        case .fdaDenied, .btmOnlyFDADenied: String(localized: "Not granted")
-        default: String(localized: "Granted")
+        case .fdaDenied, .btmOnlyFDADenied: return String(localized: "Not granted")
+        default: return String(localized: "Granted")
         }
     }
 

@@ -66,7 +66,7 @@ struct StaleAppsTabView: View {
                     pendingSkipCandidate = nil
                 }
             } message: { candidate in
-                Text(String(localized: "Permission Pulse will stop flagging \(candidate.staleApp.app.displayName) in Stale Apps. Use Reset All Data in Preferences to un-skip."))
+                Text(String(localized: "Permission Pulse will stop flagging \(candidate.staleApp.app.displayName) in Stale Apps. Use Reset All Data in Settings → Data to un-skip."))
             }
         }
     }

@@ -47,7 +47,7 @@ struct PermissionPulseApp: App {
 
         // Singleton scenes — Window (not WindowGroup) so openWindow(id:) reuses
         // the existing window instead of stacking a new one each click.
-        Window("Preferences", id: "preferences") {
+        Window("Settings", id: "preferences") {
             PreferencesWindowView(
                 onResetAllData: { [appDelegate] in
                     appDelegate.requestResetAllData()
@@ -386,7 +386,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         case .completed(scanSucceeded: false):
             Self.logger.error("Reset completed, but the fresh scan did not fully succeed")
             presentResetError(
-                message: String(localized: "Data was reset, but the fresh scan didn't complete. Choose Refresh to try the scan again.")
+                message: String(localized: "Data was reset, but the fresh scan didn't complete. Choose Rescan to try the scan again.")
             )
         case .completed(scanSucceeded: true):
             break

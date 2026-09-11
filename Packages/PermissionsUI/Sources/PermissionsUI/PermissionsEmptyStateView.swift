@@ -87,7 +87,7 @@ struct PermissionsEmptyStateView: View {
         ContentUnavailableView {
             Label(String(localized: "Temporarily Unavailable"), systemImage: "clock.badge.exclamationmark")
         } description: {
-            Text(String(localized: "The database is busy right now. Use Refresh to try again."))
+            Text(String(localized: "The database is busy right now. Use Rescan to try again."))
         }
     }
 

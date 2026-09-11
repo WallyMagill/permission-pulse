@@ -85,7 +85,7 @@ private struct ScanningSettingsTab: View {
                     ),
                     range: PreferencesStore.staleThresholdDaysRange
                 )
-                Text(String(localized: "Apps unused for this long appear in the Stale Apps tab."))
+                Text(String(localized: "Apps unused for this long appear under Stale Apps in the sidebar."))
                     .ppFont(.metadata)
                     .foregroundStyle(.secondary)
             } header: {
@@ -379,7 +379,7 @@ private struct DataSettingsTab: View {
                     isConfirmingReset = true
                 }
                 .disabled(scanInProgress() || onResetAllData == nil)
-                Text(String(localized: "Deletes all snapshots, dismissed items, snoozes, and preferences. This cannot be undone."))
+                Text(String(localized: "Deletes all snapshots, dismissed items, snoozes, and settings. This cannot be undone."))
                     .ppFont(.metadata)
                     .foregroundStyle(.secondary)
                 if scanInProgress() {
@@ -394,7 +394,7 @@ private struct DataSettingsTab: View {
             Button(String(localized: "Cancel"), role: .cancel) {}
             Button(String(localized: "Reset"), role: .destructive) { onResetAllData?() }
         } message: {
-            Text(String(localized: "All snapshots, dismissed items, snoozes, and preferences will be deleted. Permission Pulse will rescan immediately. This cannot be undone."))
+            Text(String(localized: "All snapshots, dismissed items, snoozes, and settings will be deleted. Permission Pulse will rescan immediately. This cannot be undone."))
         }
     }
 }
