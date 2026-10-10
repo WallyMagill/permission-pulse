@@ -56,14 +56,16 @@ struct DiffTabView: View {
                 ContentUnavailableView(
                     emptyContentHeadline,
                     systemImage: "checkmark.seal.fill",
-                    description: Text(String(localized: "All permission changes have been reviewed or dismissed."))
+                    description: Text(diff.hasContent
+                        ? String(localized: "All permission changes have been reviewed or dismissed.")
+                        : String(localized: "Nothing was added, removed, or changed in this window."))
                 )
             }
         } else {
             ContentUnavailableView(
                 emptyNoPriorHeadline,
                 systemImage: "clock.arrow.circlepath",
-                description: Text(String(localized: "Permission Pulse needs at least one prior snapshot. Come back tomorrow."))
+                description: Text(emptyNoPriorDescription)
             )
         }
     }
@@ -169,6 +171,15 @@ struct DiffTabView: View {
         switch windowLabel {
         case .yesterday: return String(localized: "No snapshot from yesterday yet")
         case .lastWeek:  return String(localized: "No snapshot from last week yet")
+        }
+    }
+
+    private var emptyNoPriorDescription: String {
+        switch windowLabel {
+        case .yesterday:
+            return String(localized: "Permission Pulse needs at least one prior snapshot. Come back tomorrow.")
+        case .lastWeek:
+            return String(localized: "History started less than a week ago. This view fills in once it's a week old.")
         }
     }
 

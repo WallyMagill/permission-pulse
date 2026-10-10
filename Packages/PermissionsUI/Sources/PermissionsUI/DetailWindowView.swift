@@ -599,17 +599,33 @@ private struct RecentChangesDetailPage: View {
         diffContent
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .safeAreaInset(edge: .top, spacing: 0) {
-                Picker("", selection: $window) {
-                    Text(String(localized: "Yesterday")).tag(RecentWindow.yesterday)
-                    Text(String(localized: "Last 7 days")).tag(RecentWindow.week)
+                VStack(spacing: PPSpacing.sm) {
+                    Picker("", selection: $window) {
+                        Text(String(localized: "Yesterday")).tag(RecentWindow.yesterday)
+                        Text(String(localized: "Last 7 days")).tag(RecentWindow.week)
+                    }
+                    .pickerStyle(.segmented)
+                    .labelsHidden()
+                    .accessibilityLabel(String(localized: "Change window"))
+                    ForEach(statusLines, id: \.self) { line in
+                        Text(line)
+                            .ppFont(.metadata)
+                            .foregroundStyle(.secondary)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                    }
                 }
-                .pickerStyle(.segmented)
-                .labelsHidden()
-                .accessibilityLabel(String(localized: "Change window"))
                 .padding(PPSpacing.lg)
                 .background(.windowBackground)
             }
             .navigationTitle(String(localized: "Recent Changes"))
+    }
+
+    private var statusLines: [String] {
+        let diff = window == .yesterday ? viewModel.latestDiffYesterday : viewModel.latestDiffWeek
+        return RecentChangesStatus.lines(
+            latestSnapshotDate: viewModel.latestSnapshotDate,
+            uncompared: diff?.uncomparedDomains ?? []
+        )
     }
 
     @ViewBuilder
