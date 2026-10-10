@@ -205,16 +205,28 @@ final class SnapshotCoordinator {
 
     private func computeDiffs(cutoff: Date, latestID: SnapshotID) async -> SnapshotDiffs? {
         do {
-            guard let fromID = try await store.latestSnapshotID(atOrBefore: cutoff),
-                  fromID != latestID else {
+            guard let fromID = try await store.latestSnapshotID(atOrBefore: cutoff) else {
                 return nil
             }
+            // Snapshots are written only on change, so a baseline equal to the
+            // latest means nothing changed in the window.
+            guard fromID != latestID else { return Self.noChanges(at: latestID) }
             return try await diffs(from: fromID, to: latestID)
         } catch {
             Self.logger.error("Diff query failed: \(error.localizedDescription, privacy: .public)")
             viewModel.diffUnavailable = true   // (C2) error, not "no data yet"
             return nil
         }
+    }
+
+    private static func noChanges(at id: SnapshotID) -> SnapshotDiffs {
+        SnapshotDiffs(
+            fromID: id,
+            toID: id,
+            tcc: TCCGrantsDiff(added: [], removed: []),
+            btm: BTMItemsDiff(added: [], removed: []),
+            launchAgents: LaunchAgentsDiff(added: [], removed: [])
+        )
     }
 
     /// Compares a domain only when both endpoints captured it completely; a

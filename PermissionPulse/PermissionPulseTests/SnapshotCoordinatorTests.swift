@@ -52,6 +52,23 @@ import PermissionsUI
         #expect(env.viewModel.latestSnapshotID != nil)
     }
 
+    // A quiet day leaves the pre-today baseline equal to the latest snapshot;
+    // that is "no changes", not "no history yet".
+    @Test func quietHistoryYieldsEmptyDiffNotMissingHistory() async throws {
+        let env = try await Environment(now: fixedNow)
+        _ = try await env.store.writeFullSnapshot(
+            grants: [demoGrant()], launchAgents: [], btmItems: [],
+            at: fixedNow().addingTimeInterval(-36 * 60 * 60)
+        )
+        env.viewModel.grants = [demoGrant()]
+
+        await env.coordinator.onScanCompleted()
+
+        #expect(try await env.snapshotsCount() == 1)
+        let diff = try #require(env.viewModel.latestDiffYesterday)
+        #expect(!diff.hasContent)
+    }
+
     @Test func failedDomainStillWritesTheOthers() async throws {
         let env = try await Environment(now: fixedNow)
         env.preferences.snapshotRetentionDays = 10
