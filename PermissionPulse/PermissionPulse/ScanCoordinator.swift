@@ -43,6 +43,10 @@ final class ScanCoordinator {
     func runScan() async {
         // One timestamp describes the evidence boundary across every domain.
         let scanDate = now()
+        let started = ContinuousClock.now
+        defer {
+            Self.logger.info("Scan finished in \(String(describing: ContinuousClock.now - started), privacy: .public)")
+        }
 
         // DataSource reflects which scanner is wired up, not whether the last
         // scan succeeded.

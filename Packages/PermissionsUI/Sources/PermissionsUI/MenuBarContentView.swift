@@ -7,10 +7,16 @@ public struct MenuBarContentView: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     private let onShowWelcome: (() -> Void)?
     private let onRescan: (() -> Void)?
+    private let onBecameVisible: (() -> Void)?
 
-    public init(onShowWelcome: (() -> Void)? = nil, onRescan: (() -> Void)? = nil) {
+    public init(
+        onShowWelcome: (() -> Void)? = nil,
+        onRescan: (() -> Void)? = nil,
+        onBecameVisible: (() -> Void)? = nil
+    ) {
         self.onShowWelcome = onShowWelcome
         self.onRescan = onRescan
+        self.onBecameVisible = onBecameVisible
     }
 
     public var body: some View {
@@ -34,6 +40,7 @@ public struct MenuBarContentView: View {
         }
         .frame(width: 320)
         .ppDropdownDynamicTypeClamp()
+        .onAppear { onBecameVisible?() }
     }
 
     private var header: some View {

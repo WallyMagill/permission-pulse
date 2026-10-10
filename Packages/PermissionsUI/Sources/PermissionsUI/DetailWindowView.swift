@@ -8,6 +8,7 @@ public struct DetailWindowView: View {
     @Environment(\.openWindow) private var openWindow
     private let onRefresh: (() async -> Void)?
     private let onWhatChangedSelected: (() -> Void)?
+    private let onBecameVisible: (() -> Void)?
 
     @State private var section: SidebarItem? = .overview
     @State private var inspectorSelection: InspectorSelection?
@@ -18,10 +19,12 @@ public struct DetailWindowView: View {
 
     public init(
         onRefresh: (() async -> Void)? = nil,
-        onWhatChangedSelected: (() -> Void)? = nil
+        onWhatChangedSelected: (() -> Void)? = nil,
+        onBecameVisible: (() -> Void)? = nil
     ) {
         self.onRefresh = onRefresh
         self.onWhatChangedSelected = onWhatChangedSelected
+        self.onBecameVisible = onBecameVisible
     }
 
     public var body: some View {
@@ -45,7 +48,10 @@ public struct DetailWindowView: View {
         .toolbar { toolbarContent }
         .frame(minWidth: 760, minHeight: 480)
         .background(windowShortcuts)
-        .onAppear { applyPendingRouteIfAny() }
+        .onAppear {
+            applyPendingRouteIfAny()
+            onBecameVisible?()
+        }
         .onChange(of: viewModel.pendingRoute) { _, _ in applyPendingRouteIfAny() }
         .onChange(of: section) { _, newSection in
             // Landing on Recent Changes — via sidebar or a menu-bar route —

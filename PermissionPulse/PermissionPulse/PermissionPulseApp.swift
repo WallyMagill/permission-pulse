@@ -30,6 +30,9 @@ struct PermissionPulseApp: App {
                 },
                 onRescan: { [appDelegate] in
                     Task { await appDelegate.rescan() }
+                },
+                onBecameVisible: { [appDelegate] in
+                    appDelegate.scanScheduler?.noteBecameVisible()
                 }
             )
                 .environment(appDelegate.viewModel)
@@ -68,6 +71,9 @@ struct PermissionPulseApp: App {
                 },
                 onWhatChangedSelected: { [appDelegate] in
                     appDelegate.markCurrentSnapshotReviewed()
+                },
+                onBecameVisible: { [appDelegate] in
+                    appDelegate.scanScheduler?.noteBecameVisible()
                 }
             )
             .environment(appDelegate.viewModel)
@@ -137,6 +143,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
     )
     private var coordinator: ScanCoordinator?
+    private(set) var scanScheduler: ScanScheduler?
     private var mediaCoordinator: MediaUseCoordinator?
     private var snapshotStore: SnapshotStore?
     private var snapshotCoordinator: SnapshotCoordinator?
@@ -251,6 +258,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             viewModel.lastScanDate = Date()
             viewModel.scanInProgress = false
             _ = await weeklyDigestCoordinator.reconcileSchedule()
+            scanScheduler = ScanScheduler(
+                lastScanDate: { [weak self] in self?.viewModel.lastScanDate },
+                requestScan: { [weak self] in
+                    Task { await self?.rescan() }
+                }
+            )
+            scanScheduler?.start()
         }
 
         mediaCoordinator = MediaUseCoordinator(viewModel: viewModel)
@@ -272,9 +286,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     @discardableResult
     private func performRescanIfIdle() async -> Bool {
         // Don't start a second scan while one is in flight (e.g. user hits
-        // Refresh during the initial launch scan). Concurrent scans can both
-        // pass SnapshotCoordinator's once-per-day write guard before the first
-        // persists lastSnapshotDate, producing duplicate snapshot rows. (R2)
+        // Refresh during the initial launch scan, or a wake and a menu open
+        // land together). Concurrent scans could both see changed evidence
+        // before either writes, producing duplicate snapshot rows. (R2)
         guard !viewModel.scanInProgress else {
             Self.logger.debug("Rescan ignored — a scan is already in progress")
             return false
