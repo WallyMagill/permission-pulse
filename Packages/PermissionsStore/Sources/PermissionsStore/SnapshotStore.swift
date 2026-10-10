@@ -1,9 +1,15 @@
 import Foundation
 import GRDB
+import OSLog
 import PermissionsCore
 
 public struct SnapshotStore: Sendable {
-    private let dbQueue: DatabaseQueue
+    static let logger = Logger(
+        subsystem: "com.wallymagill.permissionpulse",
+        category: "snapshot-store"
+    )
+
+    let dbQueue: DatabaseQueue
 
     public init(path: String) throws {
         self.dbQueue = try DatabaseQueue(path: path)
@@ -102,6 +108,19 @@ public struct SnapshotStore: Sendable {
             try db.execute(sql: "UPDATE schema_version SET version = 5")
         }
 
+        // Before v6 only fully complete scans were written, so existing rows
+        // are truthfully `complete`.
+        migrator.registerMigration("v6") { db in
+            try db.alter(table: "snapshots") { table in
+                for column in ["tcc_coverage", "btm_coverage", "launch_agent_coverage"] {
+                    table.add(column: column, .text)
+                        .notNull()
+                        .defaults(to: SnapshotCoverage.complete.rawValue)
+                }
+            }
+            try db.execute(sql: "UPDATE schema_version SET version = 6")
+        }
+
         try migrator.migrate(queue)
     }
 
@@ -113,21 +132,43 @@ public struct SnapshotStore: Sendable {
 
     // MARK: - Writes
 
-    // Production entry point. Writes one snapshots row plus all three child
-    // tables in a single transaction.
+    // Production entry point. Writes one snapshots row plus the child rows of
+    // every domain that did not fail, in a single transaction.
+    public func writeSnapshot(
+        grants: [PermissionGrant],
+        launchAgents: [LaunchAgentItem],
+        btmItems: [BTMItem],
+        coverage: SnapshotDomainCoverage,
+        at date: Date = Date()
+    ) async throws -> SnapshotID {
+        try await dbQueue.write { db in
+            let snapshotRowID = try Self.insertSnapshot(db: db, date: date, coverage: coverage)
+            if coverage.launchAgents != .failed {
+                try Self.insertLaunchAgents(db: db, snapshotID: snapshotRowID, items: launchAgents)
+            }
+            if coverage.tcc != .failed {
+                try Self.insertTCCGrants(db: db, snapshotID: snapshotRowID, grants: grants)
+            }
+            if coverage.btm != .failed {
+                try Self.insertBTMItems(db: db, snapshotID: snapshotRowID, items: btmItems)
+            }
+            return SnapshotID(rawValue: snapshotRowID)
+        }
+    }
+
     public func writeFullSnapshot(
         grants: [PermissionGrant],
         launchAgents: [LaunchAgentItem],
         btmItems: [BTMItem],
         at date: Date = Date()
     ) async throws -> SnapshotID {
-        try await dbQueue.write { db in
-            let snapshotRowID = try Self.insertSnapshot(db: db, date: date)
-            try Self.insertLaunchAgents(db: db, snapshotID: snapshotRowID, items: launchAgents)
-            try Self.insertTCCGrants(db: db, snapshotID: snapshotRowID, grants: grants)
-            try Self.insertBTMItems(db: db, snapshotID: snapshotRowID, items: btmItems)
-            return SnapshotID(rawValue: snapshotRowID)
-        }
+        try await writeSnapshot(
+            grants: grants,
+            launchAgents: launchAgents,
+            btmItems: btmItems,
+            coverage: .allComplete,
+            at: date
+        )
     }
 
     // Test helper — production path is writeFullSnapshot.
@@ -207,6 +248,42 @@ public struct SnapshotStore: Sendable {
                 """, arguments: [snapshotID.rawValue])
             return try rows.map(Self.btmItemFromRow)
         }
+    }
+
+    // MARK: - Snapshot metadata
+
+    public func coverage(snapshotID: SnapshotID) async throws -> SnapshotDomainCoverage {
+        try await dbQueue.read { db in
+            guard let row = try Row.fetchOne(db, sql: """
+                SELECT tcc_coverage, btm_coverage, launch_agent_coverage
+                FROM snapshots WHERE id = ?
+                """, arguments: [snapshotID.rawValue]) else {
+                throw StoreError.snapshotNotFound(snapshotID.rawValue)
+            }
+            return SnapshotDomainCoverage(
+                tcc: Self.decodeCoverage(row["tcc_coverage"]),
+                btm: Self.decodeCoverage(row["btm_coverage"]),
+                launchAgents: Self.decodeCoverage(row["launch_agent_coverage"])
+            )
+        }
+    }
+
+    public func snapshotDate(snapshotID: SnapshotID) async throws -> Date? {
+        try await dbQueue.read { db in
+            try Date.fetchOne(
+                db,
+                sql: "SELECT created_at FROM snapshots WHERE id = ?",
+                arguments: [snapshotID.rawValue]
+            )
+        }
+    }
+
+    // An unrecognized value (e.g. written by a newer build) must never let a
+    // diff compare uncertain evidence, so it reads as `.failed`.
+    private static func decodeCoverage(_ raw: String) -> SnapshotCoverage {
+        if let coverage = SnapshotCoverage(rawValue: raw) { return coverage }
+        logger.error("Unknown snapshot coverage value \(raw, privacy: .public); treating as failed")
+        return .failed
     }
 
     // MARK: - Discovery + retention
@@ -313,13 +390,24 @@ public struct SnapshotStore: Sendable {
 
     // MARK: - Private write helpers
 
-    private static func insertSnapshot(db: Database, date: Date) throws -> Int64 {
+    private static func insertSnapshot(
+        db: Database,
+        date: Date,
+        coverage: SnapshotDomainCoverage = .allComplete
+    ) throws -> Int64 {
         try db.execute(
             sql: """
-                INSERT INTO snapshots (created_at, launch_agent_disabled_captured)
-                VALUES (?, 1)
+                INSERT INTO snapshots
+                (created_at, launch_agent_disabled_captured,
+                 tcc_coverage, btm_coverage, launch_agent_coverage)
+                VALUES (?, 1, ?, ?, ?)
                 """,
-            arguments: [date]
+            arguments: [
+                date,
+                coverage.tcc.rawValue,
+                coverage.btm.rawValue,
+                coverage.launchAgents.rawValue,
+            ]
         )
         return db.lastInsertedRowID
     }
@@ -644,4 +732,5 @@ public enum StoreError: Error, Sendable {
     case unknownBTMDispositionKind(String)
     case unknownBTMScopeKind(String)
     case missingPerUserScopeUUID
+    case snapshotNotFound(Int64)
 }
