@@ -103,10 +103,10 @@ public struct LaunchAgentScannerFS: LaunchAgentScanner, Sendable {
         var items: [LaunchAgentItem] = []
         var omittedEntryCount = 0
         for fileURL in contents where fileURL.pathExtension.lowercased() == "plist" {
-            if let item = decodePlist(at: fileURL, category: source.category) {
-                items.append(item)
-            } else {
-                omittedEntryCount += 1
+            switch decodePlist(at: fileURL, category: source.category) {
+            case .item(let item): items.append(item)
+            case .inert: break
+            case .omitted: omittedEntryCount += 1
             }
         }
         return .scanned(items: items, omittedEntryCount: omittedEntryCount)
@@ -125,18 +125,26 @@ public struct LaunchAgentScannerFS: LaunchAgentScanner, Sendable {
     private func decodePlist(
         at url: URL,
         category: LaunchAgentItem.SourceDirectory
-    ) -> LaunchAgentItem? {
+    ) -> PlistDecodeResult {
         let data: Data
         do {
             data = try Data(contentsOf: url)
         } catch {
             Self.logger.debug("Skip unreadable plist \(url.lastPathComponent, privacy: .public): \(error.localizedDescription, privacy: .public)")
-            return nil
+            return .omitted
+        }
+
+        // launchd refuses a job without a Label, so a well-formed label-less
+        // dictionary (e.g. Google Keystone's empty leftovers) is not an agent.
+        if let dict = try? PropertyListSerialization.propertyList(from: data, format: nil) as? [String: Any],
+           dict["Label"] == nil {
+            Self.logger.debug("Skip label-less plist \(url.lastPathComponent, privacy: .public)")
+            return .inert
         }
 
         do {
             let decoded = try PropertyListDecoder().decode(DecodedPlist.self, from: data)
-            return LaunchAgentItem(
+            return .item(LaunchAgentItem(
                 label: decoded.label,
                 sourceDirectory: category,
                 programPath: decoded.program,
@@ -144,12 +152,18 @@ public struct LaunchAgentScannerFS: LaunchAgentScanner, Sendable {
                 runAtLoad: decoded.runAtLoad,
                 keepAlive: decoded.keepAlive,
                 isDisabled: decoded.isDisabled
-            )
+            ))
         } catch {
             Self.logger.debug("Skip malformed plist \(url.lastPathComponent, privacy: .public): \(error.localizedDescription, privacy: .public)")
-            return nil
+            return .omitted
         }
     }
+}
+
+private enum PlistDecodeResult {
+    case item(LaunchAgentItem)
+    case inert
+    case omitted
 }
 
 private enum DirectoryScan {

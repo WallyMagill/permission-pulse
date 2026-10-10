@@ -33,6 +33,31 @@ import PermissionsCore
         #expect(output.warnings == [ScannerWarning(source: .entries, omittedCount: 1)])
     }
 
+    // Google Keystone leaves empty `{}` plists behind; launchd won't load a
+    // label-less file, so it is not an agent and must not degrade the scan.
+    @Test func labelLessPlistIsInertNotOmitted() async throws {
+        let dir = try TempDir()
+        try dir.write(filename: "good.plist", contents: PlistFixtures.runAtLoad(label: "com.test.alpha"))
+        try dir.write(filename: "empty.plist", contents: PlistFixtures.emptyDictionary)
+
+        let scanner = LaunchAgentScannerFS(sources: [dir.asSource(.userLaunchAgents)])
+        let output = try await scanner.scan()
+
+        #expect(output.items.map(\.label) == ["com.test.alpha"])
+        #expect(output.warnings.isEmpty)
+    }
+
+    @Test func nonStringLabelIsStillOmitted() async throws {
+        let dir = try TempDir()
+        try dir.write(filename: "bad-label.plist", contents: PlistFixtures.integerLabel)
+
+        let scanner = LaunchAgentScannerFS(sources: [dir.asSource(.userLaunchAgents)])
+        let output = try await scanner.scan()
+
+        #expect(output.items.isEmpty)
+        #expect(output.warnings == [ScannerWarning(source: .entries, omittedCount: 1)])
+    }
+
     @Test func scanDefaultsMissingKeys() async throws {
         let dir = try TempDir()
         try dir.write(filename: "minimal.plist", contents: PlistFixtures.minimal(label: "com.test.minimal"))
@@ -228,6 +253,24 @@ private final class TempDir {
 }
 
 private enum PlistFixtures {
+    static let emptyDictionary = Data("""
+        <?xml version="1.0" encoding="UTF-8"?>
+        <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+        <plist version="1.0">
+        <dict/>
+        </plist>
+        """.utf8)
+
+    static let integerLabel = Data("""
+        <?xml version="1.0" encoding="UTF-8"?>
+        <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+        <plist version="1.0">
+        <dict>
+            <key>Label</key><integer>7</integer>
+        </dict>
+        </plist>
+        """.utf8)
+
     static func runAtLoad(label: String) -> Data {
         Data("""
         <?xml version="1.0" encoding="UTF-8"?>
