@@ -32,6 +32,8 @@ public final class AppViewModel {
     public var latestSnapshotID: SnapshotID?
     public var lastReviewedSnapshotID: SnapshotID?
     public var latestDiffYesterday: SnapshotDiffs?
+    /// When the latest stored snapshot was taken; nil until history exists.
+    public var latestSnapshotDate: Date?
     public var latestDiffWeek: SnapshotDiffs?
     public var staleApps: [StaleApp]
 

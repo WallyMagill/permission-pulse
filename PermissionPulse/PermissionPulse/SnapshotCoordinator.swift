@@ -64,49 +64,67 @@ final class SnapshotCoordinator {
         let thresholdDays = staleThresholdDays()
         viewModel.staleThresholdDays = thresholdDays
 
-        guard scanFullySucceeded() else {
-            Self.logger.debug("Skipping snapshot — at least one scanner is not complete")
-            return
+        var latestID = try? await store.latestSnapshotID()
+        if let written = await writeSnapshotIfChanged(since: latestID, retentionDays: retentionDays) {
+            latestID = written
         }
+        await refreshDiffsAndStale(latestID: latestID, thresholdDays: thresholdDays)
+    }
 
-        let today = now()
-        if let lastDate = lastSnapshotDate(), calendar.isDate(lastDate, inSameDayAs: today) {
-            // Same calendar day — don't write, but still refresh diffs in case
-            // the user has not seen this snapshot since launch.
-            Self.logger.debug("Snapshot already written today; refreshing diffs only")
-            await refreshDiffsAndStale(
-                latestID: try? await store.latestSnapshotID(),
-                thresholdDays: thresholdDays
-            )
-            return
+    /// Writes when there is no history yet or the evidence differs from the
+    /// latest snapshot. Returns the new snapshot's ID, or nil when nothing
+    /// was written.
+    private func writeSnapshotIfChanged(
+        since latestID: SnapshotID?,
+        retentionDays: Int
+    ) async -> SnapshotID? {
+        let coverage = currentCoverage()
+        guard coverage != Self.nothingCaptured else {
+            Self.logger.info("Snapshot skipped — every domain failed")
+            return nil
         }
-
         do {
-            let snapshotID = try await store.writeFullSnapshot(
+            if let latestID, try await !store.evidenceChanged(
+                since: latestID,
                 grants: viewModel.grants,
                 launchAgents: viewModel.launchAgents,
                 btmItems: viewModel.btmItems,
+                coverage: coverage
+            ) {
+                Self.logger.info("Snapshot skipped — evidence unchanged")
+                return nil
+            }
+            let today = now()
+            let snapshotID = try await store.writeSnapshot(
+                grants: viewModel.grants,
+                launchAgents: viewModel.launchAgents,
+                btmItems: viewModel.btmItems,
+                coverage: coverage,
                 at: today
             )
+            Self.logger.info("Snapshot \(snapshotID.rawValue) written")
             persistLastSnapshotDate(today)
-            let retentionCutoff = calendar.date(
-                byAdding: .day,
-                value: -retentionDays,
-                to: today
-            ) ?? today.addingTimeInterval(-Double(retentionDays) * 86_400)
-            // A prune failure must NOT abort the diff refresh below, so it gets
-            // its own do/catch (not the outer one) and is logged rather than
-            // swallowed — otherwise the DB grows unbounded with no signal. (R1)
-            do {
-                _ = try await store.pruneSnapshots(olderThan: retentionCutoff)
-            } catch {
-                Self.logger.error("Snapshot prune failed: \(error.localizedDescription, privacy: .public)")
-            }
-            await refreshDiffsAndStale(latestID: snapshotID, thresholdDays: thresholdDays)
+            await prune(retentionDays: retentionDays, today: today)
+            return snapshotID
         } catch {
-            Self.logger.error(
-                "Snapshot write failed: \(error.localizedDescription, privacy: .public)"
-            )
+            Self.logger.error("Snapshot write failed: \(error.localizedDescription, privacy: .public)")
+            return nil
+        }
+    }
+
+    private func prune(retentionDays: Int, today: Date) async {
+        let retentionCutoff = calendar.date(
+            byAdding: .day,
+            value: -retentionDays,
+            to: today
+        ) ?? today.addingTimeInterval(-Double(retentionDays) * 86_400)
+        // A prune failure must not abort the diff refresh, so it is logged
+        // here rather than propagated — otherwise the DB grows unbounded with
+        // no signal. (R1)
+        do {
+            _ = try await store.pruneSnapshots(olderThan: retentionCutoff)
+        } catch {
+            Self.logger.error("Snapshot prune failed: \(error.localizedDescription, privacy: .public)")
         }
     }
 
@@ -118,15 +136,26 @@ final class SnapshotCoordinator {
 
     // MARK: - Private
 
-    private func scanFullySucceeded() -> Bool {
-        viewModel.tccAvailability.isComplete
-            && viewModel.btmAvailability.isComplete
-            && viewModel.launchAgentAvailability.isComplete
+    private static let nothingCaptured = SnapshotDomainCoverage(
+        tcc: .failed,
+        btm: .failed,
+        launchAgents: .failed
+    )
+
+    private func currentCoverage() -> SnapshotDomainCoverage {
+        SnapshotDomainCoverage(
+            tcc: Self.coverage(of: viewModel.tccAvailability),
+            btm: Self.coverage(of: viewModel.btmAvailability),
+            launchAgents: Self.coverage(of: viewModel.launchAgentAvailability)
+        )
     }
 
-    private func lastSnapshotDate() -> Date? {
-        guard let iso = defaults.string(forKey: Self.lastSnapshotDateKey) else { return nil }
-        return ISO8601DateFormatter().date(from: iso)
+    private static func coverage(of availability: ScanAvailability) -> SnapshotCoverage {
+        switch availability {
+        case .complete: .complete
+        case .degraded: .degraded
+        case .failed, .never: .failed
+        }
     }
 
     private func persistLastSnapshotDate(_ date: Date) {
@@ -154,6 +183,8 @@ final class SnapshotCoordinator {
             viewModel.lastReviewedSnapshotID = nil
         }
 
+        viewModel.latestSnapshotDate = try? await store.snapshotDate(snapshotID: latestID)
+
         let nowDate = now()
         // Anchor diff baselines to calendar-day boundaries, not a rolling
         // window, because snapshots are written at most once per calendar day.
@@ -178,22 +209,44 @@ final class SnapshotCoordinator {
                   fromID != latestID else {
                 return nil
             }
-            async let tccTask = store.diffTCCGrants(from: fromID, to: latestID)
-            async let btmTask = store.diffBTMItems(from: fromID, to: latestID)
-            async let laTask  = store.diffLaunchAgents(from: fromID, to: latestID)
-            let (tcc, btm, la) = try await (tccTask, btmTask, laTask)
-            return SnapshotDiffs(
-                fromID: fromID,
-                toID: latestID,
-                tcc: tcc,
-                btm: btm,
-                launchAgents: la
-            )
+            return try await diffs(from: fromID, to: latestID)
         } catch {
             Self.logger.error("Diff query failed: \(error.localizedDescription, privacy: .public)")
             viewModel.diffUnavailable = true   // (C2) error, not "no data yet"
             return nil
         }
+    }
+
+    /// Compares a domain only when both endpoints captured it completely; a
+    /// partial endpoint would turn omitted items into false removals.
+    private func diffs(from fromID: SnapshotID, to toID: SnapshotID) async throws -> SnapshotDiffs {
+        let before = try await store.coverage(snapshotID: fromID)
+        let after = try await store.coverage(snapshotID: toID)
+        let comparable: (KeyPath<SnapshotDomainCoverage, SnapshotCoverage>) -> Bool = {
+            before[keyPath: $0] == .complete && after[keyPath: $0] == .complete
+        }
+        let tcc = comparable(\.tcc)
+            ? try await store.diffTCCGrants(from: fromID, to: toID)
+            : TCCGrantsDiff(added: [], removed: [])
+        let btm = comparable(\.btm)
+            ? try await store.diffBTMItems(from: fromID, to: toID)
+            : BTMItemsDiff(added: [], removed: [])
+        let launchAgents = comparable(\.launchAgents)
+            ? try await store.diffLaunchAgents(from: fromID, to: toID)
+            : LaunchAgentsDiff(added: [], removed: [])
+        let uncompared: [HistoryDomain] = [
+            comparable(\.tcc) ? nil : .tcc,
+            comparable(\.btm) ? nil : .btm,
+            comparable(\.launchAgents) ? nil : .launchAgents,
+        ].compactMap { $0 }
+        return SnapshotDiffs(
+            fromID: fromID,
+            toID: toID,
+            tcc: tcc,
+            btm: btm,
+            launchAgents: launchAgents,
+            uncomparedDomains: uncompared
+        )
     }
 
     private func computeStaleApps(nowDate: Date, thresholdDays: Int) async -> [StaleApp] {

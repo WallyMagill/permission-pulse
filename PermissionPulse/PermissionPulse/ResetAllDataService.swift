@@ -221,6 +221,7 @@ final class ResetAllDataService {
         viewModel.lastReviewedSnapshotID = nil
         viewModel.latestDiffYesterday = nil
         viewModel.latestDiffWeek = nil
+        viewModel.latestSnapshotDate = nil
         viewModel.staleApps.removeAll()
         viewModel.pendingRoute = nil
         viewModel.lastScanDate = nil
