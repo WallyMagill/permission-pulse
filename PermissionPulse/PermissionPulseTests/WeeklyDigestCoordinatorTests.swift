@@ -248,6 +248,34 @@ import PermissionsUI
         #expect(composed.body == String(localized: "No changes in the last week."))
     }
 
+    @Test func composeEmptyWeekWithUncomparedDomainSaysSo() {
+        let env = makeEnv(digestEnabled: true, status: .authorized)
+        let diff = SnapshotDiffs(
+            fromID: SnapshotID(rawValue: 1),
+            toID: SnapshotID(rawValue: 2),
+            tcc: TCCGrantsDiff(added: [], removed: []),
+            btm: BTMItemsDiff(added: [], removed: []),
+            launchAgents: LaunchAgentsDiff(added: [], removed: []),
+            uncomparedDomains: [.launchAgents]
+        )
+        let composed = env.coordinator.composeDigestBody(diff: diff)
+        #expect(composed.body == "No changes found in compared data; Launch Agents couldn't be compared this week.")
+    }
+
+    @Test func composeChangesWithUncomparedDomainAppendsClause() {
+        let env = makeEnv(digestEnabled: true, status: .authorized)
+        let diff = SnapshotDiffs(
+            fromID: SnapshotID(rawValue: 1),
+            toID: SnapshotID(rawValue: 2),
+            tcc: TCCGrantsDiff(added: [demoGrant()], removed: []),
+            btm: BTMItemsDiff(added: [], removed: []),
+            launchAgents: LaunchAgentsDiff(added: [], removed: []),
+            uncomparedDomains: [.btm, .launchAgents]
+        )
+        let composed = env.coordinator.composeDigestBody(diff: diff)
+        #expect(composed.body == "1 added in the last week. Background Items and Launch Agents couldn't be compared.")
+    }
+
     @Test func composeMixedDiffMentionsAddedAndRemoved() {
         let env = makeEnv(digestEnabled: true, status: .authorized)
         let diff = SnapshotDiffs(

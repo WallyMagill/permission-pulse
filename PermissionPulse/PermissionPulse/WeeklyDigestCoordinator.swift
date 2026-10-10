@@ -219,8 +219,18 @@ final class WeeklyDigestCoordinator {
     ) -> (title: String, body: String) {
         let title = String(localized: "Permission Pulse · Weekly digest")
 
-        guard let diff, diff.hasContent else {
+        guard let diff else {
             return (title, String(localized: "No changes in the last week."))
+        }
+        // "No changes" must not be claimed for a domain that wasn't compared.
+        let uncompared = ListFormatter.localizedString(
+            byJoining: diff.uncomparedDomains.map(\.displayName)
+        )
+        guard diff.hasContent else {
+            let body = diff.uncomparedDomains.isEmpty
+                ? String(localized: "No changes in the last week.")
+                : String(localized: "No changes found in compared data; \(uncompared) couldn't be compared this week.")
+            return (title, body)
         }
 
         let added = diff.tcc.added.count + diff.btm.added.count + diff.launchAgents.added.count
@@ -234,7 +244,9 @@ final class WeeklyDigestCoordinator {
         // One localized format string so the sentence stays translatable as a
         // unit instead of gluing an " in the last week." shard onto the list.
         let counts = fragments.joined(separator: ", ")
-        let body = String(localized: "\(counts) in the last week.")
+        let body = diff.uncomparedDomains.isEmpty
+            ? String(localized: "\(counts) in the last week.")
+            : String(localized: "\(counts) in the last week. \(uncompared) couldn't be compared.")
         return (title, body)
     }
 }
