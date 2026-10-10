@@ -79,7 +79,10 @@ extension SnapshotStore {
 
     /// Whether a fresh scan differs from a stored snapshot under the same rules
     /// Recent Changes renders from. A `.failed` domain carries no evidence, so
-    /// only its coverage flip counts.
+    /// only its coverage flip counts. Fresh items are first passed through the
+    /// store's own date encoding: stored dates keep millisecond precision, so
+    /// a raw in-memory date would never compare equal and every scan would
+    /// look changed.
     public func evidenceChanged(
         since snapshotID: SnapshotID,
         grants: [PermissionGrant],
@@ -87,22 +90,61 @@ extension SnapshotStore {
         btmItems: [BTMItem],
         coverage: SnapshotDomainCoverage
     ) async throws -> Bool {
-        if try await self.coverage(snapshotID: snapshotID) != coverage { return true }
+        if try await self.coverage(snapshotID: snapshotID) != coverage {
+            return Self.changed("coverage")
+        }
         if coverage.tcc != .failed {
             let stored = try await readTCCGrants(snapshotID: snapshotID)
-            if Self.diffTCCGrants(before: stored, after: grants).hasContent { return true }
+            let fresh = grants.map(Self.storageNormalized)
+            if Self.diffTCCGrants(before: stored, after: fresh).hasContent { return Self.changed("tcc") }
         }
         if coverage.btm != .failed {
             let stored = try await readBTMItems(snapshotID: snapshotID)
-            if Self.diffBTMItems(before: stored, after: btmItems).hasContent { return true }
+            let fresh = btmItems.map(Self.storageNormalized)
+            if Self.diffBTMItems(before: stored, after: fresh).hasContent { return Self.changed("btm") }
         }
         if coverage.launchAgents != .failed {
             let stored = try await readLaunchAgents(snapshotID: snapshotID)
             let compareDisabled = try await launchAgentDisabledCaptured(from: snapshotID, to: snapshotID)
             let diff = Self.diffLaunchAgents(before: stored, after: launchAgents, compareDisabled: compareDisabled)
-            if diff.hasContent { return true }
+            if diff.hasContent { return Self.changed("launchAgents") }
         }
         return false
+    }
+
+    private static func changed(_ domain: String) -> Bool {
+        logger.info("Evidence changed: \(domain, privacy: .public)")
+        return true
+    }
+
+    static func storageNormalized(_ date: Date) -> Date {
+        Date.fromDatabaseValue(date.databaseValue) ?? date
+    }
+
+    static func storageNormalized(_ grant: PermissionGrant) -> PermissionGrant {
+        PermissionGrant(
+            service: grant.service,
+            app: grant.app,
+            lastModified: storageNormalized(grant.lastModified),
+            automationTarget: grant.automationTarget,
+            authValue: grant.authValue
+        )
+    }
+
+    static func storageNormalized(_ item: BTMItem) -> BTMItem {
+        BTMItem(
+            identifier: item.identifier,
+            name: item.name,
+            developerName: item.developerName,
+            bundleIdentifier: item.bundleIdentifier,
+            teamIdentifier: item.teamIdentifier,
+            type: item.type,
+            disposition: item.disposition,
+            dispositionRaw: item.dispositionRaw,
+            scope: item.scope,
+            modificationDate: storageNormalized(item.modificationDate),
+            parentIdentifier: item.parentIdentifier
+        )
     }
 
     // MARK: - Diff engine

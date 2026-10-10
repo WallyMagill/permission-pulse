@@ -43,14 +43,14 @@ import Testing
 
     @Test func openingWithStaleScanRequestsOne() {
         let h = Harness()
-        h.lastScan = h.now.addingTimeInterval(-20 * 60)
+        h.lastScan = h.now.addingTimeInterval(-2 * 60)
         h.scheduler.noteBecameVisible()
         #expect(h.requests == 1)
     }
 
     @Test func openingWithFreshScanRequestsNone() {
         let h = Harness()
-        h.lastScan = h.now.addingTimeInterval(-5 * 60)
+        h.lastScan = h.now.addingTimeInterval(-30)
         h.scheduler.noteBecameVisible()
         #expect(h.requests == 0)
     }

@@ -11,10 +11,10 @@ final class ScanScheduler {
         category: "scan-scheduler"
     )
 
-    /// A guess: frequent enough that opening the menu shows current state,
-    /// rare enough that browsing doesn't rescan constantly. Retune from the
-    /// `scan-coordinator` duration logs.
-    static let staleScanInterval: TimeInterval = 15 * 60
+    /// A full scan measured 51 ms on a Mac with 166 grants, 76 background
+    /// items and 25 launch agents (2026-10-10, `scan-coordinator` log), so the
+    /// guard only stops back-to-back rescans while browsing, not real cost.
+    static let staleScanInterval: TimeInterval = 60
 
     private let workspaceCenter: NotificationCenter
     private let defaultCenter: NotificationCenter

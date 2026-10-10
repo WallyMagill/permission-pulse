@@ -27,6 +27,28 @@ import PermissionsCore
         #expect(!changed)
     }
 
+    // Stored dates keep millisecond precision; a fresh scan's sub-millisecond
+    // BTM/TCC dates must not read as a change on every scan.
+    @Test func subMillisecondDatesAreUnchanged() async throws {
+        let precise = Date(timeIntervalSinceReferenceDate: 778_000_000.123_456_7)
+        let grant = PermissionGrant(
+            service: .camera,
+            app: AppIdentity(bundleID: "com.a", displayName: "A", bundlePath: nil),
+            lastModified: precise
+        )
+        let item = BTMItem(
+            identifier: "x", name: "X", type: .app, disposition: .enabled,
+            scope: .system, modificationDate: precise
+        )
+        let store = try SnapshotStore.inMemory()
+        let id = try await store.writeFullSnapshot(grants: [grant], launchAgents: [], btmItems: [item])
+
+        let changed = try await store.evidenceChanged(
+            since: id, grants: [grant], launchAgents: [], btmItems: [item], coverage: .allComplete
+        )
+        #expect(!changed)
+    }
+
     @Test func addedGrantIsAChange() async throws {
         let (store, id) = try await storeWithBaseline()
         let changed = try await store.evidenceChanged(

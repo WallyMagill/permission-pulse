@@ -43,7 +43,7 @@ New `ScanScheduler` (app target, `@MainActor`) owns *when* to scan; `AppDelegate
 | New calendar day | `.NSCalendarDayChanged` on `NotificationCenter.default` |
 | Dropdown or detail window appears and last scan is older than `staleScanInterval` | `onAppear` callbacks passed into `MenuBarContentView` / `DetailWindowView` |
 
-`staleScanInterval = 15 minutes` — a guess: frequent enough that opening the menu shows current state, rare enough that browsing doesn't rescan constantly. Each scan logs its duration (`scan-coordinator` OSLog category, `.info`) so the number can be retuned from measurements. Overlapping triggers coalesce through the existing `performRescanIfIdle` guard. Notification centers and the clock are injected for tests.
+`staleScanInterval` started as a 15-minute guess; the live run measured a full scan at 51 ms (2026-10-10), so it is 60 seconds. Each scan logs its duration (`scan-coordinator` OSLog category, `.info`) so the number can be retuned from measurements. Overlapping triggers coalesce through the existing `performRescanIfIdle` guard. Notification centers and the clock are injected for tests.
 
 ### 3. Write a snapshot when the evidence changed
 
