@@ -69,6 +69,45 @@ import PermissionsUI
         #expect(!diff.hasContent)
     }
 
+    @Test func quietHistoryStillReportsIncompleteDomains() async throws {
+        let env = try await Environment(now: fixedNow)
+        let degraded = SnapshotDomainCoverage(tcc: .complete, btm: .complete, launchAgents: .degraded)
+        let warning = ScannerWarning(source: .entries, omittedCount: 1)
+        _ = try await env.store.writeSnapshot(
+            grants: [demoGrant()], launchAgents: [demoLaunchAgent()], btmItems: [],
+            coverage: degraded, at: fixedNow().addingTimeInterval(-36 * 60 * 60)
+        )
+        env.viewModel.grants = [demoGrant()]
+        env.viewModel.launchAgents = [demoLaunchAgent()]
+        env.viewModel.launchAgentAvailability = .degraded(lastUpdated: fixedNow(), warnings: [warning])
+
+        await env.coordinator.onScanCompleted()
+
+        #expect(try await env.snapshotsCount() == 1)
+        #expect(env.viewModel.latestDiffYesterday?.uncomparedDomains == [.launchAgents])
+    }
+
+    // Retention and the week window must share a day boundary: at 7-day
+    // retention a wall-clock cutoff pruned the true week baseline.
+    @Test func minimumRetentionKeepsTheWeekBaseline() async throws {
+        var cal = Calendar(identifier: .gregorian)
+        cal.timeZone = TimeZone(identifier: "UTC")!
+        let startOfToday = cal.startOfDay(for: fixedNow())
+        let evening = startOfToday.addingTimeInterval(18 * 3600)
+        let env = try await Environment(now: { evening }, calendar: cal, snapshotRetentionDays: 7)
+        for offset in [-8.0 * 86_400, -7.0 * 86_400 + 6 * 3600] {
+            _ = try await env.store.writeFullSnapshot(
+                grants: [demoGrant(bundleID: "com.example.old")], launchAgents: [], btmItems: [],
+                at: startOfToday.addingTimeInterval(offset)
+            )
+        }
+        env.viewModel.grants = [demoGrant(bundleID: "com.example.new")]
+
+        await env.coordinator.onScanCompleted()
+
+        #expect(env.viewModel.latestDiffWeek?.hasContent == true)
+    }
+
     @Test func failedDomainStillWritesTheOthers() async throws {
         let env = try await Environment(now: fixedNow)
         env.preferences.snapshotRetentionDays = 10

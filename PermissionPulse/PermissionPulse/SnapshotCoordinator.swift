@@ -64,7 +64,16 @@ final class SnapshotCoordinator {
         let thresholdDays = staleThresholdDays()
         viewModel.staleThresholdDays = thresholdDays
 
-        var latestID = try? await store.latestSnapshotID()
+        var latestID: SnapshotID?
+        do {
+            latestID = try await store.latestSnapshotID()
+        } catch {
+            // Without knowing the latest snapshot, a write would skip the
+            // change check and duplicate history; try again next scan.
+            Self.logger.error("Latest snapshot lookup failed: \(error.localizedDescription, privacy: .public)")
+            viewModel.diffUnavailable = true
+            return
+        }
         if let written = await writeSnapshotIfChanged(since: latestID, retentionDays: retentionDays) {
             latestID = written
         }
@@ -113,11 +122,14 @@ final class SnapshotCoordinator {
     }
 
     private func prune(retentionDays: Int, today: Date) async {
+        // Day-aligned like the diff windows: a wall-clock cutoff at 7-day
+        // retention would prune the "Last 7 days" baseline.
+        let startOfToday = calendar.startOfDay(for: today)
         let retentionCutoff = calendar.date(
             byAdding: .day,
             value: -retentionDays,
-            to: today
-        ) ?? today.addingTimeInterval(-Double(retentionDays) * 86_400)
+            to: startOfToday
+        ) ?? startOfToday.addingTimeInterval(-Double(retentionDays) * 86_400)
         // A prune failure must not abort the diff refresh, so it is logged
         // here rather than propagated — otherwise the DB grows unbounded with
         // no signal. (R1)
@@ -210,7 +222,9 @@ final class SnapshotCoordinator {
             }
             // Snapshots are written only on change, so a baseline equal to the
             // latest means nothing changed in the window.
-            guard fromID != latestID else { return Self.noChanges(at: latestID) }
+            guard fromID != latestID else {
+                return Self.noChanges(at: latestID, coverage: try await store.coverage(snapshotID: latestID))
+            }
             return try await diffs(from: fromID, to: latestID)
         } catch {
             Self.logger.error("Diff query failed: \(error.localizedDescription, privacy: .public)")
@@ -219,14 +233,25 @@ final class SnapshotCoordinator {
         }
     }
 
-    private static func noChanges(at id: SnapshotID) -> SnapshotDiffs {
+    /// "Nothing changed" only holds for domains the snapshot captured fully;
+    /// the rest are reported as uncompared rather than silently clean.
+    private static func noChanges(at id: SnapshotID, coverage: SnapshotDomainCoverage) -> SnapshotDiffs {
         SnapshotDiffs(
             fromID: id,
             toID: id,
             tcc: TCCGrantsDiff(added: [], removed: []),
             btm: BTMItemsDiff(added: [], removed: []),
-            launchAgents: LaunchAgentsDiff(added: [], removed: [])
+            launchAgents: LaunchAgentsDiff(added: [], removed: []),
+            uncomparedDomains: incompleteDomains(coverage)
         )
+    }
+
+    private static func incompleteDomains(_ coverage: SnapshotDomainCoverage) -> [HistoryDomain] {
+        [
+            coverage.tcc == .complete ? nil : HistoryDomain.tcc,
+            coverage.btm == .complete ? nil : .btm,
+            coverage.launchAgents == .complete ? nil : .launchAgents,
+        ].compactMap { $0 }
     }
 
     /// Compares a domain only when both endpoints captured it completely; a
