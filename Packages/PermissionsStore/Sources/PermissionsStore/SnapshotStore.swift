@@ -316,12 +316,22 @@ public struct SnapshotStore: Sendable {
         }
     }
 
+    /// Deletes snapshots older than `cutoff`, except the newest one at or before
+    /// it (snapshots are written only on change, so that row *is* the state at
+    /// the cutoff) and the overall latest.
     @discardableResult
     public func pruneSnapshots(olderThan cutoff: Date) async throws -> Int {
         try await dbQueue.write { db in
+            let baselineID = try Int64.fetchOne(db, sql: """
+                SELECT id FROM snapshots WHERE created_at <= ?
+                ORDER BY created_at DESC, id DESC LIMIT 1
+                """, arguments: [cutoff])
+            let latestID = try Int64.fetchOne(db, sql: """
+                SELECT id FROM snapshots ORDER BY created_at DESC, id DESC LIMIT 1
+                """)
             try db.execute(
-                sql: "DELETE FROM snapshots WHERE created_at < ?",
-                arguments: [cutoff]
+                sql: "DELETE FROM snapshots WHERE created_at < ? AND id NOT IN (?, ?)",
+                arguments: [cutoff, baselineID ?? -1, latestID ?? -1]
             )
             return db.changesCount
         }
