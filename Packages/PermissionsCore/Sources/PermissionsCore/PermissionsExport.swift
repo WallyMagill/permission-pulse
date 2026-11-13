@@ -5,7 +5,14 @@ import Foundation
 // BTM associated-value enums collapse to stable strings. (F1)
 
 public struct ExportReport: Codable, Sendable, Equatable {
+    /// The export format's version. 2 added the environment, coverage and
+    /// grant `authValue`; earlier exports carried no version.
+    public let schemaVersion: Int
     public let generatedAt: Date
+    public let appVersion: String
+    public let appBuild: String
+    public let macOSVersion: String
+    public let coverage: ExportCoverage
     public let grants: [ExportGrant]
     public let launchAgents: [ExportLaunchAgent]
     public let backgroundItems: [ExportBackgroundItem]
@@ -20,6 +27,8 @@ public struct ExportGrant: Codable, Sendable, Equatable {
     public let bundlePath: String?
     public let lastModified: Date
     public let automationTarget: String?
+    /// TCC auth_value: 2 = allowed, 3 = limited.
+    public let authValue: Int
 }
 
 public struct ExportLaunchAgent: Codable, Sendable, Equatable {
@@ -54,15 +63,24 @@ public struct ExportStaleApp: Codable, Sendable, Equatable {
 }
 
 public enum PermissionsExport {
+    public static let schemaVersion = 2
+
     public static func report(
         grants: [PermissionGrant],
         launchAgents: [LaunchAgentItem],
         btmItems: [BTMItem],
         staleApps: [StaleApp],
-        generatedAt: Date
+        generatedAt: Date,
+        environment: ExportEnvironment,
+        coverage: ExportCoverage
     ) -> ExportReport {
         ExportReport(
+            schemaVersion: schemaVersion,
             generatedAt: generatedAt,
+            appVersion: environment.appVersion,
+            appBuild: environment.appBuild,
+            macOSVersion: environment.macOSVersion,
+            coverage: coverage,
             grants: grants.map(Self.map),
             launchAgents: launchAgents.map(Self.map),
             backgroundItems: btmItems.map(Self.map),
@@ -83,51 +101,67 @@ public enum PermissionsExport {
     public static func makeMarkdown(report: ExportReport) -> String {
         var out = "# Permission Pulse export\n\n"
         out += "_Generated \(Self.iso(report.generatedAt)) · read-only snapshot of current state._\n\n"
-
-        out += "## Permissions\n\n"
-        if report.grants.isEmpty {
-            out += "_None._\n\n"
-        } else {
-            out += "| App | Bundle ID | Service | Last modified |\n|---|---|---|---|\n"
-            for g in report.grants {
-                out += "| \(Self.cell(g.appName)) | \(Self.cell(g.bundleID)) | \(Self.cell(g.service)) | \(Self.iso(g.lastModified)) |\n"
-            }
-            out += "\n"
-        }
-
-        out += "## Launch Agents\n\n"
-        if report.launchAgents.isEmpty {
-            out += "_None._\n\n"
-        } else {
-            out += "| Label | Source | runAtLoad | keepAlive |\n|---|---|---|---|\n"
-            for a in report.launchAgents {
-                out += "| \(Self.cell(a.label)) | \(Self.cell(a.source)) | \(a.runAtLoad) | \(a.keepAlive) |\n"
-            }
-            out += "\n"
-        }
-
-        out += "## Background Items\n\n"
-        if report.backgroundItems.isEmpty {
-            out += "_None._\n\n"
-        } else {
-            out += "| Name | Developer | Type | Disposition |\n|---|---|---|---|\n"
-            for b in report.backgroundItems {
-                out += "| \(Self.cell(b.name)) | \(Self.cell(b.developerName ?? "—")) | \(b.type) | \(b.disposition) |\n"
-            }
-            out += "\n"
-        }
-
+        out += coverageBlock(report)
+        let coverage = report.coverage
+        out += section("Permissions", coverage: coverage.permissions, rows: report.grants.map(Self.row),
+                       header: "| App | Bundle ID | Service | Last modified |")
+        out += section("Launch Agents", coverage: coverage.launchAgents, rows: report.launchAgents.map(Self.row),
+                       header: "| Label | Source | runAtLoad | keepAlive |")
+        out += section("Background Items", coverage: coverage.backgroundItems,
+                       rows: report.backgroundItems.map(Self.row),
+                       header: "| Name | Developer | Type | Disposition |")
         out += "## Stale Apps\n\n"
-        if report.staleApps.isEmpty {
-            out += "_None._\n\n"
+        if !coverage.permissions.hasData {
+            out += "_Not checked: permissions were not scanned._\n\n"
         } else {
-            out += "| App | Last used | Days | Services |\n|---|---|---|---|\n"
-            for s in report.staleApps {
-                out += "| \(Self.cell(s.appName)) | \(Self.iso(s.lastUsedDate)) | \(s.daysSinceUsed) | \(Self.cell(s.grantedServices.joined(separator: ", "))) |\n"
-            }
-            out += "\n"
+            out += table(header: "| App | Last used | Days | Services |", rows: report.staleApps.map(Self.row))
         }
         return out
+    }
+
+    private static func coverageBlock(_ report: ExportReport) -> String {
+        let lines = [
+            "- Permission Pulse \(report.appVersion) (\(report.appBuild)) on macOS \(report.macOSVersion). Export format \(report.schemaVersion).",
+            report.coverage.permissions.coverageLine(name: "Permissions"),
+            report.coverage.launchAgents.coverageLine(name: "Launch Agents"),
+            report.coverage.backgroundItems.coverageLine(name: "Background Items"),
+        ]
+        return "## Scan coverage\n\n" + lines.joined(separator: "\n") + "\n\n"
+    }
+
+    /// A domain that was never read prints only why; otherwise its note
+    /// (if the scan was not complete) and its table.
+    private static func section(
+        _ title: String,
+        coverage: ExportDomainCoverage,
+        rows: [String],
+        header: String
+    ) -> String {
+        var out = "## \(title)\n\n"
+        if let note = coverage.markdownNote { out += note + "\n\n" }
+        guard coverage.hasData else { return out }
+        return out + table(header: header, rows: rows)
+    }
+
+    private static func table(header: String, rows: [String]) -> String {
+        guard !rows.isEmpty else { return "_None._\n\n" }
+        return header + "\n|---|---|---|---|\n" + rows.joined(separator: "\n") + "\n\n"
+    }
+
+    private static func row(_ g: ExportGrant) -> String {
+        "| \(cell(g.appName)) | \(cell(g.bundleID)) | \(cell(g.service)) | \(iso(g.lastModified)) |"
+    }
+
+    private static func row(_ a: ExportLaunchAgent) -> String {
+        "| \(cell(a.label)) | \(cell(a.source)) | \(a.runAtLoad) | \(a.keepAlive) |"
+    }
+
+    private static func row(_ b: ExportBackgroundItem) -> String {
+        "| \(cell(b.name)) | \(cell(b.developerName ?? "—")) | \(b.type) | \(b.disposition) |"
+    }
+
+    private static func row(_ s: ExportStaleApp) -> String {
+        "| \(cell(s.appName)) | \(iso(s.lastUsedDate)) | \(s.daysSinceUsed) | \(cell(s.grantedServices.joined(separator: ", "))) |"
     }
 
     // MARK: - Mapping
@@ -140,7 +174,8 @@ public enum PermissionsExport {
             bundleID: g.app.bundleID,
             bundlePath: g.app.bundlePath?.path(percentEncoded: false),
             lastModified: g.lastModified,
-            automationTarget: g.automationTarget
+            automationTarget: g.automationTarget,
+            authValue: g.authValue
         )
     }
 
@@ -203,9 +238,7 @@ public enum PermissionsExport {
     }
 
     private static func iso(_ date: Date) -> String {
-        // A fresh formatter per call keeps this concurrency-safe (ISO8601DateFormatter
-        // isn't Sendable); export is a one-shot action, so the cost is negligible.
-        ISO8601DateFormatter().string(from: date)
+        ExportFormat.iso(date)
     }
 
     /// Escapes a value for a Markdown table cell: pipes break columns and
