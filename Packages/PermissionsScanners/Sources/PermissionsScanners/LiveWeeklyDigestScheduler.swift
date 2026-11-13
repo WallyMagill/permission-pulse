@@ -13,6 +13,8 @@ public struct LiveWeeklyDigestScheduler: WeeklyDigestScheduler {
         category: "digest-scheduler"
     )
 
+    static let armedFireDateKey = "armedFireDate"
+
     public init() {}
 
     public func currentAuthorizationStatus() async -> DigestAuthorizationStatus {
@@ -56,6 +58,9 @@ public struct LiveWeeklyDigestScheduler: WeeklyDigestScheduler {
         content.title = title
         content.body = body
         content.sound = .default
+        if let fireDate = trigger.nextTriggerDate() {
+            content.userInfo = [Self.armedFireDateKey: fireDate.timeIntervalSince1970]
+        }
 
         let request = UNNotificationRequest(
             identifier: identifier,
@@ -119,6 +124,16 @@ public struct LiveWeeklyDigestScheduler: WeeklyDigestScheduler {
             return intervalTrigger.nextTriggerDate()
         }
         return nil
+    }
+
+    public func armedFireDate(for identifier: String) async -> Date? {
+        let pending = await UNUserNotificationCenter.current()
+            .pendingNotificationRequests()
+        guard let request = pending.first(where: { $0.identifier == identifier }),
+              let seconds = request.content.userInfo[Self.armedFireDateKey] as? TimeInterval else {
+            return nil
+        }
+        return Date(timeIntervalSince1970: seconds)
     }
 
     // MARK: - Private

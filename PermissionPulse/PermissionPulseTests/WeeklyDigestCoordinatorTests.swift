@@ -451,11 +451,11 @@ import PermissionsUI
         let env = makeEnv(digestEnabled: true, status: .authorized)
         _ = await env.coordinator.reconcileSchedule()
         #expect(await env.scheduler.oneShots(withPrefix: WeeklyDigestCoordinator.overdueIdentifier).isEmpty)
-        // The coordinator's clock reads 1_700_000_000: this trigger has passed.
-        await env.scheduler.setNextFireDate(
-            Date(timeIntervalSince1970: 1_699_990_000),
-            for: WeeklyDigestCoordinator.weeklyIdentifier
-        )
+        let armed = try #require(await env.scheduler.armedFireDate(for: WeeklyDigestCoordinator.weeklyIdentifier))
+        // The Mac slept through the armed date; the pending request still
+        // reports a future next trigger date, as the real one does.
+        env.clock.date = armed.addingTimeInterval(3_600)
+        #expect(try #require(await env.scheduler.nextFireDate(for: WeeklyDigestCoordinator.weeklyIdentifier)) > env.clock.date)
 
         let result = await env.coordinator.reconcileSchedule()
 
@@ -466,7 +466,29 @@ import PermissionsUI
             Issue.record("Expected the next occurrence to be armed, got \(result)")
             return
         }
-        #expect(await env.scheduler.pendingIdentifiers().contains(WeeklyDigestCoordinator.weeklyIdentifier))
+        let pending = await env.scheduler.pendingIdentifiers()
+        #expect(pending.contains(WeeklyDigestCoordinator.weeklyIdentifier))
+        #expect(pending.contains(WeeklyDigestCoordinator.overdueIdentifier))
+    }
+
+    @Test func aDigestNotYetDueIsOnlyReArmed() async throws {
+        let env = makeEnv(digestEnabled: true, status: .authorized)
+        _ = await env.coordinator.reconcileSchedule()
+        _ = await env.coordinator.reconcileSchedule()
+        #expect(await env.scheduler.oneShots(withPrefix: WeeklyDigestCoordinator.overdueIdentifier).isEmpty)
+    }
+
+    @Test func turningTheDigestOffCancelsAnOverdueDelivery() async throws {
+        let env = makeEnv(digestEnabled: true, status: .authorized)
+        _ = await env.coordinator.reconcileSchedule()
+        let armed = try #require(await env.scheduler.armedFireDate(for: WeeklyDigestCoordinator.weeklyIdentifier))
+        env.clock.date = armed.addingTimeInterval(60)
+        _ = await env.coordinator.reconcileSchedule()
+        #expect(await env.scheduler.pendingIdentifiers().contains(WeeklyDigestCoordinator.overdueIdentifier))
+
+        _ = await env.coordinator.handleAuthorizationToggle(turnOn: false)
+
+        #expect(await env.scheduler.pendingIdentifiers().isEmpty)
     }
 
     // MARK: - Env
@@ -477,18 +499,21 @@ import PermissionsUI
         let preferencesStore: PreferencesStore
         let scheduler: MockWeeklyDigestScheduler
         let coordinator: WeeklyDigestCoordinator
+        let clock: TestClock
 
         init(digestEnabled: Bool, status: DigestAuthorizationStatus) {
             self.viewModel = AppViewModel()
             let defaults = UserDefaults(suiteName: "digest-test-\(UUID().uuidString)")!
             self.preferencesStore = PreferencesStore(defaults: defaults)
             self.preferencesStore.digestEnabled = digestEnabled
-            self.scheduler = MockWeeklyDigestScheduler(initialStatus: status)
+            let clock = TestClock(Date(timeIntervalSince1970: 1_700_000_000))
+            self.clock = clock
+            self.scheduler = MockWeeklyDigestScheduler(initialStatus: status, now: { clock.date })
             self.coordinator = WeeklyDigestCoordinator(
                 viewModel: viewModel,
                 preferencesStore: preferencesStore,
                 scheduler: scheduler,
-                now: { Date(timeIntervalSince1970: 1_700_000_000) }
+                now: { clock.date }
             )
         }
     }
@@ -522,6 +547,18 @@ private func demoLaunchAgent() -> LaunchAgentItem {
         runAtLoad: true,
         keepAlive: false
     )
+}
+
+final class TestClock: @unchecked Sendable {
+    private let lock = NSLock()
+    private var current: Date
+
+    init(_ date: Date) { current = date }
+
+    var date: Date {
+        get { lock.withLock { current } }
+        set { lock.withLock { current = newValue } }
+    }
 }
 
 private struct InjectedSchedulingError: LocalizedError, Sendable {
@@ -568,6 +605,10 @@ private actor SuspendingWeeklyDigestScheduler: WeeklyDigestScheduler {
     func pendingIdentifiers() async -> [String] { pending }
 
     func nextFireDate(for identifier: String) async -> Date? {
+        pending.contains(identifier) ? fireDate : nil
+    }
+
+    func armedFireDate(for identifier: String) async -> Date? {
         pending.contains(identifier) ? fireDate : nil
     }
 
@@ -674,6 +715,8 @@ private actor TwoReconciliationScheduler: WeeklyDigestScheduler {
     func pendingIdentifiers() async -> [String] { Array(pending.keys) }
 
     func nextFireDate(for identifier: String) async -> Date? { pending[identifier]?.nextFire }
+
+    func armedFireDate(for identifier: String) async -> Date? { pending[identifier]?.nextFire }
 
     func pendingRequests() -> [PendingRequest] { Array(pending.values) }
 

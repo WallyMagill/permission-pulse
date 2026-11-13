@@ -620,6 +620,7 @@ private actor TracingWeeklyDigestScheduler: WeeklyDigestScheduler {
     }
     func pendingIdentifiers() async -> [String] { [] }
     func nextFireDate(for identifier: String) async -> Date? { nil }
+    func armedFireDate(for identifier: String) async -> Date? { nil }
 }
 
 private actor SuspendingWeeklyDigestScheduler: WeeklyDigestScheduler {
@@ -659,6 +660,7 @@ private actor SuspendingWeeklyDigestScheduler: WeeklyDigestScheduler {
     }
     func pendingIdentifiers() async -> [String] { [] }
     func nextFireDate(for identifier: String) async -> Date? { nil }
+    func armedFireDate(for identifier: String) async -> Date? { nil }
 
     func waitUntilFirstCancellationSuspends() async {
         guard !firstCancellationIsSuspended else { return }

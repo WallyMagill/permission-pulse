@@ -16,8 +16,9 @@ final class WeeklyDigestCoordinator {
     static let weeklyIdentifier = "com.wallymagill.permissionpulse.digest.weekly.v1"
     static let testIdentifierPrefix = "com.wallymagill.permissionpulse.digest.test"
     /// A digest that came due while the Mac slept, delivered as a one-shot.
-    /// Outside `identifierPrefix`, so the re-arm that follows can't cancel it.
-    static let overdueIdentifier = "com.wallymagill.permissionpulse.digest.overdue"
+    /// Under `identifierPrefix`, so turning the digest off and Reset All Data
+    /// cancel it; outside `weeklyIdentifier`, so a re-arm does not.
+    static let overdueIdentifier = "com.wallymagill.permissionpulse.digest.weekly.overdue"
 
     enum ScheduleResult: Sendable, Equatable {
         case disabled
@@ -64,8 +65,8 @@ final class WeeklyDigestCoordinator {
 
     private func reconcileScheduleOwned() async -> ScheduleResult {
         let overdue = await weeklyRequestIsOverdue()
-        await scheduler.cancelAll(matchingPrefix: Self.identifierPrefix)
-        guard scheduleIsActive else { return .disabled }
+        guard scheduleIsActive else { return await cancelDisabledSchedule() }
+        await scheduler.cancelAll(matchingPrefix: Self.weeklyIdentifier)
 
         let status = await scheduler.currentAuthorizationStatus()
         guard scheduleIsActive else { return .disabled }
@@ -100,13 +101,14 @@ final class WeeklyDigestCoordinator {
         }
     }
 
-    /// A pending weekly request whose trigger date has passed came due while
+    /// A pending weekly request whose armed date has passed came due while
     /// the Mac slept and has not been delivered yet; cancelling it to re-arm
-    /// would lose that week's digest.
+    /// would lose that week's digest. Its next trigger date can't tell: for
+    /// a weekday and time that is always in the future.
     private func weeklyRequestIsOverdue() async -> Bool {
-        guard await scheduler.pendingIdentifiers().contains(Self.weeklyIdentifier) else { return false }
-        guard let next = await scheduler.nextFireDate(for: Self.weeklyIdentifier) else { return true }
-        return next <= now()
+        guard await scheduler.pendingIdentifiers().contains(Self.weeklyIdentifier),
+              let armed = await scheduler.armedFireDate(for: Self.weeklyIdentifier) else { return false }
+        return armed <= now()
     }
 
     private func deliverOverdueDigest(_ composed: (title: String, body: String)) async {
