@@ -8,6 +8,8 @@ protocol MediaDeviceSource: Sendable {
     associatedtype DeviceID: Hashable & Sendable
     associatedtype Listener
 
+    /// The serial queue every listener callback is delivered on.
+    var queue: DispatchQueue { get }
     func deviceIDs() -> [DeviceID]
     func isRunning(_ id: DeviceID) -> Bool
     /// nil when the OS refuses the registration.
@@ -24,7 +26,9 @@ protocol MediaDeviceSource: Sendable {
 /// device that disappears while in use cannot leave the indicator on.
 ///
 /// Locking: `lock` guards the bookkeeping only. Hardware calls and `emit` run
-/// outside it, because listener callbacks re-enter the tracker.
+/// outside it, because listener callbacks re-enter the tracker. Every refresh
+/// and emission runs on `source.queue`, so device lists and in-use states are
+/// applied in the order they were read.
 final class MediaDeviceTracker<Source: MediaDeviceSource>: @unchecked Sendable {
     private static var logger: Logger {
         Logger(subsystem: "com.wallymagill.permissionpulse", category: "media-use-observer")
@@ -48,7 +52,9 @@ final class MediaDeviceTracker<Source: MediaDeviceSource>: @unchecked Sendable {
         lock.withLock { (listeners.count, devices.count) }
     }
 
+    /// Must not be called on `source.queue`: it waits for the first refresh there.
     func start() {
+        dispatchPrecondition(condition: .notOnQueue(source.queue))
         let listListener = source.addDeviceListListener { [weak self] in self?.refresh() }
         if listListener == nil {
             Self.logger.error("Device-list listener refused; devices added later will not be watched")
@@ -59,7 +65,7 @@ final class MediaDeviceTracker<Source: MediaDeviceSource>: @unchecked Sendable {
             return true
         }
         if !keep, let listListener { source.removeDeviceListListener(listListener) }
-        refresh()
+        source.queue.sync { refresh() }
     }
 
     func refresh() {

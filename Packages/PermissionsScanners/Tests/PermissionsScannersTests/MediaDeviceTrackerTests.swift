@@ -42,6 +42,25 @@ import Testing
         #expect(emitted.last == false)
     }
 
+    // A device plugged in while start() reads the device list: its callback
+    // must not be overtaken by start's older list, and the final state must
+    // be the newer device's "in use".
+    @Test func deviceListCallbackDuringStartIsAppliedLast() {
+        let source = FakeDeviceSource(present: [1])
+        let emitted = Emissions()
+        let tracker = MediaDeviceTracker(source: source) { emitted.append($0) }
+        source.whenDevicesFirstRead {
+            source.plugIn(2)
+            source.setRunning(2, true)
+        }
+
+        tracker.start()
+        source.queue.sync {}
+
+        #expect(source.watchedDevices == [1, 2])
+        #expect(emitted.last == true)
+    }
+
     @Test func stopRemovesEveryListener() {
         let source = FakeDeviceSource(present: [1, 2])
         let tracker = MediaDeviceTracker(source: source) { _ in }
@@ -62,9 +81,15 @@ private final class Emissions: @unchecked Sendable {
     var last: Bool? { lock.withLock { values.last } }
 }
 
+/// Delivers callbacks on its serial `queue` like CoreAudio and CoreMediaIO:
+/// synchronously when the test drives it from outside, asynchronously when
+/// a change happens while the queue is busy.
 private final class FakeDeviceSource: MediaDeviceSource, @unchecked Sendable {
     typealias Listener = () -> Void
 
+    let queue = DispatchQueue(label: "fake-media-devices")
+    private let onQueue = DispatchSpecificKey<Bool>()
+    private var onFirstDeviceRead: (() -> Void)?
     private let lock = NSLock()
     private var present: [Int]
     private var running: Set<Int> = []
@@ -74,6 +99,12 @@ private final class FakeDeviceSource: MediaDeviceSource, @unchecked Sendable {
 
     init(present: [Int]) {
         self.present = present
+        queue.setSpecific(key: onQueue, value: true)
+    }
+
+    /// Runs `change` right after the next device-list read has been taken.
+    func whenDevicesFirstRead(_ change: @escaping () -> Void) {
+        lock.withLock { onFirstDeviceRead = change }
     }
 
     var watchedDevices: [Int] { lock.withLock { runningListeners.keys.sorted() } }
@@ -81,12 +112,12 @@ private final class FakeDeviceSource: MediaDeviceSource, @unchecked Sendable {
 
     func plugIn(_ id: Int) {
         let notify = lock.withLock { present.append(id); return listListener }
-        notify?()
+        deliver(notify)
     }
 
     func unplug(_ id: Int) {
         let notify = lock.withLock { present.removeAll { $0 == id }; return listListener }
-        notify?()
+        deliver(notify)
     }
 
     func setRunning(_ id: Int, _ isRunning: Bool) {
@@ -94,10 +125,26 @@ private final class FakeDeviceSource: MediaDeviceSource, @unchecked Sendable {
             if isRunning { running.insert(id) } else { running.remove(id) }
             return runningListeners[id]
         }
-        notify?()
+        deliver(notify)
     }
 
-    func deviceIDs() -> [Int] { lock.withLock { present } }
+    private func deliver(_ callback: Listener?) {
+        guard let callback else { return }
+        if DispatchQueue.getSpecific(key: onQueue) == true {
+            queue.async(execute: callback)
+        } else {
+            queue.sync(execute: callback)
+        }
+    }
+
+    func deviceIDs() -> [Int] {
+        let (ids, change) = lock.withLock { () -> ([Int], (() -> Void)?) in
+            defer { onFirstDeviceRead = nil }
+            return (present, onFirstDeviceRead)
+        }
+        change?()
+        return ids
+    }
 
     // Stale on purpose: a vanished device can still read as running.
     func isRunning(_ id: Int) -> Bool { lock.withLock { running.contains(id) } }
