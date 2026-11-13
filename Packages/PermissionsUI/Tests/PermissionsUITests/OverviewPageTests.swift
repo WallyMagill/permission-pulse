@@ -22,6 +22,13 @@ struct OverviewPageTests {
         #expect(stale.note == nil)
     }
 
+    @Test("Before the first scan a count shows a dash, not zero")
+    func notScannedYetCount() {
+        let never = OverviewPage.countDisplay(0, availability: .never)
+        #expect(never.value == "—")
+        #expect(never.note == "Not scanned yet")
+    }
+
     @Test("Permission coverage names the reduced macOS 27 scope")
     func coverageText() {
         #expect(PermissionScope.systemLevelOnly.coverageText(hasData: true) == "System-level only (macOS 27)")

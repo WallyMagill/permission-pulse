@@ -85,13 +85,14 @@ struct OverviewPage: View {
         }
     }
 
-    /// A domain whose scan failed before it ever succeeded has no count to
-    /// show; "0" would claim the scan found nothing.
+    /// A domain not scanned yet, or whose scan failed before it ever
+    /// succeeded, has no count to show; "0" would claim the scan found nothing.
     static func countDisplay(_ count: Int, availability: ScanAvailability) -> (value: String, note: String?) {
-        if case .failed(nil, _) = availability {
-            return ("—", String(localized: "Not readable"))
+        switch availability {
+        case .never: ("—", String(localized: "Not scanned yet"))
+        case .failed(nil, _): ("—", String(localized: "Not readable"))
+        default: ("\(count)", nil)
         }
-        return ("\(count)", nil)
     }
 
     private var hasAttentionContent: Bool {
