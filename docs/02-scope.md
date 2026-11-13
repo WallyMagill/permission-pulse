@@ -26,7 +26,7 @@ Lists changes between today's snapshot and yesterday's, and a separate "last 7 d
 - **New background items:** "Foo.app added a login item yesterday"
 - **Removed grants** (when an app or permission disappears)
 
-**Acceptance:** With at least two daily snapshots in the database, the view lists the deltas accurately, sorted newest first.
+**Acceptance:** With at least two snapshots in the database, the view lists the deltas accurately, sorted newest first.
 
 ### Screen 3 — Risk Explanations
 

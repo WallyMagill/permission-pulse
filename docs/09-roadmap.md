@@ -102,7 +102,7 @@ A small post-v0.7.0 code-review follow-up — no new features:
 
 (The store/window fixes also visible in recent history — `computeDiff` no longer traps on duplicate identity keys, `latestSnapshotID` orders by `created_at`, singleton detail/preferences windows + Preferences toolbar entry — landed within the v0.7.0 tag range, not v0.7.1.)
 
-## Unreleased — on `main` since v0.7.1 (next tag)
+## Unreleased since v0.7.1 (on `main`, plus `release/v0.7.2` until it merges)
 
 Landed after the v0.7.1 tag; ships in the next release:
 
@@ -112,7 +112,7 @@ Landed after the v0.7.1 tag; ships in the next release:
 - Launch at login via `SMAppService` (Preferences → General). ✅
 - TCC `auth_value` change tracking in the diff engine and rendered authorization-transition rows, including consistent badge/search/dismiss/digest counts. ✅
 - Stable `bundle:` / `path:` identities, installed bundle-path retention, and migrated stale-app dismissals. ✅
-- Typed scanner coverage with complete/degraded/failed states, last-known failure behavior, and degraded snapshot suppression. ✅
+- Typed scanner coverage with complete/degraded/failed states, last-known failure behavior, and degraded snapshot suppression (superseded by per-domain coverage in the core-loop item below). ✅
 - Snapshot schema v5 persists LaunchAgent disabled state with a compatibility marker that preserves v4 history and suppresses false upgrade transitions. ✅
 - Section-aware search: Overview has no false affordance; Recent Changes searches every rendered TCC/BTM/LaunchAgent row kind. ✅
 - Notification banners present while the app is frontmost (`NotificationPresentationDelegate`). ✅

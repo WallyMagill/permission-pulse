@@ -43,6 +43,59 @@ Builds are **unsigned / ad-hoc-signed** — there is no paid Apple Developer ID 
 4. On the first-run prompt, grant **Full Disk Access** in System Settings → Privacy & Security → Full Disk Access; macOS may ask you to quit and reopen the app for it to take effect. FDA is required to read the TCC database (app permissions) and the BTM background-items store — Permission Pulse only ever *reads* these files, never writes to them. The Launch Agents and live mic/cam features work without FDA.
 5. **After updating to a new version:** macOS ties a Full Disk Access grant to the exact signature of the app that received it, and every ad-hoc-signed release has a different one. Replacing the app with a new version therefore turns the grant off. If Permission Pulse reports that Full Disk Access is missing after an update, turn its toggle back on in System Settings → Privacy & Security → Full Disk Access (off and on again if it already looks on), then quit and reopen the app.
 
+## Privacy
+
+Permission Pulse makes no network connections. It has no analytics, no telemetry, and no crash reporting. The only things that leave the app are links you click: they open your browser (for example, the "Report" link on a schema-mismatch banner opens a new GitHub issue) or System Settings.
+
+What it reads, all read-only:
+
+- The system permission database, `/Library/Application Support/com.apple.TCC/TCC.db`.
+- The per-user permission database, `~/Library/Application Support/com.apple.TCC/TCC.db`, on macOS 26 and earlier (macOS 27 does not expose it).
+- The Background Task Management store, the `BackgroundItems-v*.btm` files under `/private/var/db/com.apple.backgroundtaskmanagement/`.
+- Launch item property lists in `~/Library/LaunchAgents`, `/Library/LaunchAgents`, and `/Library/LaunchDaemons`, plus launchd's enabled/disabled overrides in `/private/var/db/com.apple.xpc.launchd/`.
+- Spotlight's last-used date for apps that hold permissions (via `/usr/bin/mdls`), falling back to the app bundle's modification date.
+- Whether a microphone or camera is in use right now (CoreAudio and CoreMediaIO device state; it never opens a device).
+
+What it writes:
+
+- `~/Library/Application Support/com.wallymagill.permissionpulse/` (the `snapshots.db` history database and its `-wal` / `-shm` files).
+- Its own preferences (the `com.wallymagill.permissionpulse` defaults domain).
+- Export files, only where you choose in the save dialog.
+
+Turning on Launch at Login registers the app with macOS through `SMAppService`; turning on the weekly digest schedules a local notification.
+
+## Verify the download
+
+Each release ships `PermissionPulse-vX.Y.Z.app.zip.sha256` next to the archive. With both files in the same folder:
+
+```bash
+shasum -a 256 -c PermissionPulse-vX.Y.Z.app.zip.sha256
+codesign -dv --verbose=2 /Applications/PermissionPulse.app
+```
+
+The first command prints `PermissionPulse-vX.Y.Z.app.zip: OK`. The second should include `Signature=adhoc` and no `Authority=` lines: release builds are ad-hoc signed, not signed by a Developer ID. Builds are not reproducible, so a checksum of your own build will not match the release.
+
+## Uninstall
+
+1. In Permission Pulse's Settings → General, turn off **Launch at Login**.
+2. In System Settings → Privacy & Security → Full Disk Access, select Permission Pulse and remove it with the **−** button. Do this before deleting the app.
+3. Quit Permission Pulse and move `/Applications/PermissionPulse.app` to the Trash.
+4. Delete its data and preferences:
+
+```bash
+rm -rf ~/Library/Application\ Support/com.wallymagill.permissionpulse
+defaults delete com.wallymagill.permissionpulse
+```
+
+## Known limitations
+
+- **macOS 27 shows less.** Apple no longer exposes per-user permission records (Camera, Microphone, Files and Folders, Automation, Contacts, Calendar, Photos, Reminders, Bluetooth, App Management, Media Library) to any app. Only Accessibility, Full Disk Access, Input Monitoring, and Screen Recording are visible there.
+- **Full Disk Access turns off after every update**, because each ad-hoc-signed build has a different signature. Install step 5 restores it.
+- **No auto-update.** Check the [Releases page](https://github.com/WallyMagill/permission-pulse/releases) for new versions.
+- **Untested on Intel and on macOS 14 and 15.** The Intel slice is built but has not been run on Intel hardware.
+- **English only.**
+- **No Developer ID**, so Gatekeeper warns on first launch (install step 3).
+
 ## Requirements
 
 - macOS 14.6 or later (the app's deployment target). Developed and tested on **macOS 26 (Tahoe) and macOS 27, Apple Silicon** — earlier macOS versions are untested. macOS 27 narrows what the Permission Inbox can show (see above); Background Items, Launch Agents, and the live mic/cam indicator are unaffected.
@@ -51,13 +104,21 @@ Builds are **unsigned / ad-hoc-signed** — there is no paid Apple Developer ID 
 
 ## Build from source
 
-See [`docs/07-build-and-test.md`](docs/07-build-and-test.md).
+Requires Xcode 26.5 or later.
+
+```bash
+git clone https://github.com/WallyMagill/permission-pulse.git && cd permission-pulse
+open PermissionPulse/PermissionPulse.xcodeproj   # build with ⌘B, or from the CLI:
+xcodebuild -project PermissionPulse/PermissionPulse.xcodeproj -scheme PermissionPulse -destination 'platform=macOS,arch=arm64' CODE_SIGNING_ALLOWED=NO build
+```
+
+Tests, release packaging, and CI are described in [`docs/07-build-and-test.md`](docs/07-build-and-test.md).
 
 ## How it works (one paragraph)
 
 Permission Pulse runs as a menu-bar app. At launch, on wake from sleep, at the start of each calendar day, and when you open it after more than a minute, it scans (a) the TCC database for granted permissions, (b) `LaunchAgents` and `LaunchDaemons`, (c) BTM-managed background items, and (d) the system device-use APIs (CoreMediaIO + CoreAudio) for current mic/cam usage. A snapshot is stored whenever a scan's evidence differs from the last stored one, in a local SQLite database (via GRDB) under `~/Library/Application Support/com.wallymagill.permissionpulse/`. The "What Changed" view is a diff between the latest snapshot and the state at the start of today (and at the start of the day a week ago). Nothing leaves your machine.
 
-Scanner results are labeled **complete**, **degraded**, or **failed**. A degraded read keeps the evidence that was available and names the omitted source category. Each snapshot records per-domain coverage (schema v6), and a domain is diffed only when both snapshots captured it completely, so a partial or failed read never shows up as a removal; Recent Changes names any domain it could not compare. A failed read keeps and labels last-known data when any exists; a first-run failure says that no successful data is available instead of presenting an empty list as complete. Stable app identities use `bundle:<bundle-id>` or `path:<standardized-path>`, so installed bundle-ID apps can participate in stale review while separate path-only clients never collapse together. Snapshot schema v5 preserves v4 history, records whether LaunchAgent disabled state was captured, and suppresses false disabled-only transitions across the upgrade boundary. Recent Changes renders TCC authorization transitions alongside other changes, and its contextual search covers every rendered row kind; Overview intentionally has no search field.
+Scanner results are labeled **complete**, **degraded**, or **failed**. A degraded read keeps the evidence that was available and names the omitted source category. Each snapshot records per-domain coverage (schema v6) as **complete**, **reduced** (permissions on macOS 27, where only the system-level records are readable), **degraded**, or **failed**. A domain is diffed only when both snapshots have the same full scope (complete and complete, or reduced and reduced), so a partial or failed read never shows up as a removal; Recent Changes names any domain it could not compare. A failed read keeps and labels last-known data when any exists; a first-run failure says that no successful data is available instead of presenting an empty list as complete. Stable app identities use `bundle:<bundle-id>` or `path:<standardized-path>`, so installed bundle-ID apps can participate in stale review while separate path-only clients never collapse together. Snapshot schema v5 preserves v4 history, records whether LaunchAgent disabled state was captured, and suppresses false disabled-only transitions across the upgrade boundary. Recent Changes renders TCC authorization transitions alongside other changes, and its contextual search covers every rendered row kind; Overview intentionally has no search field.
 
 ## Runtime settings and recovery
 
@@ -66,6 +127,10 @@ Snapshot retention and stale-app thresholds are live preferences. Permission Pul
 **Reset All Data** cancels Permission Pulse's weekly and test notifications, releases the open history store, removes `snapshots.db` plus its `-wal` and `-shm` sidecars, clears live and persisted preferences and dismissals, removes Permission Pulse-prefixed defaults while preserving macOS-owned window/status/split-view state, recreates a migrated history store, clears the current presentation state, and runs a recovery scan. Scans, resets, and overlapping reset requests are serialized. History deletion, defaults cleanup, and history recreation failures are reported by their actual phase; if storage reset succeeds but the recovery scan fails, Permission Pulse shows a separate warning and offers Refresh rather than claiming the scan succeeded.
 
 When an enabled weekly digest's day or time changes, the selected value is saved immediately and superseded edits are debounced. Schedule mutations run serially, replace the pending weekly request, and publish the actual next-fire date. A scheduling failure keeps the selected day/time and shows an orange, retryable error. Digest change totals include TCC authorization transitions as well as background-item and launch-agent changes.
+
+## Reporting a bug
+
+[Open an issue](https://github.com/WallyMagill/permission-pulse/issues/new/choose) with your macOS version (the output of `sw_vers`), the app version (select `PermissionPulse.app` in Finder → File → Get Info, or name the release you downloaded), and the exact text of any banner the app shows. For a security problem, follow [`SECURITY.md`](SECURITY.md) instead of opening a public issue.
 
 ## Contributing
 

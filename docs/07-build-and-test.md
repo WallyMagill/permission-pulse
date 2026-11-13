@@ -2,12 +2,11 @@
 
 ## Requirements
 
-- macOS 14 Sonoma or later (developing on macOS 26 Tahoe).
-- Xcode 26.0 or later (Xcode 26.5+ recommended).
-- Swift 6.3 (bundled with Xcode 26).
+- To run the app: macOS 14.6 or later (the declared deployment target, not a verified one). Developed on macOS 26 Tahoe and macOS 27.
+- To build: Xcode 26.5 or later (Swift 6.3 with Xcode 26.5; the release Mac uses Xcode 27.2 / Swift 6.4.2 on macOS 27.2).
 - ~5 GB free disk for Xcode build outputs.
 
-No other tooling is required for the v1 build. CI uses the same Xcode version on a GitHub Actions macOS runner.
+No other tooling is required. CI builds and tests with Xcode 26.5 on macOS 26 and with Xcode 27.2 on macOS 27 (see [CI](#ci)). Release artifacts are built with Xcode 27.2.
 
 ## Clone
 
@@ -85,13 +84,13 @@ Tests use **Swift Testing** (`import Testing`); the UITest target uses XCTest. T
 
 - Stable application identity is `bundle:<bundle-id>` when available, otherwise `path:<standardized-file-path>`. Installed bundle clients retain their resolved path for stale probing; separate path-only clients remain independently grouped and dismissed. Legacy raw bundle-ID stale dismissals migrate without losing the choice.
 - Every scanner returns `ScannerOutput(items:warnings:)`. Warning-free output is complete; warnings produce a visible degraded state with retained partial rows. A thrown failure preserves and labels last-known rows or explicitly reports that no successful history exists.
-- `SnapshotCoordinator` writes a snapshot when a scan's evidence or coverage differs from the latest stored snapshot. Each snapshot records per-domain coverage (schema v6); a failed domain stores no rows, a scan where every domain failed writes nothing, and a domain is diffed only when both endpoints are complete.
+- `SnapshotCoordinator` writes a snapshot when a scan's evidence or coverage differs from the latest stored snapshot. Each snapshot records per-domain coverage (schema v6) as `complete`, `reduced`, `degraded`, or `failed`; a failed domain stores no rows, a scan where every domain failed writes nothing, and a domain is diffed only when both endpoints have the same full scope (`complete`↔`complete` or `reduced`↔`reduced`).
 - Schema v5 adds LaunchAgent `is_disabled` and a per-snapshot capture marker. v4 history is retained; disabled-only changes are ignored across a legacy boundary but detected between two v5 snapshots.
 - Recent Changes renders TCC authorization transitions with stable dismissal keys. The badge, empty state, search filter, accessibility summary, and weekly digest all count the same event set. Search covers every rendered row's relevant summary/app/service/label/path/developer/identifier fields; Overview intentionally has no search field.
 
 ### Human FDA and hardware gate
 
-The automated suites use fixtures and mocks; before release, run `scripts/smoke-test.sh` and complete the actionable Workstream C items on a representative Mac. Complete user + system TCC coverage under FDA, an installed bundle-ID stale candidate, independent path-only clients, and a visible TCC authorization transition remain human gates. One-source TCC degradation is covered safely by `swift test --package-path Packages/PermissionsScanners --filter scanRetainsItemsAndReportsSystemWarningWhenSecondDatabaseFails`, which uses isolated temporary databases and an injected missing source. Degraded, last-known, and no-history accessibility semantics are covered by `swift test --package-path Packages/PermissionsUI --filter AppViewModelAvailabilityTests`. The app has no supported live failure/source-injection seam, so the equivalent live UI and VoiceOver paths must remain explicitly unverified; do not edit, copy back, move, delete, `chmod`, or `chown` real TCC/BTM data, change protected permissions merely to force failure, use `sudo`, or otherwise escalate privileges for these checks. Intel likewise remains unverified unless the same release artifact and UI checklist run on real Intel hardware; the x86_64 slice alone is packaging evidence.
+The automated suites use fixtures and mocks; before release, run `scripts/smoke-test.sh` and complete the actionable Workstream C items on a representative Mac. Full TCC coverage under FDA (on macOS 26: user and system records, banner "Complete data", `tcc_coverage = 'complete'`; on macOS 27: system records only, banner "System-level permissions only", `tcc_coverage = 'reduced'`), an installed bundle-ID stale candidate, independent path-only clients, and a visible TCC authorization transition remain human gates. One-source TCC degradation is covered safely by `swift test --package-path Packages/PermissionsScanners --filter scanRetainsItemsAndReportsSystemWarningWhenSecondDatabaseFails`, which uses isolated temporary databases and an injected missing source. Degraded, last-known, and no-history accessibility semantics are covered by `swift test --package-path Packages/PermissionsUI --filter AppViewModelAvailabilityTests`. The app has no supported live failure/source-injection seam, so the equivalent live UI and VoiceOver paths must remain explicitly unverified; do not edit, copy back, move, delete, `chmod`, or `chown` real TCC/BTM data, change protected permissions merely to force failure, use `sudo`, or otherwise escalate privileges for these checks. Intel likewise remains unverified unless the same release artifact and UI checklist run on real Intel hardware; the x86_64 slice alone is packaging evidence.
 
 The focused Workstream B gate is:
 
@@ -106,7 +105,7 @@ git diff --check
 
 ### Full local smoke test
 
-`scripts/smoke-test.sh` is the comprehensive pre-release gate. A normal run wipes only Permission Pulse's own state (never the real TCC.db / login items), does a Release build, asserts the bundle version (`0.7.2` / build `12`), runs all package + app-target tests, verifies the on-disk `snapshots.db` schema, and prints the full human checklist (A through V8). `--keep` preserves the production snapshot database and defaults domain; `--no-launch` skips launching the built app. Under the combined `--keep --no-launch` path, a structurally valid preserved schema-v4 or schema-v5 database is reported as pending migration rather than v6-complete because the app had no migration opportunity; every schema-expected path still requires exact schema v6: both v5 compatibility columns with 0/1 marker values, and the three per-domain coverage columns holding only `complete`, `degraded`, or `failed`. Pending-v4, pending-v5, and complete-v6 each require the exact applicable GRDB migration identifier set (`v1` through `v4`, `v5`, or `v6`) with no missing, unexpected, or duplicate rows. All smoke schema reads use SQLite's read-only mode. `scripts/seed-diff.sh` inserts a dated empty snapshot so the next scan produces a non-empty diff for exercising the dismiss/snooze flow.
+`scripts/smoke-test.sh` is the comprehensive pre-release gate. A normal run wipes only Permission Pulse's own state (never the real TCC.db / login items), does a Release build, asserts the bundle version (`0.7.2` / build `12`), runs all package + app-target tests, verifies the on-disk `snapshots.db` schema, and prints the full human checklist (A through W5). `--keep` preserves the production snapshot database and defaults domain; `--no-launch` skips launching the built app. Under the combined `--keep --no-launch` path, a structurally valid preserved schema-v4 or schema-v5 database is reported as pending migration rather than v6-complete because the app had no migration opportunity; every schema-expected path still requires exact schema v6: both v5 compatibility columns with 0/1 marker values, and the three per-domain coverage columns holding only `complete`, `reduced`, `degraded`, or `failed`. Pending-v4, pending-v5, and complete-v6 each require the exact applicable GRDB migration identifier set (`v1` through `v4`, `v5`, or `v6`) with no missing, unexpected, or duplicate rows. All smoke schema reads use SQLite's read-only mode. `scripts/seed-diff.sh` inserts a dated empty snapshot so the next scan produces a non-empty diff for exercising the dismiss/snooze flow.
 
 ## Build and verify the v0.7.2 release artifact
 
@@ -123,14 +122,14 @@ The packaging script produces a universal arm64 + x86_64, ad-hoc-signed, entitle
 
 ## CI
 
-GitHub Actions (`.github/workflows/ci.yml`) runs on every PR and every push to `main`. Both jobs use `macos-26` and `/Applications/Xcode_26.5.app/Contents/Developer`, and print the macOS, Xcode, and Swift versions:
+GitHub Actions (`.github/workflows/ci.yml`) runs on every PR to `main`, every push to `main` or a `release/**` branch, and on manual dispatch; a newer run on the same ref cancels the older one. Each job runs on two legs that do not cancel each other (`fail-fast: false`): `macos-26` with Xcode 26.5, and `xcode-27` (macOS 27) with Xcode 27.2. Each leg selects Xcode through `DEVELOPER_DIR`, fails with the expected path and the list of installed `/Applications/Xcode_*.app` if that Xcode is missing, and prints the macOS, Xcode, and Swift versions:
 
 - **`packages` job** — runs all 304 tests in the four SwiftPM packages.
-- **`app` job** — runs all 87 app-target tests in isolated test mode, performs static analysis, proves `smoke-test.sh --keep` preserves live state, then builds and independently verifies the exact v0.7.2/build 12 archive from the clean checkout.
+- **`app` job** — runs all 87 app-target tests in isolated test mode, performs static analysis, proves `smoke-test.sh --keep` preserves live state, then builds and independently verifies the release archive from the clean checkout, using the version and build number read from `Config/Version.xcconfig`.
 
 CI never tags, publishes, or uploads that verified artifact. GitHub Releases remains a separate manual boundary.
 
-GRDB is pinned at `7.10.0` (see each `Package.resolved`). Deployment targets are not uniform: the app release target is `14.6`, the test targets are `26.4`, and the SwiftPM packages floor at `.macOS(.v14)`. The app is built and tested only on Tahoe 26; treat 14.x as the declared floor, not a verified one.
+GRDB is pinned at `7.10.0` (see each `Package.resolved`). Deployment targets are not uniform: the app release target is `14.6`, the test targets are `26.4`, and the SwiftPM packages floor at `.macOS(.v14)`. The app is built and tested only on macOS 26 and macOS 27; treat 14.6 as the declared floor, not a verified one.
 
 ## How this project was bootstrapped (historical)
 

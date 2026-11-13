@@ -66,7 +66,7 @@ Each scanner is documented as: **what it reads, which API, what permission is ne
 **Failure mode:**
 - An existing source directory unreadable → retain results from readable sources and return a source warning.
 - A malformed or unreadable entry → retain valid items and return a material omitted-entry warning/count.
-- A full scan failure preserves and labels last-known rows. Any warning or failure suppresses snapshot persistence.
+- A full scan failure preserves and labels last-known rows. A warning records the domain's snapshot coverage as `degraded`; a failure records it as `failed` with no rows. Neither is compared against a complete snapshot, so it cannot create false removals.
 
 ---
 
@@ -145,7 +145,7 @@ Each scanner is documented as: **what it reads, which API, what permission is ne
 
 ## Snapshot store (implemented v0.2.0 LA, v0.5.0 TCC + BTM)
 
-**What:** Local persistence of daily snapshots of TCC grants, BTM items, and LaunchAgents. Powers the What Changed diff queries and Stale App Review.
+**What:** Local persistence of snapshots of TCC grants, BTM items, and LaunchAgents, written whenever the evidence or coverage changes. Powers the What Changed diff queries and Stale App Review.
 
 **Implementation:** `SnapshotStore` in `PermissionsStore` — GRDB v7.x over a single `DatabaseQueue`. Schema:
 

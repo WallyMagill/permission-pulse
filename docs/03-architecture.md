@@ -12,6 +12,7 @@ permission-pulse/                       (repo root)
 │   │   ├── PermissionPulseApp.swift    (the @main App + AppDelegate, owns all coordinators)
 │   │   ├── ScanCoordinator.swift       (runs the three scanners in parallel → viewModel)
 │   │   ├── SnapshotCoordinator.swift   (change-driven snapshot write, diff refresh, stale apps)
+│   │   ├── ScanScheduler.swift         (wake / day-change / stale-open scan triggers)
 │   │   ├── MediaUseCoordinator.swift   (mic/cam observation loop → viewModel)
 │   │   ├── WeeklyDigestCoordinator.swift (digest schedule lifecycle + compose)
 │   │   ├── ResetAllDataService.swift   (ordered, result-bearing reset lifecycle)
@@ -68,7 +69,7 @@ The app target uses Xcode 26's `PBXFileSystemSynchronizedRootGroup`, so any `.sw
 [ Scanners ] ──► ScanCoordinator ──► AppViewModel (@Observable) ──► SwiftUI views
                        │
                        ▼
-              SnapshotCoordinator ──► PermissionsStore ──► daily snapshot rows
+              SnapshotCoordinator ──► PermissionsStore ──► change-driven snapshot rows
                        │                                         │
                        │                                    diff queries +
                        │                                    retention prune
@@ -79,7 +80,7 @@ The app target uses Xcode 26's `PBXFileSystemSynchronizedRootGroup`, so any `.sw
 Coordination lives in the App target (not a package) and is split across focused `@MainActor` objects, all owned by `AppDelegate`:
 
 - **`ScanCoordinator`** runs the three scanners (`TCCScannerSQLite`, `LaunchAgentScannerFS`, `BTMScannerDirect`) in parallel via `async let`, captures one evidence timestamp, and maps every domain to `.complete`, `.degraded`, or `.failed`. Complete and degraded outputs replace that domain's live rows; failure preserves prior rows and carries forward the last-successful timestamp. Unexpected errors become temporary unavailability, not permission denial.
-- **`SnapshotCoordinator`** writes a snapshot after any scan whose evidence differs from the latest stored snapshot (or when none exists), using the store's own diff rules (`SnapshotStore.evidenceChanged`). Each snapshot records per-domain coverage (`complete` / `degraded` / `failed`, schema v6); a failed domain stores no rows, and a scan where every domain failed writes nothing. Window diffs compare a domain only when both endpoints are `complete` and list the others in `SnapshotDiffs.uncomparedDomains`, so partial evidence never appears as removals. After a write it prunes by the retention window, keeping the newest pre-cutoff snapshot as the baseline; then it recomputes yesterday/week diffs and stale apps. It reads retention and stale thresholds from the live preference store exactly once at the start of each scan-completion boundary. An edit therefore affects the next scan without recreating the coordinator, while both values remain stable inside a scan already in progress; the captured stale threshold is also published to the view model so UI copy matches the computation.
+- **`SnapshotCoordinator`** writes a snapshot after any scan whose evidence differs from the latest stored snapshot (or when none exists), using the store's own diff rules (`SnapshotStore.evidenceChanged`). Each snapshot records per-domain coverage (`complete` / `reduced` / `degraded` / `failed`, schema v6); `reduced` means the TCC scan was complete except for the per-user database macOS 27 hides. A failed domain stores no rows, and a scan where every domain failed writes nothing. Window diffs compare a domain only when both endpoints have the same full scope (`complete`↔`complete` or `reduced`↔`reduced`) and list the others in `SnapshotDiffs.uncomparedDomains`, so partial evidence never appears as removals. After a write it prunes by the retention window, keeping the newest pre-cutoff snapshot as the baseline; then it recomputes yesterday/week diffs and stale apps. It reads retention and stale thresholds from the live preference store exactly once at the start of each scan-completion boundary. An edit therefore affects the next scan without recreating the coordinator, while both values remain stable inside a scan already in progress; the captured stale threshold is also published to the view model so UI copy matches the computation.
 - **`MediaUseCoordinator`** runs the mic/cam `AsyncStream` loop and updates `AppViewModel`.
 - **`WeeklyDigestCoordinator`** reconciles the `UNUserNotificationCenter` weekly schedule. Enabled day/time edits persist first, debounce superseded picker events, then enter a coordinator-local FIFO that serializes cancel/schedule/read mutations. A successful reconcile leaves one replacement request and publishes its actual next-fire date. Failures retain the selected values and reach Preferences as an orange Retry state. Digest copy counts TCC authorization transitions alongside BTM and launch-agent changes.
 - **`ResetAllDataService`** performs the destructive full wipe on demand as an ordered, idempotent state machine: cancel owned weekly/test notifications; release the open history runtime; remove `snapshots.db`, `snapshots.db-wal`, and `snapshots.db-shm`; reset the live preference and dismissal stores; clear only Permission Pulse-prefixed defaults; recreate and migrate the history store; clear presentation state; run a fresh scan; and reconcile against the reset default `digestEnabled == false`. Missing history files are success. Other failures report the exact `.deleteHistory`, `.clearDefaults`, or `.recreateHistory` phase and stop at the appropriate dependency boundary, so a stale in-memory digest preference cannot recreate a schedule. A completed storage reset whose recovery scan fails is a distinct completed-reset outcome and produces a separate Refresh warning.
@@ -126,20 +127,20 @@ Tahoe's transparent menu bar means our icon must render cleanly on both light an
 
 All package tests use **Swift Testing**; the UITest target uses XCTest.
 
-- `PermissionsCore`: unit tests, no fixtures. Pure data types. (40 tests)
-- `PermissionsScanners`: golden-fixture tests (`TCCFixtures`, `BTMFixtures`) + `Mock` behavior tests. Real-scanner tests run only on developer machines (FDA-gated). (67 tests)
-- `PermissionsStore`: in-memory + on-disk GRDB tests (migrations, diff engine, retention, discovery). (39 tests)
-- `PermissionsUI`: view-model and store logic tests with injected mocks + in-memory store. (137 tests)
-- App target (`PermissionPulseTests`): coordinator-level tests (`SnapshotCoordinator`, `WeeklyDigestCoordinator`, `ResetAllDataService`) — exercised by `scripts/smoke-test.sh §4` locally and by pinned CI under `PERMISSION_PULSE_TEST_MODE=1`. (75 tests)
+- `PermissionsCore`: unit tests, no fixtures. Pure data types.
+- `PermissionsScanners`: golden-fixture tests (`TCCFixtures`, `BTMFixtures`) + `Mock` behavior tests. Real-scanner tests run only on developer machines (FDA-gated).
+- `PermissionsStore`: in-memory + on-disk GRDB tests (migrations, diff engine, retention, discovery).
+- `PermissionsUI`: view-model and store logic tests with injected mocks + in-memory store.
+- App target (`PermissionPulseTests`): coordinator-level tests (`SnapshotCoordinator`, `WeeklyDigestCoordinator`, `ResetAllDataService`) — exercised by `scripts/smoke-test.sh §4` locally and by CI under `PERMISSION_PULSE_TEST_MODE=1`.
 
-The four package suites total 283 tests; with the 75 app-target tests, the automated total is 358. These counts were observed on 2026-09-11 at the v0.7.2 candidate on macOS 26.6.2 with Xcode 26.6 / Swift 6.3.3; see `docs/07-build-and-test.md`.
+Current test counts and the commands that run them are in `docs/07-build-and-test.md`.
 
 ## What lives in the App target, not packages
 
 - `Info.plist` (empty `<dict/>`; all keys come from `INFOPLIST_KEY_*` build settings). **No `.entitlements` file** — App Sandbox is off and there are no entitlements (sandbox would block the TCC.db / BTM reads).
 - Bundle ID, build settings, signing config (Developer ID deferred), Sparkle config (deferred).
 - The `App` struct + `AppDelegate`: the trampoline `WindowGroup`, the `MenuBarExtra`, and the singleton `Window(id:)` scenes.
-- The coordinators (`ScanCoordinator`, `SnapshotCoordinator`, `MediaUseCoordinator`, `WeeklyDigestCoordinator`) and `ResetAllDataService`, which wire concrete scanners + store + view models together.
+- The coordinators (`ScanCoordinator`, `SnapshotCoordinator`, `MediaUseCoordinator`, `WeeklyDigestCoordinator`), `ScanScheduler`, and `ResetAllDataService`, which wire concrete scanners + store + view models together.
 - App icon + assets.
 
 Everything else is in a package.

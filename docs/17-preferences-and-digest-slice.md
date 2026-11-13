@@ -1,5 +1,7 @@
 # 17 — Eighth slice: preferences pane and weekly digest
 
+> Historical slice spec; file names reflect that release and may have moved.
+
 **Status:** Implemented v0.7.0 — 2026-05-16.
 
 ## Why this slice

@@ -1,5 +1,7 @@
 # 14 — Fifth slice: mic/cam observer + state-driven menu-bar icon
 
+> Historical slice spec; file names reflect that release and may have moved.
+
 **Status:** Implemented v0.4.1 — 2026-05-14.
 
 ## Why this slice

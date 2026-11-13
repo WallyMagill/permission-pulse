@@ -6,13 +6,13 @@ Permission Pulse asks for at most one OS-level permission: **Full Disk Access**.
 
 ### 1. Gatekeeper
 
-When the user double-clicks `Permission Pulse.app` the first time, macOS shows the "Apple could not verify..." dialog. On macOS 15 (Sequoia) and later — including Tahoe — the right-click → Open override no longer exists for unsigned apps, so the user must:
+When the user double-clicks `PermissionPulse.app` the first time, macOS shows the "Apple could not verify..." dialog. On macOS 15 (Sequoia) and later — including Tahoe — the right-click → Open override no longer exists for unsigned apps, so the user must:
 
 1. Dismiss that dialog with **Done** (not "Move to Trash").
 2. Open **System Settings → Privacy & Security** and scroll to the *"Permission Pulse" was blocked* notice.
 3. Click **Open Anyway** and authenticate when prompted.
 
-On macOS 14 (Sonoma) the older right-click the app → **Open** → **Open** shortcut still works. The CLI alternative on any version: `xattr -d com.apple.quarantine "/Applications/Permission Pulse.app"`.
+On macOS 14 (Sonoma) the older right-click the app → **Open** → **Open** shortcut still works. The CLI alternative on any version: `xattr -d com.apple.quarantine /Applications/PermissionPulse.app`.
 
 After this, normal double-clicks work.
 
@@ -26,7 +26,7 @@ The first time the app actually runs, the detail window opens with a small Welco
 
 - What Permission Pulse does (three sentences).
 - That it is **read-only** and never modifies system data.
-- That the next step is granting Full Disk Access — and what we use it for (read-only access to the user/system TCC databases and the BTM background-items store).
+- That the next step is granting Full Disk Access — and what we use it for (read-only access to the TCC permission databases and the BTM background-items store). On macOS 27 only the system TCC database is readable; the per-user one is hidden from every app, Full Disk Access included.
 - A "Skip for now" button (Launch Agents and live mic/cam remain available without FDA; TCC and direct BTM coverage may degrade or fail).
 
 ### 3. Full Disk Access prompt
@@ -43,7 +43,7 @@ We do not auto-restart. The user restarts manually. (Auto-relaunch under Tahoe's
 
 | Permission | Used for | What we read | What we never do |
 |---|---|---|---|
-| Full Disk Access | User/system TCC and direct BTM reads | TCC `access` rows and the highest-versioned `BackgroundItems-v*.btm` archive | Modify, copy, transmit, or invoke `sudo` for either source |
+| Full Disk Access | TCC and direct BTM reads | TCC `access` rows from the system database (and the per-user database on macOS 26 and earlier); the highest-versioned `BackgroundItems-v*.btm` archive, or on macOS 27 (store v18) every per-user `BackgroundItems-v18-<user UUID>.btm` file | Modify, copy, transmit, or invoke `sudo` for either source |
 
 We never request:
 - Microphone, Camera (we observe usage state via public APIs, we don't open devices).
@@ -65,7 +65,12 @@ Surfaces that degrade:
 - Permission Inbox and direct BTM coverage can be unavailable because their protected sources require FDA. Permission Pulse never invokes `sudo` and does not ship an `sfltool` fallback.
 - If one user/system TCC source succeeds and another fails, the readable rows remain visible under a **Degraded data** banner naming the omitted source category. If all relevant sources fail, last-known rows remain visible and are labeled stale; with no prior success, the page explicitly says no successful scan is available.
 - Stale App Review is recomputed only after a fully complete scan. During degraded or failed coverage, the previous computed list is not replaced from partial evidence.
-- A degraded or failed domain suppresses the entire daily snapshot, so incomplete coverage cannot create false historical removals.
+- A snapshot is written whenever the evidence or coverage changes, and it records each domain's coverage (`complete`, `reduced`, `degraded`, or `failed`). A failed domain stores no rows. History compares a domain only when both snapshots have the same full scope (`complete`↔`complete` or `reduced`↔`reduced`), so incomplete coverage cannot create false historical removals.
+
+## macOS 27
+
+- **TCC.** macOS 27 moved the per-user TCC database out of `~/Library/Application Support/com.apple.TCC/` into a protected system location that Full Disk Access does not open. Permission Pulse treats that missing directory as a source this OS does not expose, not as a failure, and never escalates to reach it. With Full Disk Access it reads only the system database, so the Permission Inbox shows Accessibility, Full Disk Access, Input Monitoring, and Screen Recording, with the banner "System-level permissions only". Snapshots record TCC coverage as `reduced`; two reduced snapshots compare normally.
+- **BTM.** Store version 18 splits background items into one `BackgroundItems-v18-<user UUID>.btm` file per user, plus an unsuffixed index file with no items. Permission Pulse reads every per-user file and fails the read if the index lists a user whose file is missing, rather than showing a partial list as complete.
 
 ## Sandbox and entitlements
 
@@ -79,7 +84,8 @@ Nothing. There is no CLI, no launchd-managed daemon, no system extension. Quit t
 
 ## What we leave behind on uninstall
 
-- `~/Library/Application Support/com.wallymagill.permissionpulse/snapshots.db`
-- Standard `NSUserDefaults` entries under `com.wallymagill.permissionpulse`
+- `~/Library/Application Support/com.wallymagill.permissionpulse/snapshots.db`, plus its `snapshots.db-wal` and `snapshots.db-shm` files.
+- The `com.wallymagill.permissionpulse` defaults domain (preferences, dismissals, and macOS-written window state).
+- Permission Pulse's row in System Settings → Privacy & Security → Full Disk Access. Remove it there before deleting the app.
 
-We add a "Reset all data" command in Preferences that deletes both. Documented in the README.
+"Reset All Data" in Preferences deletes the history files and Permission Pulse's own defaults but keeps the app installed. The README's Uninstall section lists the full removal steps.

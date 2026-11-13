@@ -1,5 +1,7 @@
 # 15 — Sixth slice: snapshot store extension, "What Changed", and Stale App Review
 
+> Historical slice spec; file names reflect that release and may have moved.
+
 **Status:** Implemented v0.5.0 — 2026-05-15.
 
 ## Why this slice
