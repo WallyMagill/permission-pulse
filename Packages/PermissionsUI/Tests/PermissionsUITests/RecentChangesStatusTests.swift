@@ -80,6 +80,16 @@ import PermissionsStore
         #expect(lines.last == "Compared system-level permissions only")
     }
 
+    @Test func aReducedScopeEmptyStateNamesWhatWasCompared() {
+        let baseline = DiffBaseline(id: SnapshotID(rawValue: 5), date: date)
+        let all = Dictionary(uniqueKeysWithValues: HistoryDomain.allCases.map { ($0, baseline) })
+
+        #expect(DiffTabView.emptyDescription(diff(baselines: all, systemLevelOnly: true))
+            == "No changes in system-level permissions, background items, or launch agents.")
+        #expect(DiffTabView.emptyDescription(diff(baselines: all))
+            == "Nothing was added, removed, or changed in this window.")
+    }
+
     @Test func emptyStateNamesUncomparedDomains() {
         let baseline = DiffBaseline(id: SnapshotID(rawValue: 5), date: date)
         let partial = diff(baselines: [.launchAgents: baseline], uncompared: [.tcc: .latestScanFailed, .btm: .latestScanFailed])

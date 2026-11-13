@@ -358,6 +358,10 @@ final class SnapshotCoordinator {
         }
         var narrowed = false
         if case .compared(_, systemLevelOnly: true)? = choices[.tcc] { narrowed = true }
+        // Either endpoint seeing only system-level permissions (every
+        // comparison on macOS 27) limits what the comparison could show.
+        let reducedScope = narrowed || latest.coverage.tcc == .reduced
+            || Self.baseline(choices[.tcc])?.coverage.tcc == .reduced
         return SnapshotDiffs(
             toID: latest.id,
             tcc: try await diff(choices[.tcc], to: latest.id, empty: TCCGrantsDiff(added: [], removed: [])) {
@@ -374,7 +378,7 @@ final class SnapshotCoordinator {
             },
             baselines: choices.compactMapValues { Self.baseline($0).map { DiffBaseline(id: $0.id, date: $0.date) } },
             uncompared: choices.compactMapValues(Self.reason),
-            systemLevelPermissionsOnly: narrowed,
+            systemLevelPermissionsOnly: reducedScope,
             reviewedSnapshotID: reviewedID
         )
     }

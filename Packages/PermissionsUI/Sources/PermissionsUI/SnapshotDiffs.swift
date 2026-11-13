@@ -26,8 +26,8 @@ public struct SnapshotDiffs: Sendable, Equatable {
     /// Domains not compared, and why; their diffs are empty rather than built
     /// from partial evidence.
     public let uncompared: [HistoryDomain: UncomparedReason]
-    /// Permissions were compared across the macOS 27 boundary, so only the
-    /// system-level services the later scan can see were diffed.
+    /// Only system-level permissions were visible to this comparison: one
+    /// endpoint (on macOS 27, both) could not see per-user permissions.
     public let systemLevelPermissionsOnly: Bool
     /// Set when the window is anchored to the snapshot the user last
     /// reviewed rather than a calendar cutoff.

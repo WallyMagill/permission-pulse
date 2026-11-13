@@ -80,9 +80,7 @@ struct DiffTabView: View {
             ContentUnavailableView(
                 emptyHeadline,
                 systemImage: "checkmark.seal.fill",
-                description: Text(diff.hasContent
-                    ? String(localized: "Every change in this window was dismissed or snoozed.")
-                    : String(localized: "Nothing was added, removed, or changed in this window."))
+                description: Text(Self.emptyDescription(diff))
             )
         } else {
             ContentUnavailableView(
@@ -91,6 +89,17 @@ struct DiffTabView: View {
                 description: Text(Self.uncomparedDescription(diff))
             )
         }
+    }
+
+    /// Per-user permissions a reduced scope never saw can't be called
+    /// unchanged, so the empty state names what was compared.
+    static func emptyDescription(_ diff: SnapshotDiffs) -> String {
+        if diff.hasContent {
+            return String(localized: "Every change in this window was dismissed or snoozed.")
+        }
+        return diff.systemLevelPermissionsOnly
+            ? String(localized: "No changes in system-level permissions, background items, or launch agents.")
+            : String(localized: "Nothing was added, removed, or changed in this window.")
     }
 
     static func uncomparedHeadline(_ diff: SnapshotDiffs) -> String {

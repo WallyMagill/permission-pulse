@@ -137,6 +137,28 @@ import PermissionsUI
         #expect(diff.tcc.removed.isEmpty)
     }
 
+    @Test func twoReducedSnapshotsStillSayOnlySystemLevelPermissionsWereCompared() async throws {
+        let env = try await Environment(now: historyNow)
+        _ = try await env.store.writeSnapshot(
+            grants: [grant("com.example.ax", service: .accessibility)],
+            launchAgents: [], btmItems: [],
+            coverage: SnapshotDomainCoverage(tcc: .reduced, btm: .complete, launchAgents: .complete),
+            at: historyNow().addingTimeInterval(-2 * day)
+        )
+        env.viewModel.tccUnavailableSources = [.userTCCDatabase]
+        env.viewModel.grants = [
+            grant("com.example.ax", service: .accessibility),
+            grant("com.example.rec", service: .screenRecording),
+        ]
+
+        await env.coordinator.onScanCompleted()
+
+        let diff = try #require(env.viewModel.latestDiffSinceReview)
+        #expect(diff.systemLevelPermissionsOnly)
+        #expect(diff.uncomparedDomains.isEmpty)
+        #expect(diff.tcc.added.map(\.app.bundleID) == ["com.example.rec"])
+    }
+
     @Test func failedSnapshotWriteIsFlagged() async throws {
         let url = FileManager.default.temporaryDirectory.appendingPathComponent("pp-write-\(UUID().uuidString).db")
         defer { try? FileManager.default.removeItem(at: url) }
