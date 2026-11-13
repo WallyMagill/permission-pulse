@@ -35,6 +35,27 @@ struct PermissionsExportTests {
         #expect(decoded == sampleReport)
     }
 
+    @Test("JSON launch-agent record carries readability and the file name")
+    func jsonLaunchAgentCarriesReadabilityAndFileName() throws {
+        let locked = LaunchAgentItem(
+            label: "com.example.locked",
+            sourceDirectory: .libraryLaunchDaemons,
+            programPath: nil,
+            programArguments: [],
+            runAtLoad: false,
+            keepAlive: false,
+            detailsReadable: false,
+            fileName: "com.example.locked.plist"
+        )
+        let report = PermissionsExport.report(
+            grants: [], launchAgents: [locked], btmItems: [], staleApps: [],
+            generatedAt: Date(timeIntervalSince1970: 0)
+        )
+        let text = String(decoding: try PermissionsExport.makeJSON(report: report), as: UTF8.self)
+        #expect(text.contains("\"detailsReadable\" : false"))
+        #expect(text.contains("\"fileName\" : \"com.example.locked.plist\""))
+    }
+
     @Test("Markdown has section headers and the app name")
     func markdownStructure() {
         let md = PermissionsExport.makeMarkdown(report: sampleReport)

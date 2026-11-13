@@ -29,6 +29,8 @@ public struct ExportLaunchAgent: Codable, Sendable, Equatable {
     public let runAtLoad: Bool
     public let keepAlive: Bool
     public let isDisabled: Bool
+    public let detailsReadable: Bool
+    public let fileName: String?
 }
 
 public struct ExportBackgroundItem: Codable, Sendable, Equatable {
@@ -149,7 +151,9 @@ public enum PermissionsExport {
             programPath: a.programPath,
             runAtLoad: a.runAtLoad,
             keepAlive: a.keepAlive,
-            isDisabled: a.isDisabled
+            isDisabled: a.isDisabled,
+            detailsReadable: a.detailsReadable,
+            fileName: a.fileName
         )
     }
 
