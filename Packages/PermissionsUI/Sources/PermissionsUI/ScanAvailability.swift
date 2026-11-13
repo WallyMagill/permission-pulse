@@ -24,4 +24,18 @@ public enum ScanAvailability: Sendable, Equatable {
         if case .failed(_, let error) = self { return error }
         return nil
     }
+
+    /// Degraded by something other than individual omitted entries. A
+    /// warning that only says some entries were skipped is informational:
+    /// every source was read.
+    public var hasActionableWarnings: Bool {
+        guard case .degraded(_, let warnings) = self else { return false }
+        return warnings.contains { $0.source != .entries }
+    }
+
+    /// Degraded only because individual entries were omitted.
+    public var onlyOmittedEntries: Bool {
+        guard case .degraded(_, let warnings) = self else { return false }
+        return !warnings.isEmpty && !hasActionableWarnings
+    }
 }

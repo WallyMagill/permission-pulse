@@ -19,10 +19,13 @@ public enum ScannerSource: Sendable, Equatable {
 public struct ScannerWarning: Sendable, Equatable {
     public let source: ScannerSource
     public let omittedCount: Int?
+    /// File names of omitted entries, when the scanner knows them.
+    public let omittedNames: [String]
 
-    public init(source: ScannerSource, omittedCount: Int? = nil) {
+    public init(source: ScannerSource, omittedCount: Int? = nil, omittedNames: [String] = []) {
         self.source = source
         self.omittedCount = omittedCount
+        self.omittedNames = omittedNames
     }
 }
 

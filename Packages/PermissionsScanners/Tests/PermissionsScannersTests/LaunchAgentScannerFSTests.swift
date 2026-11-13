@@ -93,7 +93,7 @@ import PermissionsCore
         let output = try await scanner.scan()
 
         #expect(output.items.isEmpty)
-        #expect(output.warnings == [ScannerWarning(source: .entries, omittedCount: 1)])
+        #expect(output.warnings == [ScannerWarning(source: .entries, omittedCount: 1, omittedNames: ["folder.plist"])])
     }
 
     @Test func wrongTypedOptionalKeyDoesNotDropTheJob() async throws {
@@ -190,7 +190,7 @@ import PermissionsCore
         let output = try await scanner.scan()
 
         #expect(output.items.isEmpty)
-        #expect(output.warnings == [ScannerWarning(source: .entries, omittedCount: 1)])
+        #expect(output.warnings == [ScannerWarning(source: .entries, omittedCount: 1, omittedNames: ["bad-label.plist"])])
     }
 
     @Test func scanDefaultsMissingKeys() async throws {

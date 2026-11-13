@@ -123,6 +123,20 @@ import PermissionsCore
         #expect(!banner.accessibilityText.contains(".."))
     }
 
+    @Test func omittedEntriesOnlyBannerIsInformationalAndNamesTheFiles() {
+        let banner = ScanAvailabilityBanner(
+            availability: .degraded(
+                lastUpdated: Date(timeIntervalSince1970: 1_700_000_000),
+                warnings: [.init(source: .entries, omittedCount: 1, omittedNames: ["com.bad.plist"])]
+            ),
+            domainName: "Launch Agents"
+        )
+
+        #expect(banner.headline == "Some entries skipped")
+        #expect(banner.accessibilityText.contains("com.bad.plist"))
+        #expect(!banner.accessibilityText.localizedCaseInsensitiveContains("degraded"))
+    }
+
     @Test func failedBannerWithoutHistoryIsNotLabeledAsStale() {
         let banner = ScanAvailabilityBanner(
             availability: .failed(

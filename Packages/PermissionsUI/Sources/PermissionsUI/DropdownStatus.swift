@@ -4,7 +4,8 @@ import Foundation
 /// and an SF Symbol) plus the deep-link route a click follows.
 public struct DropdownStatusRow: Equatable, Sendable, Identifiable {
     public enum Kind: Equatable, Sendable {
-        case attention(AttentionState)
+        /// One row per domain the attention state names.
+        case attention(AttentionState, AttentionDomain)
         /// Running from a temporary App Translocation copy.
         case moveToApplications
         case media(mic: Bool, camera: Bool)
@@ -18,7 +19,7 @@ public struct DropdownStatusRow: Equatable, Sendable, Identifiable {
 
     public var id: String {
         switch kind {
-        case .attention: "attention"
+        case .attention(_, let domain): "attention-\(domain)"
         case .moveToApplications: "moveToApplications"
         case .media: "media"
         case .changes: "changes"
@@ -29,22 +30,8 @@ public struct DropdownStatusRow: Equatable, Sendable, Identifiable {
 
     var title: String {
         switch kind {
-        case .attention(.fdaDenied):
-            String(localized: "Full Disk Access is off")
-        case .attention(.btmOnlyFDADenied):
-            String(localized: "FDA needed for background items")
-        case .attention(.schemaMismatch):
-            String(localized: "A data source changed format")
-        case .attention(.launchAgentError):
-            String(localized: "Launch Agents couldn't be read")
-        case .attention(.scanFailed):
-            String(localized: "Scan failed — no results available")
-        case .attention(.degradedData):
-            String(localized: "Scan data is degraded")
-        case .attention(.staleData):
-            String(localized: "Scan data is stale")
-        case .attention(.clean):
-            "" // builder never emits this
+        case .attention(let state, let domain):
+            Self.attentionTitle(state, domain: domain)
         case .moveToApplications:
             String(localized: "Move Permission Pulse to your Applications folder, then open it from there.")
         case .media(true, true):
@@ -67,6 +54,20 @@ public struct DropdownStatusRow: Equatable, Sendable, Identifiable {
                 : String(localized: "\(n) apps with permissions")
         }
     }
+
+    private static func attentionTitle(_ state: AttentionState, domain: AttentionDomain) -> String {
+        let name = domain.displayName
+        return switch state {
+        case .fdaDenied: String(localized: "Full Disk Access is off")
+        case .btmOnlyFDADenied: String(localized: "FDA needed for background items")
+        case .launchAgentError: String(localized: "Launch Agents couldn't be read")
+        case .schemaMismatch: String(localized: "\(name): data format changed")
+        case .scanFailed: String(localized: "\(name): scan failed — no results")
+        case .degradedData: String(localized: "\(name): some sources couldn't be read")
+        case .staleData: String(localized: "\(name): showing last-known data")
+        case .clean: "" // builder never emits this
+        }
+    }
 }
 
 /// Pure derivation of the dropdown's status rows. Order: attention first,
@@ -84,18 +85,8 @@ public enum DropdownStatusBuilder {
         appCount: Int,
         isTranslocated: Bool = false
     ) -> [DropdownStatusRow] {
-        var result: [DropdownStatusRow] = []
-        switch attention {
-        case .clean:
-            break
-        case .fdaDenied, .schemaMismatch:
-            result.append(.init(kind: .attention(attention), route: .permissions(selectAppKey: nil)))
-        case .btmOnlyFDADenied:
-            result.append(.init(kind: .attention(attention), route: .backgroundItems(selectID: nil)))
-        case .launchAgentError:
-            result.append(.init(kind: .attention(attention), route: .launchAgents(selectID: nil)))
-        case .scanFailed, .degradedData, .staleData:
-            result.append(.init(kind: .attention(attention), route: .overview))
+        var result = attention.domains.map { domain in
+            DropdownStatusRow(kind: .attention(attention, domain), route: domain.route)
         }
         if isTranslocated {
             result.append(.init(kind: .moveToApplications, route: .overview))

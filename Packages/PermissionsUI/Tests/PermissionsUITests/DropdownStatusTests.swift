@@ -21,7 +21,7 @@ struct DropdownStatusTests {
     @Test("A translocated copy gets the move instruction right after any attention row")
     func translocated() {
         let result = rows(attention: .fdaDenied, mic: true, translocated: true)
-        #expect(result.map(\.kind).prefix(3) == [.attention(.fdaDenied), .moveToApplications, .media(mic: true, camera: false)])
+        #expect(result.map(\.kind).prefix(3) == [.attention(.fdaDenied, .permissions), .moveToApplications, .media(mic: true, camera: false)])
         #expect(result[1].title == "Move Permission Pulse to your Applications folder, then open it from there.")
         #expect(!rows().contains { $0.kind == .moveToApplications })
     }
@@ -50,14 +50,24 @@ struct DropdownStatusTests {
     @Test("Attention row leads and routes to the failing domain")
     func attentionFirst() {
         let result = rows(attention: .fdaDenied, changeCount: 3, hasUnreviewed: true)
-        #expect(result.first?.kind == .attention(.fdaDenied))
+        #expect(result.first?.kind == .attention(.fdaDenied, .permissions))
         #expect(result.first?.route == .permissions(selectAppKey: nil))
         let btm = rows(attention: .btmOnlyFDADenied)
         #expect(btm.first?.route == .backgroundItems(selectID: nil))
         let la = rows(attention: .launchAgentError)
         #expect(la.first?.route == .launchAgents(selectID: nil))
-        #expect(rows(attention: .degradedData).first?.route == .overview)
-        #expect(rows(attention: .staleData).first?.route == .overview)
+        #expect(rows(attention: .degradedData([.launchAgents])).first?.route == .launchAgents(selectID: nil))
+        #expect(rows(attention: .staleData([.backgroundItems])).first?.route == .backgroundItems(selectID: nil))
+        #expect(rows(attention: .schemaMismatch([.backgroundItems])).first?.route == .backgroundItems(selectID: nil))
+    }
+
+    @Test("Each affected domain gets its own attention row and route")
+    func attentionRowPerDomain() {
+        let result = rows(attention: .staleData([.permissions, .backgroundItems]))
+        #expect(result.prefix(2).map(\.route) == [.permissions(selectAppKey: nil), .backgroundItems(selectID: nil)])
+        #expect(result[0].title == "Permissions: showing last-known data")
+        #expect(result[1].title == "Background Items: showing last-known data")
+        #expect(Set(result.map(\.id)).count == result.count)
     }
 
     @Test("Media row appears while mic or camera is in use, routes to Permissions")
@@ -68,7 +78,7 @@ struct DropdownStatusTests {
             == .permissions(selectAppKey: nil))
     }
 
-    @Test("Scan failure without history has a truthful Overview title and route")
+    @Test("Scan failure without history names the domain and routes to its page")
     func scanFailureTitleAndRoute() {
         let attention = AttentionState.evaluate(
             tccAvailability: .failed(
@@ -80,18 +90,18 @@ struct DropdownStatusTests {
         )
         let result = rows(attention: attention)
 
-        #expect(result.first?.route == .overview)
-        #expect(result.first?.title == String(localized: "Scan failed — no results available"))
+        #expect(result.first?.route == .permissions(selectAppKey: nil))
+        #expect(result.first?.title == "Permissions: scan failed — no results")
     }
 
     @Test("Changes and stale rows appear only with content; order is attention, media, changes, stale, summary")
     func ordering() {
         let result = rows(
-            attention: .schemaMismatch, mic: true,
+            attention: .schemaMismatch([.permissions]), mic: true,
             changeCount: 3, hasUnreviewed: true, staleCount: 5
         )
         #expect(result.map(\.kind) == [
-            .attention(.schemaMismatch),
+            .attention(.schemaMismatch([.permissions]), .permissions),
             .media(mic: true, camera: false),
             .changes(count: 3),
             .stale(count: 5),

@@ -64,44 +64,12 @@ struct OverviewPage: View {
                 systemImage: "folder.badge.questionmark"
             )
         }
-        switch viewModel.attentionState {
-        case .fdaDenied:
+        let attention = viewModel.attentionState
+        ForEach(attention.domains, id: \.self) { domain in
             attentionRow(
-                String(localized: "Full Disk Access needed to scan permissions"),
-                target: .permissions
+                Self.attentionTitle(attention, domain: domain),
+                target: domain.route.sidebarItem
             )
-        case .btmOnlyFDADenied:
-            attentionRow(
-                String(localized: "Full Disk Access needed for background items"),
-                target: .backgroundItems
-            )
-        case .schemaMismatch:
-            attentionRow(
-                String(localized: "A data source changed format — some items may be missing"),
-                target: .permissions
-            )
-        case .launchAgentError:
-            attentionRow(
-                String(localized: "Launch Agents couldn't be read"),
-                target: .launchAgents
-            )
-        case .degradedData:
-            attentionRow(
-                String(localized: "Scan data is degraded — some sources are missing"),
-                target: .overview
-            )
-        case .staleData:
-            attentionRow(
-                String(localized: "Scan data is stale — showing last-known results"),
-                target: .overview
-            )
-        case .scanFailed:
-            attentionRow(
-                String(localized: "Scan failed — no results are available"),
-                target: .overview
-            )
-        case .clean:
-            EmptyView()
         }
         if viewModel.hasUnreviewedChanges {
             attentionRow(
@@ -110,6 +78,20 @@ struct OverviewPage: View {
                     : String(localized: "\(viewModel.unreviewedChangeCount) unreviewed changes"),
                 target: .recentChanges
             )
+        }
+    }
+
+    static func attentionTitle(_ state: AttentionState, domain: AttentionDomain) -> String {
+        let name = domain.displayName
+        return switch state {
+        case .fdaDenied: String(localized: "Full Disk Access needed to scan permissions")
+        case .btmOnlyFDADenied: String(localized: "Full Disk Access needed for background items")
+        case .launchAgentError: String(localized: "Launch Agents couldn't be read")
+        case .schemaMismatch: String(localized: "\(name) changed format — some items may be missing")
+        case .degradedData: String(localized: "\(name) scan is degraded — some sources are missing")
+        case .staleData: String(localized: "\(name) scan is stale — showing last-known results")
+        case .scanFailed: String(localized: "\(name) scan failed — no results are available")
+        case .clean: ""
         }
     }
 

@@ -66,6 +66,9 @@ public struct ScanAvailabilityBanner: View {
             return String(localized: "\(domainName) scan complete. \(detailText)")
         case .degraded(_, let warnings):
             let warningText = warnings.map(Self.warningText).joined(separator: " ")
+            if availability.onlyOmittedEntries {
+                return String(localized: "\(domainName) scan skipped some entries. \(detailText) \(warningText)")
+            }
             return String(localized: "\(domainName) scan degraded. \(detailText) \(warningText)")
         case .failed(let lastSuccessful, _):
             if lastSuccessful != nil {
@@ -88,14 +91,21 @@ public struct ScanAvailabilityBanner: View {
         case .libraryLaunchDaemons:
             String(localized: "System Launch Daemons were unavailable.")
         case .entries:
-            if let count = warning.omittedCount {
-                count == 1
-                    ? String(localized: "1 malformed or unreadable entry was omitted.")
-                    : String(localized: "\(count) malformed or unreadable entries were omitted.")
-            } else {
-                String(localized: "Some malformed or unreadable entries were omitted.")
-            }
+            omittedEntriesText(for: warning)
         }
+    }
+
+    private static func omittedEntriesText(for warning: ScannerWarning) -> String {
+        let summary = if let count = warning.omittedCount {
+            count == 1
+                ? String(localized: "1 malformed or unreadable entry was omitted.")
+                : String(localized: "\(count) malformed or unreadable entries were omitted.")
+        } else {
+            String(localized: "Some malformed or unreadable entries were omitted.")
+        }
+        guard !warning.omittedNames.isEmpty else { return summary }
+        let names = ListFormatter.localizedString(byJoining: warning.omittedNames)
+        return String(localized: "\(summary) Skipped: \(names).")
     }
 
     var headline: String {
@@ -105,7 +115,10 @@ public struct ScanAvailabilityBanner: View {
             isReducedScope
                 ? String(localized: "System-level permissions only")
                 : String(localized: "Complete data")
-        case .degraded: String(localized: "Degraded data")
+        case .degraded:
+            availability.onlyOmittedEntries
+                ? String(localized: "Some entries skipped")
+                : String(localized: "Degraded data")
         case .failed(let lastSuccessful, _):
             lastSuccessful == nil
                 ? String(localized: "Scan failed")
@@ -123,6 +136,9 @@ public struct ScanAvailabilityBanner: View {
             }
             return String(localized: "Updated \(formatted(lastUpdated)).")
         case .degraded(let lastUpdated, _):
+            if availability.onlyOmittedEntries {
+                return String(localized: "Every source was read. Updated \(formatted(lastUpdated)).")
+            }
             return String(localized: "Some sources could not be read. Updated \(formatted(lastUpdated)).")
         case .failed(let lastSuccessful, let error):
             if let lastSuccessful {
@@ -136,7 +152,7 @@ public struct ScanAvailabilityBanner: View {
         switch availability {
         case .never: "clock"
         case .complete: isReducedScope ? "info.circle.fill" : "checkmark.circle.fill"
-        case .degraded: "exclamationmark.triangle.fill"
+        case .degraded: availability.onlyOmittedEntries ? "info.circle.fill" : "exclamationmark.triangle.fill"
         case .failed: "clock.badge.exclamationmark.fill"
         }
     }
@@ -145,7 +161,8 @@ public struct ScanAvailabilityBanner: View {
         switch availability {
         case .never: .secondary
         case .complete: isReducedScope ? .secondary : PPColor.success
-        case .degraded, .failed: PPColor.warning
+        case .degraded: availability.onlyOmittedEntries ? .secondary : PPColor.warning
+        case .failed: PPColor.warning
         }
     }
 

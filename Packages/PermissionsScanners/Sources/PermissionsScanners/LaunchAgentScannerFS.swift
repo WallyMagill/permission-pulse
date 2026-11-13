@@ -34,7 +34,7 @@ public struct LaunchAgentScannerFS: LaunchAgentScanner, Sendable {
         var items: [LaunchAgentItem] = []
         var firstFailure: (any Error)?
         var warnings: [ScannerWarning] = []
-        var omittedEntryCount = 0
+        var omittedFileNames: [String] = []
         var anyExistingSourceSucceeded = false
         let overrides = LaunchdDisabledOverrides.load(from: overrideDirectory, userID: userID)
         for source in sources {
@@ -42,9 +42,9 @@ public struct LaunchAgentScannerFS: LaunchAgentScanner, Sendable {
                 switch try scanDirectory(source, overrides: overrides) {
                 case .absent:
                     break
-                case .scanned(let sourceItems, let sourceOmittedEntryCount):
+                case .scanned(let sourceItems, let sourceOmittedFileNames):
                     items.append(contentsOf: sourceItems)
-                    omittedEntryCount += sourceOmittedEntryCount
+                    omittedFileNames += sourceOmittedFileNames
                     anyExistingSourceSucceeded = true
                 }
             } catch {
@@ -55,8 +55,12 @@ public struct LaunchAgentScannerFS: LaunchAgentScanner, Sendable {
         if !anyExistingSourceSucceeded, let firstFailure {
             throw firstFailure
         }
-        if omittedEntryCount > 0 {
-            warnings.append(ScannerWarning(source: .entries, omittedCount: omittedEntryCount))
+        if !omittedFileNames.isEmpty {
+            warnings.append(ScannerWarning(
+                source: .entries,
+                omittedCount: omittedFileNames.count,
+                omittedNames: omittedFileNames.sorted()
+            ))
         }
         let sortedItems = items.sorted {
             if $0.sourceDirectory.rawValue == $1.sourceDirectory.rawValue {
@@ -112,15 +116,15 @@ public struct LaunchAgentScannerFS: LaunchAgentScanner, Sendable {
         }
 
         var items: [LaunchAgentItem] = []
-        var omittedEntryCount = 0
+        var omittedFileNames: [String] = []
         for fileURL in contents where fileURL.pathExtension.lowercased() == "plist" {
             switch decodePlist(at: fileURL, category: source.category, overrides: overrides) {
             case .item(let item): items.append(item)
             case .inert: break
-            case .omitted: omittedEntryCount += 1
+            case .omitted: omittedFileNames.append(fileURL.lastPathComponent)
             }
         }
-        return .scanned(items: items, omittedEntryCount: omittedEntryCount)
+        return .scanned(items: items, omittedFileNames: omittedFileNames)
     }
 
     private static func scannerSource(
@@ -234,7 +238,7 @@ private enum PlistDecodeResult {
 
 private enum DirectoryScan {
     case absent
-    case scanned(items: [LaunchAgentItem], omittedEntryCount: Int)
+    case scanned(items: [LaunchAgentItem], omittedFileNames: [String])
 }
 
 /// Lenient read of the job keys we report. A key of the wrong type reads as
