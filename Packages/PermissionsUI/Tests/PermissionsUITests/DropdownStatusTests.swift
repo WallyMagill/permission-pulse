@@ -9,12 +9,14 @@ struct DropdownStatusTests {
         attention: AttentionState = .clean,
         mic: Bool = false, camera: Bool = false,
         changeCount: Int = 0, hasUnreviewed: Bool = false,
-        staleCount: Int = 0, appCount: Int = 42, translocated: Bool = false
+        staleCount: Int = 0, appCount: Int? = 42, systemLevelOnly: Bool = false,
+        translocated: Bool = false
     ) -> [DropdownStatusRow] {
         DropdownStatusBuilder.rows(
             attention: attention, micInUse: mic, cameraInUse: camera,
             changeCount: changeCount, hasUnreviewedChanges: hasUnreviewed,
-            staleCount: staleCount, appCount: appCount, isTranslocated: translocated
+            staleCount: staleCount, appCount: appCount, systemLevelOnly: systemLevelOnly,
+            isTranslocated: translocated
         )
     }
 
@@ -43,8 +45,28 @@ struct DropdownStatusTests {
     func allClear() {
         let result = rows()
         #expect(result.count == 1)
-        #expect(result[0].kind == .allClear(appCount: 42))
+        #expect(result[0].kind == .summary(appCount: 42, systemLevelOnly: false, allClear: true))
         #expect(result[0].route == .overview)
+    }
+
+    @Test("The summary is an all-clear only when no other row needs attention")
+    func summaryAllClearOnlyAlone() {
+        let underWarning = rows(attention: .fdaDenied, appCount: 0)
+        #expect(underWarning.last?.kind == .summary(appCount: 0, systemLevelOnly: false, allClear: false))
+        let underStale = rows(staleCount: 2)
+        #expect(underStale.last?.kind == .summary(appCount: 42, systemLevelOnly: false, allClear: false))
+    }
+
+    @Test("No permission data means no count row")
+    func summaryOmittedWithoutData() {
+        let result = rows(attention: .fdaDenied, appCount: nil)
+        #expect(!result.contains { if case .summary = $0.kind { true } else { false } })
+    }
+
+    @Test("A reduced scope counts apps with system-level permissions")
+    func summaryReducedScope() {
+        let result = rows(appCount: 3, systemLevelOnly: true)
+        #expect(result.last?.title == "3 apps with system-level permissions")
     }
 
     @Test("Attention row leads and routes to the failing domain")
@@ -105,7 +127,7 @@ struct DropdownStatusTests {
             .media(mic: true, camera: false),
             .changes(count: 3),
             .stale(count: 5),
-            .allClear(appCount: 42)
+            .summary(appCount: 42, systemLevelOnly: false, allClear: false)
         ])
         #expect(result[2].route == .recentChanges)
         #expect(result[3].route == .staleApps)
@@ -126,7 +148,8 @@ struct DropdownStatusTests {
         #expect(title(.changes(count: 2)) == "2 changes since your last review")
         #expect(title(.stale(count: 1)) == "1 stale app with old permissions")
         #expect(title(.stale(count: 3)) == "3 stale apps with old permissions")
-        #expect(title(.allClear(appCount: 1)) == "1 app with permissions")
-        #expect(title(.allClear(appCount: 42)) == "42 apps with permissions")
+        #expect(title(.summary(appCount: 1, systemLevelOnly: false, allClear: true)) == "1 app with permissions")
+        #expect(title(.summary(appCount: 42, systemLevelOnly: false, allClear: true)) == "42 apps with permissions")
+        #expect(title(.summary(appCount: 1, systemLevelOnly: true, allClear: true)) == "1 app with system-level permissions")
     }
 }

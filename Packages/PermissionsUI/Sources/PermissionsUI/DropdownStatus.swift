@@ -11,7 +11,9 @@ public struct DropdownStatusRow: Equatable, Sendable, Identifiable {
         case media(mic: Bool, camera: Bool)
         case changes(count: Int)
         case stale(count: Int)
-        case allClear(appCount: Int)
+        /// How many apps hold a permission the scan can see. `allClear` is
+        /// true only when it is the sole row: nothing else needs attention.
+        case summary(appCount: Int, systemLevelOnly: Bool, allClear: Bool)
     }
 
     public let kind: Kind
@@ -24,7 +26,7 @@ public struct DropdownStatusRow: Equatable, Sendable, Identifiable {
         case .media: "media"
         case .changes: "changes"
         case .stale: "stale"
-        case .allClear: "allClear"
+        case .summary: "summary"
         }
     }
 
@@ -48,10 +50,14 @@ public struct DropdownStatusRow: Equatable, Sendable, Identifiable {
             n == 1
                 ? String(localized: "1 stale app with old permissions")
                 : String(localized: "\(n) stale apps with old permissions")
-        case .allClear(let n):
+        case .summary(let n, false, _):
             n == 1
                 ? String(localized: "1 app with permissions")
                 : String(localized: "\(n) apps with permissions")
+        case .summary(let n, true, _):
+            n == 1
+                ? String(localized: "1 app with system-level permissions")
+                : String(localized: "\(n) apps with system-level permissions")
         }
     }
 
@@ -72,8 +78,9 @@ public struct DropdownStatusRow: Equatable, Sendable, Identifiable {
 
 /// Pure derivation of the dropdown's status rows. Order: attention first,
 /// then the move-to-Applications instruction, live media, unreviewed
-/// changes, stale apps, then the always-present summary row (which doubles
-/// as the "all clear" line).
+/// changes, stale apps, then the summary row. The summary is left out while
+/// the permissions scan has no data (`appCount == nil`), so a failed scan
+/// never reads as "0 apps with permissions".
 public enum DropdownStatusBuilder {
     public static func rows(
         attention: AttentionState,
@@ -82,7 +89,8 @@ public enum DropdownStatusBuilder {
         changeCount: Int,
         hasUnreviewedChanges: Bool,
         staleCount: Int,
-        appCount: Int,
+        appCount: Int?,
+        systemLevelOnly: Bool = false,
         isTranslocated: Bool = false
     ) -> [DropdownStatusRow] {
         var result = attention.domains.map { domain in
@@ -103,7 +111,14 @@ public enum DropdownStatusBuilder {
         if staleCount > 0 {
             result.append(.init(kind: .stale(count: staleCount), route: .staleApps))
         }
-        result.append(.init(kind: .allClear(appCount: appCount), route: .overview))
+        if let appCount {
+            let summary = DropdownStatusRow.Kind.summary(
+                appCount: appCount,
+                systemLevelOnly: systemLevelOnly,
+                allClear: result.isEmpty
+            )
+            result.append(.init(kind: summary, route: .overview))
+        }
         return result
     }
 }

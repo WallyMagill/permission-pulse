@@ -92,7 +92,8 @@ public struct MenuBarContentView: View {
             changeCount: viewModel.unreviewedChangeCount,
             hasUnreviewedChanges: viewModel.hasUnreviewedChanges,
             staleCount: viewModel.staleApps.count,
-            appCount: Set(viewModel.grants.map(\.appKey)).count,
+            appCount: viewModel.hasPermissionData ? Set(viewModel.grants.map(\.appKey)).count : nil,
+            systemLevelOnly: viewModel.permissionScope.isReduced,
             isTranslocated: viewModel.isTranslocated
         )
     }
@@ -217,7 +218,7 @@ private struct StatusRowButton: View {
 
     private var isCountRow: Bool {
         switch row.kind {
-        case .changes, .stale, .allClear: true
+        case .changes, .stale, .summary: true
         case .attention, .moveToApplications, .media: false
         }
     }
@@ -230,7 +231,7 @@ private struct StatusRowButton: View {
         case .media: "mic.fill"
         case .changes: "clock.arrow.circlepath"
         case .stale: "hourglass"
-        case .allClear: "checkmark.shield"
+        case .summary(_, _, let allClear): allClear ? "checkmark.shield" : "shield"
         }
     }
 
@@ -240,7 +241,7 @@ private struct StatusRowButton: View {
         case .media: PPColor.danger
         case .changes: PPColor.recentChanges
         case .stale: PPColor.staleApps
-        case .allClear: PPColor.success
+        case .summary(_, _, let allClear): allClear ? PPColor.success : .secondary
         }
     }
 }
