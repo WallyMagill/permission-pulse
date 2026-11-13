@@ -346,11 +346,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             Self.logger.debug("Rescan ignored — a scan is already in progress")
             return false
         }
+        // Nil until launch finishes (a relaunched copy may still be waiting
+        // for the old process); recording this build's version or touching
+        // notifications before then would act on no scan at all.
+        guard let coordinator else {
+            Self.logger.debug("Rescan ignored — launch has not finished")
+            return false
+        }
         viewModel.scanInProgress = true
         defer { viewModel.scanInProgress = false }
         viewModel.staleThresholdDays = preferencesStore.staleThresholdDays
         snapshotWrite = nil
-        await coordinator?.rescan()
+        await coordinator.rescan()
         let fullDiskAccessLoss = await classifyFullDiskAccessLoss()
         await updateSnapshotHistoryAfterScan()
         viewModel.lastScanDate = Date()
