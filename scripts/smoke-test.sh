@@ -5,10 +5,14 @@
 # Verifies everything that can be checked without a human. Drives:
 #   - clean-state wipe (Permission Pulse's local data only; real TCC.db
 #     and login items are untouched)
-#   - Release build
+#   - Release build into its own temporary derived-data directory
+#   - bundle version + build checked against Config/Version.xcconfig
 #   - all 5 test bundles (4 packages + app target)
-#   - on-disk state (snapshot DB schema, defaults, version)
+#   - on-disk state (snapshot DB schema, defaults)
 #   - prints a "what's left for human eyes" checklist
+#
+# The temporary directory is removed on exit unless the app was launched
+# from it; then its path is printed so it can be deleted after quitting.
 #
 # Usage:
 #   scripts/smoke-test.sh          # default: wipe + build + test + verify
@@ -30,7 +34,7 @@ for arg in "$@"; do
         --keep)      WIPE_STATE=0 ;;
         --no-launch) LAUNCH_APP=0 ;;
         -h|--help)
-            sed -n '2,20p' "$0"
+            sed -n '2,22p' "$0"
             exit 0
             ;;
         *)
@@ -49,6 +53,9 @@ SUPPORT_DIR="$HOME/Library/Application Support/com.wallymagill.permissionpulse"
 DB="$SUPPORT_DIR/snapshots.db"
 BUNDLE_DOMAIN="com.wallymagill.permissionpulse"
 SCHEMA_VERIFIER="$REPO_ROOT/scripts/verify-snapshot-schema.sh"
+VERSION_XCCONFIG="$REPO_ROOT/Config/Version.xcconfig"
+SMOKE_TMP=""
+APP_LAUNCHED=0
 
 PASSED=()
 FAILED=()
@@ -68,6 +75,7 @@ section() {
 pass() { green "  ✓ $1"; PASSED+=("$1"); }
 fail() { red   "  ✗ $1"; FAILED+=("$1"); }
 warn() { yellow "  ⚠ $1"; WARNED+=("$1"); }
+skip() { yellow "  – $1"; }
 
 run_or_print() {
     if [[ "${SMOKE_DRY_RUN:-0}" == "1" ]]; then
@@ -84,6 +92,12 @@ remove_live_state() {
     else
         pass "no prior snapshots.db (clean slate)"
     fi
+    local sidecar
+    for sidecar in "$DB-wal" "$DB-shm"; do
+        if [[ -f "$sidecar" ]]; then
+            run_or_print rm -f "$sidecar" && pass "removed $sidecar" || fail "could not remove $sidecar"
+        fi
+    done
     if defaults read "$BUNDLE_DOMAIN" >/dev/null 2>&1; then
         run_or_print defaults delete "$BUNDLE_DOMAIN" \
             && pass "cleared defaults $BUNDLE_DOMAIN" \
@@ -136,6 +150,25 @@ verify_snapshot_schema() {
     pass "snapshots.db row count: ${snapshot_count:-unknown}"
 }
 
+# Prints the value of `KEY = value` in Config/Version.xcconfig, without a
+# trailing `//` comment or whitespace; empty when the key is absent.
+xcconfig_value() {
+    sed -n "s/^[[:space:]]*$1[[:space:]]*=[[:space:]]*//p" "$VERSION_XCCONFIG" 2>/dev/null \
+        | sed -e 's|[[:space:]]*//.*$||' -e 's/[[:space:]]*$//' \
+        | head -1
+}
+
+# Removes this run's temporary directory. A launched app runs from it, so
+# then only the SwiftPM scratch directories go and the app stays.
+cleanup_tmp() {
+    [[ -n "$SMOKE_TMP" && -d "$SMOKE_TMP" ]] || return 0
+    if [[ $APP_LAUNCHED -eq 1 ]]; then
+        /bin/rm -rf "$SMOKE_TMP"/swiftpm-*
+    else
+        /bin/rm -rf "$SMOKE_TMP"
+    fi
+}
+
 if [[ "${SMOKE_SCHEMA_CHECK_ONLY:-0}" == "1" ]]; then
     if [[ -z "${SMOKE_DB_PATH:-}" ]]; then
         echo "SMOKE_SCHEMA_CHECK_ONLY requires SMOKE_DB_PATH" >&2
@@ -175,40 +208,59 @@ fi
 
 section "1. Release build"
 
-if BUILD_OUTPUT=$(xcodebuild -project "$PROJECT" -scheme "$SCHEME" -configuration Release build 2>&1); then
-    pass "xcodebuild Release succeeded"
+# Everything this run builds lives here: its own derived data (so the
+# product checked and launched is this checkout's build, never another
+# checkout's) and one SwiftPM scratch directory per package.
+trap cleanup_tmp EXIT
+if ! SMOKE_TMP=$(mktemp -d "${TMPDIR:-/tmp}/permission-pulse-smoke.XXXXXX"); then
+    fail "could not create a temporary directory under ${TMPDIR:-/tmp}"
+    exit 1
+fi
+DERIVED_DATA="$SMOKE_TMP/DerivedData"
+APP_PATH=""
+
+# Signing stays as the project configures it: the launched app must keep
+# Full Disk Access, post notifications, and register for launch at login
+# during the human checklist.
+if BUILD_OUTPUT=$(xcodebuild -project "$PROJECT" -scheme "$SCHEME" -configuration Release \
+        -derivedDataPath "$DERIVED_DATA" build 2>&1); then
+    pass "xcodebuild Release succeeded (derived data: $DERIVED_DATA)"
+    BUILT_APP="$DERIVED_DATA/Build/Products/Release/PermissionPulse.app"
+    if [[ -d "$BUILT_APP" ]]; then
+        APP_PATH=$BUILT_APP
+        pass "built .app at $APP_PATH"
+    else
+        fail "build succeeded but $BUILT_APP does not exist"
+    fi
 else
     fail "xcodebuild Release failed"
     echo "$BUILD_OUTPUT" | tail -40
-fi
-
-# -t: newest first. Multiple PermissionPulse-<hash> folders can coexist
-# (e.g. after the checkout moves); the alphabetical first may be a stale
-# build from an old path, which would then be plist-checked and launched.
-APP_PATH=$(/bin/ls -dt "$HOME/Library/Developer/Xcode/DerivedData/PermissionPulse-"*/Build/Products/Release/PermissionPulse.app 2>/dev/null | head -1)
-if [[ -z "$APP_PATH" ]]; then
-    fail "could not locate built .app under DerivedData"
-else
-    pass "built .app at $APP_PATH"
 fi
 
 # ------------------------------- 2. version --------------------------------
 
 section "2. Bundle version"
 
-if [[ -n "$APP_PATH" ]]; then
+EXPECTED_MARKETING=$(xcconfig_value MARKETING_VERSION)
+EXPECTED_BUILD=$(xcconfig_value CURRENT_PROJECT_VERSION)
+
+if [[ -z "$APP_PATH" ]]; then
+    skip "skipped — no built app to check"
+elif [[ -z "$EXPECTED_MARKETING" || -z "$EXPECTED_BUILD" ]]; then
+    fail "could not read MARKETING_VERSION='$EXPECTED_MARKETING' and CURRENT_PROJECT_VERSION='$EXPECTED_BUILD' from $VERSION_XCCONFIG"
+else
     PLIST="$APP_PATH/Contents/Info.plist"
     MARKETING=$(/usr/libexec/PlistBuddy -c "Print CFBundleShortVersionString" "$PLIST" 2>/dev/null)
     BUILD_NO=$(/usr/libexec/PlistBuddy -c "Print CFBundleVersion" "$PLIST" 2>/dev/null)
-    if [[ "$MARKETING" == "0.7.2" ]]; then
+    if [[ "$MARKETING" == "$EXPECTED_MARKETING" ]]; then
         pass "CFBundleShortVersionString = $MARKETING"
     else
-        fail "CFBundleShortVersionString = $MARKETING (expected 0.7.2)"
+        fail "CFBundleShortVersionString = ${MARKETING:-<missing>} (expected MARKETING_VERSION $EXPECTED_MARKETING from $VERSION_XCCONFIG)"
     fi
-    if [[ "$BUILD_NO" == "12" ]]; then
+    if [[ "$BUILD_NO" == "$EXPECTED_BUILD" ]]; then
         pass "CFBundleVersion = $BUILD_NO"
     else
-        warn "CFBundleVersion = $BUILD_NO (expected 12)"
+        fail "CFBundleVersion = ${BUILD_NO:-<missing>} (expected CURRENT_PROJECT_VERSION $EXPECTED_BUILD from $VERSION_XCCONFIG)"
     fi
 fi
 
@@ -218,7 +270,10 @@ section "3. Package test bundles"
 
 TOTAL_TESTS=0
 for pkg in PermissionsCore PermissionsStore PermissionsScanners PermissionsUI; do
-    OUT=$(swift test --package-path "$REPO_ROOT/Packages/$pkg" 2>&1)
+    # Own scratch path: a module cache built under another checkout path
+    # cannot break this run.
+    OUT=$(swift test --package-path "$REPO_ROOT/Packages/$pkg" \
+        --scratch-path "$SMOKE_TMP/swiftpm-$pkg" 2>&1)
     COUNT=$(echo "$OUT" | grep -oE "Test run with [0-9]+" | tail -1 | grep -oE "[0-9]+")
     if echo "$OUT" | grep -q "Test run with .* passed"; then
         pass "$pkg: $COUNT tests"
@@ -251,7 +306,7 @@ fi
 section "5. On-disk state checks"
 
 # Snapshots DB will only exist if the app was launched and FDA granted.
-# The helper opens it read-only. A preserved v4 or v5 database is pending, not failed,
+# The helper opens it read-only. A preserved v4, v5, or v6 database is pending, not failed,
 # only when --keep --no-launch gives the app no opportunity to migrate it.
 verify_snapshot_schema
 
@@ -279,8 +334,18 @@ pass "branch=$BRANCH HEAD=$HEAD_SHA"
 
 if [[ $LAUNCH_APP -eq 1 && -n "$APP_PATH" ]]; then
     section "7. Launching the app"
-    open "$APP_PATH"
-    pass "open $APP_PATH"
+    if open "$APP_PATH"; then
+        APP_LAUNCHED=1
+        pass "open $APP_PATH"
+        echo "  The app runs from $SMOKE_TMP, which is kept."
+        echo "  When done: turn Launch at Login off if you turned it on, quit the app, then"
+        echo "    rm -rf '$SMOKE_TMP'"
+    else
+        fail "open $APP_PATH failed"
+    fi
+elif [[ $LAUNCH_APP -eq 1 ]]; then
+    section "7. Launching the app"
+    skip "skipped — no built app to launch"
 fi
 
 # ------------------------------- summary -----------------------------------
@@ -314,34 +379,37 @@ cat <<'EOF'
 These cannot be verified by a script; the app is open now (unless you
 passed --no-launch). Run through them and report any deviations.
 
-  A. Welcome window appears + FDA-grant flow works
-     → After granting, click Rescan in the detail-window toolbar.
+  A. Welcome window appears + FDA-grant flow works. Open System Settings,
+     turn Permission Pulse on, come back: the window says "Full Disk
+     Access is on. You're all set." (or offers Reopen Permission Pulse).
 
-  B. Menu-bar dropdown shows the status rows (attention / mic-cam /
-     changes / stale / all-clear, each a deep link into the window), then
+  B. Menu-bar dropdown: the header reads "Updated <time>" (or
+     "Scanning…" during a scan); then the status rows (attention /
+     mic-cam / changes / stale / app count, each a deep link); then
      Open Permission Pulse (⌘O), Rescan Now (⌘R), Settings… (⌘,),
-     Welcome & About, Quit (⌘Q).
+     Check for Updates…, Welcome Tour, Quit (⌘Q).
 
   C. ⌘, opens Settings (Tahoe MenuBarExtra regression check). Four
-     tabs — General, Scanning, Digest, Data.
+     tabs — General, Scanning, Notifications, Data.
 
   D. Scanning tab — drag retention + stale sliders, close and reopen.
      Values persist. defaults read com.wallymagill.permissionpulse
      <key> confirms.
 
-  E. Digest tab — flip toggle ON. macOS prompt should show
-     "Permission Pulse" as the app name. Click Allow.
+  E. Notifications tab — turn "Send weekly digest" ON. macOS prompt
+     should show "Permission Pulse" as the app name. Click Allow.
 
-  F. Digest tab — click the new "Send" button (next to "Send
-     test notification"). Switch to another app. A banner labelled
+  F. Notifications tab — click "Send" (next to "Send test
+     notification"). Switch to another app. A banner labelled
      "Permission Pulse · Test" should appear in ~5 seconds.
      ← THIS is the diagnostic for the missing-notification bug.
 
-  G. Recent Changes — right-click a row → Snooze 7 days / Dismiss forever
-     work (the row tooltip says "Right-click for dismiss options"). To
-     force a non-empty diff, run scripts/seed-diff.sh (which writes a
-     2-day-old empty snapshot in GRDB's TEXT date format), then click
-     Rescan in the detail-window toolbar.
+  G. Recent Changes — a row's options button and its right-click menu
+     both offer Snooze 7 days / Dismiss forever, and both work. To get a
+     row: change one permission in System Settings (on macOS 27, Screen
+     Recording or Accessibility for one app), then click Rescan in the
+     detail-window toolbar. Settings → Data → Dismissed changes →
+     Restore All brings a dismissed row back.
 
   H. Stale Apps — right-click a row → Reveal in Finder / Skip forever;
      Skip forever shows the "Skip this app forever?" confirmation alert.
@@ -418,7 +486,7 @@ passed --no-launch). Run through them and report any deviations.
   # U2. Permissions: click row → inspector follows; ↑/↓ moves selection + inspector updates.
   # U3. ⌘1–⌘6 switch sections; ⌥⌘I toggles inspector; ⌘R rescans from window.
   # U4. Overview: attention + count rows navigate; Last Scan time is honest.
-  # U5. Changes: context-menu dismiss/snooze; badge clears after visiting.
+  # U5. Changes: context-menu dismiss/snooze; badge clears after leaving Recent Changes.
   # U6. Stale: context-menu Reveal/Skip forever works.
   # U7. FDA-denied run: dropdown attention row → Permissions full-page state → Grant button opens System Settings.
   # U8. Settings: 4 tabs render; launch-at-login toggles a Login Items entry; Reset confirms via alert and wipes.
@@ -426,9 +494,15 @@ passed --no-launch). Run through them and report any deviations.
   # U10. All of the above in light + dark; large Dynamic Type in window; clamped in dropdown; Reduce Transparency + Reduce Motion honored.
 
   # Workstream C — data fidelity, FDA, and coverage truth
-  V1. Complete TCC coverage. On an FDA-enabled representative Mac, Rescan and
-      confirm both user and system permission records are represented and the
-      Permissions banner says "Complete data" with the current timestamp.
+  V1. Complete TCC coverage. On an FDA-enabled representative Mac, Rescan.
+      macOS 26: both user and system permission records are represented and
+      the Permissions banner says "Complete data" with the current timestamp.
+      macOS 27: system records only; the banner says "System-level
+      permissions only" with the current timestamp. Then confirm the stored
+      coverage (read-only):
+        sqlite3 -readonly ~/Library/Application\ Support/com.wallymagill.permissionpulse/snapshots.db \
+          "SELECT tcc_coverage FROM snapshots ORDER BY id DESC LIMIT 1"
+      macOS 26 prints complete; macOS 27 prints reduced.
   V2. Controlled degraded scan (isolated fixture only). Run:
         swift test --package-path Packages/PermissionsScanners \
           --filter scanRetainsItemsAndReportsSystemWarningWhenSecondDatabaseFails
@@ -477,12 +551,46 @@ passed --no-launch). Run through them and report any deviations.
       query the next morning shows a day-change scan with no window opened.
   W3. Stale open. Open the dropdown more than 60 seconds after the last scan:
       Overview "Last Scan" moves to now. Reopen within 60 seconds: it does not.
-  W4. Same-day change. Grant or revoke one permission in System Settings, open
-      the dropdown, and confirm the change is in Recent Changes without a
-      manual Rescan and without waiting for tomorrow.
+  W4. Same-day change. Grant or revoke one permission in System Settings (on
+      macOS 27 it must be a system-level one: toggle Screen Recording or
+      Accessibility for one app), open the dropdown more than 60 seconds
+      after the last scan, and confirm the change is in Recent Changes →
+      Since Last Review without a manual Rescan. Toggle it back afterwards.
   W5. History status. Recent Changes shows "History updated <date>". If a
       scanner banner reads degraded or failed, that section is named as not
-      compared instead of showing removals.
+      compared, with the reason, instead of showing removals.
+
+  # v0.7.2 app behavior
+  X1. Reopen from Finder. With the app running, double-click the running
+      PermissionPulse.app in Finder: the detail window opens on Overview.
+  X2. Single instance. Copy the app elsewhere (ditto <app> ~/Desktop/PP-copy.app)
+      and launch the copy with open -n ~/Desktop/PP-copy.app: the running
+      copy's window comes forward, the new copy quits, and only one menu-bar
+      icon remains. Delete the copy afterwards.
+  X3. Full Disk Access recovery. Replace an older build that had Full Disk
+      Access and had scanned (e.g. v0.7.1 in /Applications) with this build
+      and open it: a "Full Disk Access was turned off" window opens once.
+      Follow its steps and come back: it says "Full Disk Access is back on"
+      or offers Reopen Permission Pulse. (Runbook step 2, item 7.)
+  X4. Change alert. Settings → Notifications → turn on "Notify me when
+      something changes". Toggle Screen Recording or Accessibility for one
+      app in System Settings, then Rescan: a banner "Permission Pulse:
+      something changed" arrives, shown under the app name "Permission
+      Pulse". Toggle the permission back.
+  X5. Weekly digest. With "Send weekly digest" on, the tab shows
+      "Next: <day and time>", and "Send" next to "Send test notification"
+      delivers the "Permission Pulse · Test" banner in ~5 seconds.
+  X6. About. Settings → General → About shows "Version <version> (<build>)"
+      matching section 2 above; Check for Updates… opens
+      https://github.com/WallyMagill/permission-pulse/releases in the
+      browser. The dropdown's Check for Updates… opens the same page.
+  X7. Unreadable daemon. On a Mac with a root-only plist in
+      /Library/LaunchDaemons (ls -l shows -rw------- root), Launch Agents
+      lists it by file name with "Details unreadable · System daemon", and
+      the Launch Agents banner and the menu-bar icon show no scan error.
+  X8. Background item types. Background Items shows a named type for every
+      row (Login item, App agent, Legacy agent, …); no row reads
+      "Unknown (0x…)".
 EOF
 
 if [[ ${#FAILED[@]} -gt 0 ]]; then

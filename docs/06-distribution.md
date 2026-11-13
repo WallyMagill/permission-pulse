@@ -43,7 +43,9 @@ When we add a Developer ID, we revisit. The architecture leaves room for Sparkle
 2. Drag `PermissionPulse.app` to `/Applications`.
 3. **First launch:** double-click → dismiss the "Apple could not verify…" dialog with **Done** → System Settings → Privacy & Security → **Open Anyway** → authenticate. macOS 15 (Sequoia) removed the right-click → Open override for unsigned apps; that shortcut only still works on macOS 14. The `xattr -d com.apple.quarantine` CLI route is the alternative.
 4. Grant Full Disk Access when the app asks (required for TCC + BTM reads; macOS may ask you to quit and reopen).
-5. After each update, turn Full Disk Access back on: every ad-hoc-signed build has a different signature, so replacing the app turns its existing grant off.
+5. After each update, turn Full Disk Access back on: every ad-hoc-signed build has a different signature, so replacing the app turns its existing grant off. The first scan of a new build that finds access off opens a "Full Disk Access was turned off" window with these steps (once per build), and offers to reopen the app if macOS needs a restart.
+
+Users find the running version in Preferences → General → About, next to **Check for Updates…**.
 
 ## Anti-distribution
 
