@@ -15,6 +15,9 @@ final class WeeklyDigestCoordinator {
     static let identifierPrefix = "com.wallymagill.permissionpulse.digest.weekly"
     static let weeklyIdentifier = "com.wallymagill.permissionpulse.digest.weekly.v1"
     static let testIdentifierPrefix = "com.wallymagill.permissionpulse.digest.test"
+    /// A digest that came due while the Mac slept, delivered as a one-shot.
+    /// Outside `identifierPrefix`, so the re-arm that follows can't cancel it.
+    static let overdueIdentifier = "com.wallymagill.permissionpulse.digest.overdue"
 
     enum ScheduleResult: Sendable, Equatable {
         case disabled
@@ -60,6 +63,7 @@ final class WeeklyDigestCoordinator {
     }
 
     private func reconcileScheduleOwned() async -> ScheduleResult {
+        let overdue = await weeklyRequestIsOverdue()
         await scheduler.cancelAll(matchingPrefix: Self.identifierPrefix)
         guard scheduleIsActive else { return .disabled }
 
@@ -73,6 +77,7 @@ final class WeeklyDigestCoordinator {
         }
 
         let composed = composeDigestBody(diff: viewModel.latestDiffWeek)
+        if overdue { await deliverOverdueDigest(composed) }
         do {
             try await scheduler.scheduleWeekly(
                 identifier: Self.weeklyIdentifier,
@@ -92,6 +97,28 @@ final class WeeklyDigestCoordinator {
                 "Failed to schedule weekly digest: \(error.localizedDescription, privacy: .public)"
             )
             return .failed(error.localizedDescription)
+        }
+    }
+
+    /// A pending weekly request whose trigger date has passed came due while
+    /// the Mac slept and has not been delivered yet; cancelling it to re-arm
+    /// would lose that week's digest.
+    private func weeklyRequestIsOverdue() async -> Bool {
+        guard await scheduler.pendingIdentifiers().contains(Self.weeklyIdentifier) else { return false }
+        guard let next = await scheduler.nextFireDate(for: Self.weeklyIdentifier) else { return true }
+        return next <= now()
+    }
+
+    private func deliverOverdueDigest(_ composed: (title: String, body: String)) async {
+        do {
+            try await scheduler.scheduleOneShot(
+                identifier: Self.overdueIdentifier,
+                after: ChangeAlertCoordinator.deliveryDelay,
+                title: composed.title,
+                body: composed.body
+            )
+        } catch {
+            Self.logger.error("Overdue digest failed: \(error.localizedDescription, privacy: .public)")
         }
     }
 

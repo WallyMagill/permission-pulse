@@ -447,6 +447,28 @@ import PermissionsUI
         #expect(date == nil)
     }
 
+    @Test func aDigestThatCameDueWhileAsleepIsDeliveredBeforeReArming() async throws {
+        let env = makeEnv(digestEnabled: true, status: .authorized)
+        _ = await env.coordinator.reconcileSchedule()
+        #expect(await env.scheduler.oneShots(withPrefix: WeeklyDigestCoordinator.overdueIdentifier).isEmpty)
+        // The coordinator's clock reads 1_700_000_000: this trigger has passed.
+        await env.scheduler.setNextFireDate(
+            Date(timeIntervalSince1970: 1_699_990_000),
+            for: WeeklyDigestCoordinator.weeklyIdentifier
+        )
+
+        let result = await env.coordinator.reconcileSchedule()
+
+        let overdue = await env.scheduler.oneShots(withPrefix: WeeklyDigestCoordinator.overdueIdentifier)
+        #expect(overdue.map(\.title) == ["Permission Pulse · Weekly digest"])
+        #expect(overdue.first?.body == "History is less than a week old, so there's nothing to compare yet.")
+        guard case .scheduled = result else {
+            Issue.record("Expected the next occurrence to be armed, got \(result)")
+            return
+        }
+        #expect(await env.scheduler.pendingIdentifiers().contains(WeeklyDigestCoordinator.weeklyIdentifier))
+    }
+
     // MARK: - Env
 
     @MainActor
