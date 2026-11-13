@@ -13,21 +13,33 @@ public struct LaunchAgentScannerFS: LaunchAgentScanner, Sendable {
         category: "scanners.launchagent"
     )
 
+    /// A guess, sized well above the moment an installer takes to write a
+    /// plist: a malformed file younger than this may still be mid-write.
+    static let settlingInterval: TimeInterval = 60
+
     private let sources: [Source]
     private let overrideDirectory: URL?
     private let userID: uid_t
+    private let now: @Sendable () -> Date
+    private let modificationDate: @Sendable (URL) -> Date?
 
     public init() {
-        self.sources = Self.defaultSources()
-        self.overrideDirectory = LaunchdDisabledOverrides.defaultDirectory
-        self.userID = getuid()
+        self.init(sources: Self.defaultSources(), overrideDirectory: LaunchdDisabledOverrides.defaultDirectory)
     }
 
     /// `overrideDirectory: nil` ignores launchd's disabled-override database.
-    init(sources: [Source], overrideDirectory: URL? = nil, userID: uid_t = getuid()) {
+    init(
+        sources: [Source],
+        overrideDirectory: URL? = nil,
+        userID: uid_t = getuid(),
+        now: @escaping @Sendable () -> Date = Date.init,
+        modificationDate: @escaping @Sendable (URL) -> Date? = Self.fileModificationDate
+    ) {
         self.sources = sources
         self.overrideDirectory = overrideDirectory
         self.userID = userID
+        self.now = now
+        self.modificationDate = modificationDate
     }
 
     public func scan() async throws -> ScannerOutput<LaunchAgentItem> {
@@ -158,13 +170,9 @@ public struct LaunchAgentScannerFS: LaunchAgentScanner, Sendable {
             return .omitted
         }
 
-        guard let plist = try? PropertyListSerialization.propertyList(from: data, format: nil) else {
-            Self.logger.debug("Plist not parseable \(url.lastPathComponent, privacy: .public); listing without details")
-            return .item(unreadableItem(at: url, category: category, overrides: overrides))
-        }
+        let plist = try? PropertyListSerialization.propertyList(from: data, format: nil)
         guard let dict = plist as? [String: Any] else {
-            Self.logger.debug("Skip non-dictionary plist \(url.lastPathComponent, privacy: .public)")
-            return .omitted
+            return malformed(at: url, category: category, overrides: overrides)
         }
         // launchd refuses a job without a Label, so a well-formed label-less
         // dictionary (e.g. Google Keystone's empty leftovers) is not an agent.
@@ -173,8 +181,7 @@ public struct LaunchAgentScannerFS: LaunchAgentScanner, Sendable {
             return .inert
         }
         guard let label = rawLabel as? String else {
-            Self.logger.debug("Skip plist with non-string Label \(url.lastPathComponent, privacy: .public)")
-            return .omitted
+            return malformed(at: url, category: category, overrides: overrides)
         }
         let job = LaunchJobFields(dict)
         return .item(LaunchAgentItem(
@@ -187,6 +194,34 @@ public struct LaunchAgentScannerFS: LaunchAgentScanner, Sendable {
             isDisabled: overrides.isDisabled(label: label, category: category, plistDisabled: job.disabled),
             fileName: url.lastPathComponent
         ))
+    }
+
+    /// Not a launchd job: unparseable, not a dictionary, or a non-string
+    /// `Label`. A file caught mid-write by an installer looks the same, so it
+    /// is listed as unreadable only once settled and omitted until then.
+    private func malformed(
+        at url: URL,
+        category: LaunchAgentItem.SourceDirectory,
+        overrides: LaunchdDisabledOverrides
+    ) -> PlistDecodeResult {
+        guard isSettled(url) else {
+            Self.logger.debug("Skip malformed plist still settling \(url.lastPathComponent, privacy: .public)")
+            return .omitted
+        }
+        Self.logger.debug("Plist malformed \(url.lastPathComponent, privacy: .public); listing without details")
+        return .item(unreadableItem(at: url, category: category, overrides: overrides))
+    }
+
+    /// An unknown date cannot be waited out, and a date far in the future is
+    /// a clock change rather than a write in progress; both count as settled.
+    private func isSettled(_ url: URL) -> Bool {
+        guard let modified = modificationDate(url) else { return true }
+        return abs(now().timeIntervalSince(modified)) >= Self.settlingInterval
+    }
+
+    static func fileModificationDate(_ url: URL) -> Date? {
+        let resolved = url.resolvingSymlinksInPath()
+        return try? resolved.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate
     }
 
     private func unreadableItem(

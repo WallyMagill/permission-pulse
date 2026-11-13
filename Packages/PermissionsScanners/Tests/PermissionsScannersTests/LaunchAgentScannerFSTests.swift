@@ -23,7 +23,7 @@ import PermissionsCore
         try dir.write(filename: "good1.plist", contents: PlistFixtures.runAtLoad(label: "com.test.alpha"))
         try dir.write(filename: "com.test.bad.plist", contents: Data("not a plist".utf8))
 
-        let scanner = LaunchAgentScannerFS(sources: [dir.asSource(.userLaunchAgents)])
+        let scanner = scanner(dir, ageSeconds: LaunchAgentScannerFS.settlingInterval)
         let output = try await scanner.scan()
 
         #expect(output.warnings.isEmpty)
@@ -182,15 +182,62 @@ import PermissionsCore
         #expect(output.warnings.isEmpty)
     }
 
-    @Test func nonStringLabelIsStillOmitted() async throws {
+    // A plist caught mid-write by an installer must not appear as a phantom
+    // item for one scan; it is omitted with a warning until it settles.
+    @Test func freshUnparseablePlistIsOmittedForThisScan() async throws {
+        let dir = try TempDir()
+        try dir.write(filename: "good.plist", contents: PlistFixtures.runAtLoad(label: "com.test.alpha"))
+        try dir.write(filename: "com.test.writing.plist", contents: Data("<?xml version=".utf8))
+
+        let output = try await scanner(dir, ageSeconds: LaunchAgentScannerFS.settlingInterval - 1).scan()
+
+        #expect(output.items.map(\.label) == ["com.test.alpha"])
+        #expect(output.warnings == [
+            ScannerWarning(source: .entries, omittedCount: 1, omittedNames: ["com.test.writing.plist"]),
+        ])
+    }
+
+    @Test func nonStringLabelIsListedWithoutDetailsOnceSettled() async throws {
         let dir = try TempDir()
         try dir.write(filename: "bad-label.plist", contents: PlistFixtures.integerLabel)
 
-        let scanner = LaunchAgentScannerFS(sources: [dir.asSource(.userLaunchAgents)])
+        let young = try await scanner(dir, ageSeconds: 5).scan()
+        let settled = try await scanner(dir, ageSeconds: LaunchAgentScannerFS.settlingInterval).scan()
+
+        #expect(young.items.isEmpty)
+        #expect(young.warnings == [ScannerWarning(source: .entries, omittedCount: 1, omittedNames: ["bad-label.plist"])])
+        let item = try #require(settled.items.first)
+        #expect(settled.warnings.isEmpty)
+        #expect(item.label == "bad-label")
+        #expect(item.detailsReadable == false)
+    }
+
+    @Test func settledNonDictionaryPlistIsListedWithoutDetails() async throws {
+        let dir = try TempDir()
+        let array = try PropertyListSerialization.data(fromPropertyList: ["a"], format: .xml, options: 0)
+        try dir.write(filename: "com.test.array.plist", contents: array)
+
+        let output = try await scanner(dir, ageSeconds: 3600).scan()
+
+        #expect(output.items.map(\.label) == ["com.test.array"])
+        #expect(output.items.first?.detailsReadable == false)
+        #expect(output.warnings.isEmpty)
+    }
+
+    // A modification date that cannot be read can never settle, so it must
+    // not keep the domain degraded forever.
+    @Test func unknownModificationDateCountsAsSettled() async throws {
+        let dir = try TempDir()
+        try dir.write(filename: "com.test.bad.plist", contents: Data("not a plist".utf8))
+
+        let scanner = LaunchAgentScannerFS(
+            sources: [dir.asSource(.userLaunchAgents)],
+            modificationDate: { _ in nil }
+        )
         let output = try await scanner.scan()
 
-        #expect(output.items.isEmpty)
-        #expect(output.warnings == [ScannerWarning(source: .entries, omittedCount: 1, omittedNames: ["bad-label.plist"])])
+        #expect(output.items.map(\.label) == ["com.test.bad"])
+        #expect(output.warnings.isEmpty)
     }
 
     @Test func scanDefaultsMissingKeys() async throws {
@@ -347,6 +394,16 @@ import PermissionsCore
         #expect(userItem.sourceDirectory == .userLaunchAgents)
         #expect(daemonItem.sourceDirectory == .libraryLaunchDaemons)
     }
+}
+
+/// A scanner whose clock reads `ageSeconds` after every file's modification date.
+private func scanner(_ dir: TempDir, ageSeconds: TimeInterval) -> LaunchAgentScannerFS {
+    let modified = Date(timeIntervalSince1970: 1_700_000_000)
+    return LaunchAgentScannerFS(
+        sources: [dir.asSource(.userLaunchAgents)],
+        now: { modified.addingTimeInterval(ageSeconds) },
+        modificationDate: { _ in modified }
+    )
 }
 
 private func scannerError(from scanner: LaunchAgentScannerFS) async -> ScannerError? {
