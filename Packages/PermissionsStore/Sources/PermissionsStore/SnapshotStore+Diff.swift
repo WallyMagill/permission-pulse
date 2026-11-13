@@ -16,13 +16,17 @@ extension SnapshotStore {
         )
     }
 
+    /// `services` limits both endpoints to those services, for a baseline
+    /// that saw more than the later scan can.
     public func diffTCCGrants(
         from: SnapshotID,
-        to: SnapshotID
+        to: SnapshotID,
+        limitedTo services: Set<PermissionService>? = nil
     ) async throws -> TCCGrantsDiff {
-        Self.diffTCCGrants(
-            before: try await readTCCGrants(snapshotID: from),
-            after: try await readTCCGrants(snapshotID: to)
+        let included: (PermissionGrant) -> Bool = { services?.contains($0.service) ?? true }
+        return Self.diffTCCGrants(
+            before: try await readTCCGrants(snapshotID: from).filter(included),
+            after: try await readTCCGrants(snapshotID: to).filter(included)
         )
     }
 

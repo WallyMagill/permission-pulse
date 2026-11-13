@@ -43,6 +43,17 @@ public enum PermissionService: String, Sendable, CaseIterable, Hashable {
         }
     }
 
+    /// Services whose grants live in the system TCC database. macOS 27 hides
+    /// the per-user database, so these are all a reduced scan can see.
+    public static let systemLevel: Set<PermissionService> = [
+        .accessibility,
+        .fullDiskAccess,
+        .inputMonitoring,
+        .screenRecording,
+        .remoteDesktop,
+        .endpointSecurity,
+    ]
+
     public static let knownSkipped: Set<String> = [
         "kTCCServiceLiverpool",
         "kTCCServiceUbiquity",

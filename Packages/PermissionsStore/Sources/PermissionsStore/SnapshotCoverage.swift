@@ -21,6 +21,16 @@ public enum SnapshotCoverage: String, Sendable, Equatable {
     public var capturedFullScope: Bool {
         isComparable(with: self)
     }
+
+    /// A `.complete` snapshot can baseline a `.reduced` one when the diff
+    /// is limited to what the reduced scan can see.
+    public func canNarrow(to later: SnapshotCoverage) -> Bool {
+        self == .complete && later == .reduced
+    }
+
+    public func canBaseline(_ later: SnapshotCoverage) -> Bool {
+        isComparable(with: later) || canNarrow(to: later)
+    }
 }
 
 public struct SnapshotDomainCoverage: Sendable, Equatable {
