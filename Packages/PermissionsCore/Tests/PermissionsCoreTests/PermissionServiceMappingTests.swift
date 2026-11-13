@@ -25,6 +25,8 @@ import Testing
         ("kTCCServiceSystemPolicyAppData",        PermissionService.appManagement),
         ("kTCCServiceListenEvent",                PermissionService.inputMonitoring),
         ("kTCCServiceDeveloperTool",              PermissionService.developerTool),
+        ("kTCCServiceRemoteDesktop",              PermissionService.remoteDesktop),
+        ("kTCCServiceEndpointSecurityClient",     PermissionService.endpointSecurity),
     ])
     func mapsKnownTCCServiceStringsToExpectedCases(input: String, expected: PermissionService) {
         #expect(PermissionService(tccServiceString: input) == expected)

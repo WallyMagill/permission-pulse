@@ -4,17 +4,25 @@ import PermissionsCore
 @testable import PermissionsUI
 
 @Suite struct SystemSettingsLinkTests {
-    @Test func everyServiceProducesANonNilURL() {
+    private static let unanchored: Set<PermissionService> = [.remoteDesktop, .endpointSecurity]
+
+    @Test func everyServiceProducesAPrivacyURL() {
         for service in PermissionService.allCases {
-            let url = SystemSettingsLink.url(for: service)
-            #expect(url.absoluteString.hasPrefix("x-apple.systempreferences:com.apple.preference.security?Privacy_"))
+            let url = SystemSettingsLink.url(for: service).absoluteString
+            if Self.unanchored.contains(service) {
+                #expect(url == SystemSettingsLink.privacyPaneURL.absoluteString)
+            } else {
+                #expect(url.hasPrefix("x-apple.systempreferences:com.apple.preference.security?Privacy_"))
+            }
         }
     }
 
-    @Test func everyServiceProducesADistinctAnchor() {
+    @Test func everyAnchoredServiceProducesADistinctAnchor() {
         // Two services pointing at the same anchor is almost always a paste
         // error. Each TCC service has its own Settings pane.
-        let urls = PermissionService.allCases.map { SystemSettingsLink.urlString(for: $0) }
+        let urls = PermissionService.allCases
+            .filter { !Self.unanchored.contains($0) }
+            .map { SystemSettingsLink.urlString(for: $0) }
         #expect(Set(urls).count == urls.count, "duplicate anchor detected")
     }
 
