@@ -458,39 +458,6 @@ private struct BTMListRow: View {
     }
 }
 
-// MARK: - Stale Apps page
-
-private struct StaleAppsDetailPage: View {
-    @Environment(AppViewModel.self) private var viewModel
-    let searchText: String
-
-    var body: some View {
-        Group {
-            if filteredApps.isEmpty && !searchText.isEmpty {
-                ContentUnavailableView.search(text: searchText)
-            } else {
-                StaleAppsTabView(staleApps: filteredApps, staleThresholdDays: viewModel.staleThresholdDays)
-            }
-        }
-        .navigationTitle(String(localized: "Stale Apps"))
-        .navigationSubtitle(subtitle)
-    }
-
-    private var filteredApps: [StaleApp] {
-        if searchText.isEmpty { return viewModel.staleApps }
-        let q = searchText.lowercased()
-        return viewModel.staleApps.filter { app in
-            app.app.displayName.lowercased().contains(q)
-                || app.app.bundleID.lowercased().contains(q)
-        }
-    }
-
-    private var subtitle: String {
-        if viewModel.staleApps.isEmpty { return "" }
-        return String(localized: "Apps with active grants you haven't used in \(viewModel.staleThresholdDays)+ days")
-    }
-}
-
 // MARK: - Helpers
 
 // Shared by the three inventory pages while the initial scan is running.

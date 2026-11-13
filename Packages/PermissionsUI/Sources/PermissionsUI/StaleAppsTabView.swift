@@ -5,6 +5,7 @@ import PermissionsCore
 struct StaleAppsTabView: View {
     let staleApps: [StaleApp]
     var staleThresholdDays: Int = 90
+    var emptyState: StaleAppsEmptyState = .noneStale(systemLevelOnly: false)
     @Environment(DismissedStaleAppStore.self) private var dismissedStore
     @Environment(AppViewModel.self) private var viewModel
 
@@ -18,9 +19,9 @@ struct StaleAppsTabView: View {
 
         if visible.isEmpty {
             ContentUnavailableView(
-                String(localized: "No Stale Apps"),
-                systemImage: "checkmark.circle",
-                description: Text(String(localized: "Every app with an active grant has been used recently."))
+                emptyState.title,
+                systemImage: emptyState.systemImage,
+                description: Text(emptyState.description)
             )
         } else {
             List {
