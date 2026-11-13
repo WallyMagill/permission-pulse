@@ -29,7 +29,7 @@ v0.7.1 remains the latest published release until v0.7.2 is actually tagged and 
 
 ## Update mechanism (v1)
 
-No auto-updater in v1. The plan is a `Check for Updates…` menu item that opens `https://github.com/WallyMagill/permission-pulse/releases` in the browser — **this item is not wired up in the app yet**; for now users check the Releases page directly.
+No auto-updater in v1. `Check for Updates…` — in the menu-bar dropdown and in Preferences → General → About — only opens `https://github.com/WallyMagill/permission-pulse/releases` in the browser; the app itself makes no network request.
 
 Why not Sparkle now:
 - Sparkle's update download lands a `.dmg` that Gatekeeper quarantines because we are unsigned. The user sees the same "Apple could not verify..." dialog they saw on initial install. Sparkle's value is mostly nullified.

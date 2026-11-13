@@ -3,6 +3,7 @@ import SwiftUI
 
 public struct MenuBarContentView: View {
     @Environment(\.openWindow) private var openWindow
+    @Environment(\.openURL) private var openURL
     @Environment(AppViewModel.self) private var viewModel
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     private let onShowWelcome: (() -> Void)?
@@ -113,10 +114,14 @@ public struct MenuBarContentView: View {
                 title: String(localized: "Settings…"),
                 shortcutKey: ",", shortcutDisplay: "⌘,"
             ) { activateAndOpen("preferences") }
+            MenuRowButton(
+                icon: "arrow.down.circle",
+                title: String(localized: "Check for Updates…")
+            ) { openURL(ProjectLinks.releases) }
             if let onShowWelcome {
                 MenuRowButton(
                     icon: "info.circle",
-                    title: String(localized: "Welcome & About")
+                    title: String(localized: "Welcome Tour")
                 ) { onShowWelcome() }
             }
             Divider().padding(.horizontal, PPSpacing.sm).padding(.vertical, 3)
@@ -288,7 +293,7 @@ private struct MenuRowButton: View {
 }
 
 /// Applies `.keyboardShortcut` only when a key is present — `MenuRowButton`
-/// rows like Welcome & About have no shortcut.
+/// rows like Welcome Tour have no shortcut.
 private struct OptionalShortcut: ViewModifier {
     let key: KeyEquivalent?
 

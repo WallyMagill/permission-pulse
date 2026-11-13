@@ -87,7 +87,7 @@ In addition to `hasSeenWelcome`, `lastSnapshotDate`, `lastReviewedSnapshotID` fr
 
 - GitHub Releases only. `scripts/package-release.sh` is the sole supported packaging entry point. CI builds, tests, analyzes, then packages, ad-hoc-signs, and independently verifies a non-published artifact from a clean checkout. Tagging, GitHub Release creation, and upload remain manual. `docs/06-distribution.md` is the authoritative release procedure.
 - Ad-hoc-signed, not Developer ID signed or notarized. First-launch UX must tolerate the Gatekeeper "unverified developer" dialog cleanly; the README documents the current Privacy & Security → Open Anyway flow.
-- No Sparkle in v1. When a "Check for Updates…" menu item is added it must simply open `https://github.com/WallyMagill/permission-pulse/releases` in the browser — it is **not wired up yet**. When a Developer ID is acquired, we revisit Sparkle.
+- No Sparkle in v1. "Check for Updates…" (in the menu-bar dropdown and Preferences → General → About) only opens `https://github.com/WallyMagill/permission-pulse/releases` in the browser — the app makes no network request. When a Developer ID is acquired, we revisit Sparkle.
 - No code-signing materials in the repo. Ad-hoc signing requires no identity and is performed only by `scripts/package-release.sh` during local or CI packaging. Developer ID signing and notarization remain out of scope.
 
 ## Mock-vs-real data discipline
