@@ -48,7 +48,35 @@ extension SnapshotStore {
             after: after,
             identity: launchAgentIdentityKey,
             equivalent: { launchAgentsEquivalent($0, $1, compareDisabled: compareDisabled) },
-            wrap: { LaunchAgentsDiff(added: $0, removed: $1, changed: $2) }
+            wrap: { added, removed, changed in
+                LaunchAgentsDiff(
+                    added: added,
+                    removed: removed,
+                    changed: compareDisabled ? changed : changed.map(carryingUncapturedDisabled)
+                )
+            }
+        )
+    }
+
+    // A legacy endpoint never captured `isDisabled`; its stored `false` is a
+    // placeholder, so a change row must not describe it as a transition.
+    private static func carryingUncapturedDisabled(
+        _ change: DomainChange<LaunchAgentItem>
+    ) -> DomainChange<LaunchAgentItem> {
+        let before = change.before
+        return DomainChange(
+            before: LaunchAgentItem(
+                label: before.label,
+                sourceDirectory: before.sourceDirectory,
+                programPath: before.programPath,
+                programArguments: before.programArguments,
+                runAtLoad: before.runAtLoad,
+                keepAlive: before.keepAlive,
+                isDisabled: change.after.isDisabled,
+                detailsReadable: before.detailsReadable,
+                fileName: before.fileName
+            ),
+            after: change.after
         )
     }
 
@@ -214,6 +242,8 @@ extension SnapshotStore {
         }
     }
 
+    // `fileName` is deliberately excluded: pre-v7 rows store NULL, so including
+    // it would report every agent as changed on the first scan after upgrade.
     static func launchAgentsEquivalent(
         _ lhs: LaunchAgentItem,
         _ rhs: LaunchAgentItem,
@@ -225,6 +255,7 @@ extension SnapshotStore {
             && lhs.programArguments == rhs.programArguments
             && lhs.runAtLoad == rhs.runAtLoad
             && lhs.keepAlive == rhs.keepAlive
+            && lhs.detailsReadable == rhs.detailsReadable
             && (!compareDisabled || lhs.isDisabled == rhs.isDisabled)
     }
 

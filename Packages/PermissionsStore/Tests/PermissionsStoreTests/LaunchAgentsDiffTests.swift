@@ -6,7 +6,7 @@ import PermissionsCore
 @Suite struct LaunchAgentsDiffTests {
     @Test func migrationCreatesLaunchAgentsTable() async throws {
         let store = try SnapshotStore.inMemory()
-        #expect(try store.schemaVersion() == 6)
+        #expect(try store.schemaVersion() == 7)
         // If the table is missing, an empty read still throws on schema. Issue a
         // benign write/read round-trip instead — proves the table is queryable.
         let id = try await store.writeLaunchAgentsSnapshot([])
@@ -50,7 +50,7 @@ import PermissionsCore
 
         let store = try SnapshotStore(path: databaseURL.path)
 
-        #expect(try store.schemaVersion() == 6)
+        #expect(try store.schemaVersion() == 7)
         #expect(try await store.latestSnapshotID() == SnapshotV4Fixture.legacySnapshotID)
         #expect(try await store.readLaunchAgents(snapshotID: SnapshotV4Fixture.legacySnapshotID) == [legacyItem()])
         #expect(try await store.readTCCGrants(snapshotID: SnapshotV4Fixture.legacySnapshotID).count == 1)
@@ -101,10 +101,10 @@ import PermissionsCore
         try SnapshotV4Fixture.make(at: databaseURL.path)
 
         let firstOpen = try SnapshotStore(path: databaseURL.path)
-        #expect(try firstOpen.schemaVersion() == 6)
+        #expect(try firstOpen.schemaVersion() == 7)
         let secondOpen = try SnapshotStore(path: databaseURL.path)
 
-        #expect(try secondOpen.schemaVersion() == 6)
+        #expect(try secondOpen.schemaVersion() == 7)
         #expect(try await secondOpen.readLaunchAgents(
             snapshotID: SnapshotV4Fixture.legacySnapshotID
         ) == [legacyItem()])

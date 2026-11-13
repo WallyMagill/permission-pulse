@@ -11,7 +11,7 @@ import PermissionsCore
 
         let store = try SnapshotStore(path: url.path)
 
-        #expect(try store.schemaVersion() == 6)
+        #expect(try store.schemaVersion() == 7)
         #expect(try await store.coverage(snapshotID: SnapshotV4Fixture.legacySnapshotID) == .allComplete)
     }
 

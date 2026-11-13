@@ -121,6 +121,16 @@ public struct SnapshotStore: Sendable {
             try db.execute(sql: "UPDATE schema_version SET version = 6")
         }
 
+        // Every pre-v7 row was decoded from a readable plist, so the default
+        // is truthful. The file name was never recorded, so it stays NULL.
+        migrator.registerMigration("v7") { db in
+            try db.alter(table: "launch_agents") { table in
+                table.add(column: "details_readable", .integer).notNull().defaults(to: true)
+                table.add(column: "file_name", .text)
+            }
+            try db.execute(sql: "UPDATE schema_version SET version = 7")
+        }
+
         try migrator.migrate(queue)
     }
 
@@ -213,7 +223,8 @@ public struct SnapshotStore: Sendable {
         try await dbQueue.read { db in
             let rows = try Row.fetchAll(db, sql: """
                 SELECT label, source_directory, program_path,
-                       program_arguments_json, run_at_load, keep_alive, is_disabled
+                       program_arguments_json, run_at_load, keep_alive, is_disabled,
+                       details_readable, file_name
                 FROM launch_agents
                 WHERE snapshot_id = ?
                 ORDER BY source_directory, label
@@ -382,8 +393,9 @@ public struct SnapshotStore: Sendable {
             try db.execute(sql: """
                 INSERT INTO launch_agents
                 (snapshot_id, label, source_directory, program_path,
-                 program_arguments_json, run_at_load, keep_alive, is_disabled)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                 program_arguments_json, run_at_load, keep_alive, is_disabled,
+                 details_readable, file_name)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """, arguments: [
                     snapshotID,
                     item.label,
@@ -393,6 +405,8 @@ public struct SnapshotStore: Sendable {
                     item.runAtLoad,
                     item.keepAlive,
                     item.isDisabled,
+                    item.detailsReadable,
+                    item.fileName,
                 ])
         }
     }
@@ -472,7 +486,9 @@ public struct SnapshotStore: Sendable {
             programArguments: arguments,
             runAtLoad: row["run_at_load"],
             keepAlive: row["keep_alive"],
-            isDisabled: row["is_disabled"]
+            isDisabled: row["is_disabled"],
+            detailsReadable: row["details_readable"],
+            fileName: row["file_name"]
         )
     }
 
