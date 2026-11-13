@@ -92,12 +92,25 @@ struct DropdownStatusTests {
         #expect(Set(result.map(\.id)).count == result.count)
     }
 
-    @Test("Media row appears while mic or camera is in use, routes to Permissions")
+    @Test("With full scope the media row opens Permissions searched for the live device")
     func media() {
         let result = rows(mic: true)
         #expect(result.contains { $0.kind == .media(mic: true, camera: false) })
         #expect(result.first { $0.kind == .media(mic: true, camera: false) }?.route
-            == .permissions(selectAppKey: nil))
+            == .permissions(selectAppKey: nil, searchText: "Microphone"))
+        #expect(rows(camera: true).first { $0.kind == .media(mic: false, camera: true) }?.route?.searchText
+            == "Camera")
+    }
+
+    @Test("With reduced scope the media row opens System Settings, Microphone when both are live")
+    func mediaReducedScope() {
+        func destination(mic: Bool, camera: Bool) -> DropdownStatusRow.Destination? {
+            rows(mic: mic, camera: camera, systemLevelOnly: true)
+                .first { if case .media = $0.kind { true } else { false } }?.destination
+        }
+        #expect(destination(mic: false, camera: true) == .systemSettings(.camera))
+        #expect(destination(mic: true, camera: false) == .systemSettings(.microphone))
+        #expect(destination(mic: true, camera: true) == .systemSettings(.microphone))
     }
 
     @Test("Scan failure without history names the domain and routes to its page")

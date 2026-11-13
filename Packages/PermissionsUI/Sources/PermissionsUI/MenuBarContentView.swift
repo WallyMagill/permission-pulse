@@ -73,8 +73,13 @@ public struct MenuBarContentView: View {
         VStack(alignment: .leading, spacing: 1) {
             ForEach(currentRows) { row in
                 StatusRowButton(row: row) {
-                    viewModel.pendingRoute = row.route
-                    activateAndOpen("detail")
+                    switch row.destination {
+                    case .app(let route):
+                        viewModel.pendingRoute = route
+                        activateAndOpen("detail")
+                    case .systemSettings(let service):
+                        SystemSettingsLink.open(for: service)
+                    }
                 }
             }
         }
@@ -200,7 +205,16 @@ private struct StatusRowButton: View {
     /// VoiceOver mirror of the deep link each row follows; sighted users get
     /// the same routing information from the row copy and chevron.
     private var destinationHint: String {
-        switch row.route {
+        switch row.destination {
+        case .systemSettings(let service):
+            String(localized: "Opens \(service.displayName) in System Settings")
+        case .app(let route):
+            Self.hint(for: route)
+        }
+    }
+
+    private static func hint(for route: AppRoute) -> String {
+        switch route {
         case .overview:
             String(localized: "Opens the Overview in Permission Pulse")
         case .permissions:

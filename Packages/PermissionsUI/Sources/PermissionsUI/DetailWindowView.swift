@@ -16,6 +16,8 @@ public struct DetailWindowView: View {
     @State private var searchText = ""
     @State private var isRefreshing = false
     @State private var isApplyingRoute = false
+    /// A routed search waiting for the section change that would clear it.
+    @State private var routeSearchText: String?
 
     /// `onRecentChangesReviewed` runs when the user leaves Recent Changes
     /// (another section or closing the window) or chooses Mark All Reviewed.
@@ -62,21 +64,7 @@ public struct DetailWindowView: View {
         }
         .onChange(of: viewModel.pendingRoute) { _, _ in applyPendingRouteIfAny() }
         .onChange(of: section) { oldSection, newSection in
-            // Rows stay on screen for the whole visit; leaving marks them
-            // reviewed so the next visit starts clean.
-            if oldSection == .recentChanges, newSection != .recentChanges {
-                onRecentChangesReviewed?()
-            }
-            viewModel.isViewingRecentChanges = newSection == .recentChanges
-            // Reset per-context state: the search field and any inspector
-            // selection would otherwise dangle into a section that can't show them.
-            searchText = ""
-            if isApplyingRoute {
-                // Route-driven change: keep the pre-selected inspector item.
-                isApplyingRoute = false
-            } else {
-                inspectorSelection = nil
-            }
+            handleSectionChange(from: oldSection, to: newSection)
         }
         .onChange(of: inspectorSelection) { _, newValue in
             if newValue != nil { isInspectorPresented = true }
@@ -166,11 +154,35 @@ public struct DetailWindowView: View {
         }
     }
 
+    private func handleSectionChange(from oldSection: SidebarItem?, to newSection: SidebarItem?) {
+        // Rows stay on screen for the whole visit; leaving marks them
+        // reviewed so the next visit starts clean.
+        if oldSection == .recentChanges, newSection != .recentChanges {
+            onRecentChangesReviewed?()
+        }
+        viewModel.isViewingRecentChanges = newSection == .recentChanges
+        // Reset per-context state: the search field and any inspector
+        // selection would otherwise dangle into a section that can't show them.
+        searchText = routeSearchText ?? ""
+        routeSearchText = nil
+        if isApplyingRoute {
+            // Route-driven change: keep the pre-selected inspector item.
+            isApplyingRoute = false
+        } else {
+            inspectorSelection = nil
+        }
+    }
+
     private func applyPendingRouteIfAny() {
         guard let route = viewModel.pendingRoute else { return }
         // Suppress the section-change reset only when the section actually
         // changes (onChange won't fire otherwise, so the flag must not stick).
         isApplyingRoute = section != route.sidebarItem
+        if isApplyingRoute {
+            routeSearchText = route.searchText
+        } else if let text = route.searchText {
+            searchText = text
+        }
         if route == .recentChanges { viewModel.recentChangesWindow = .sinceLastReview }
         section = route.sidebarItem
         if let preselect = route.inspectorSelection {

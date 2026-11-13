@@ -1,8 +1,16 @@
 import Foundation
+import PermissionsCore
 
 /// One glanceable dropdown row: a semantic kind (the view maps it to copy
-/// and an SF Symbol) plus the deep-link route a click follows.
+/// and an SF Symbol) plus where a click goes.
 public struct DropdownStatusRow: Equatable, Sendable, Identifiable {
+    public enum Destination: Equatable, Sendable {
+        /// A page in the detail window.
+        case app(AppRoute)
+        /// A Privacy & Security pane, for what macOS hides from the app.
+        case systemSettings(PermissionService)
+    }
+
     public enum Kind: Equatable, Sendable {
         /// One row per domain the attention state names.
         case attention(AttentionState, AttentionDomain)
@@ -17,7 +25,22 @@ public struct DropdownStatusRow: Equatable, Sendable, Identifiable {
     }
 
     public let kind: Kind
-    public let route: AppRoute
+    public let destination: Destination
+
+    public init(kind: Kind, destination: Destination) {
+        self.kind = kind
+        self.destination = destination
+    }
+
+    public init(kind: Kind, route: AppRoute) {
+        self.init(kind: kind, destination: .app(route))
+    }
+
+    /// The detail-window route, nil when the row opens System Settings.
+    public var route: AppRoute? {
+        if case .app(let route) = destination { return route }
+        return nil
+    }
 
     public var id: String {
         switch kind {
@@ -102,7 +125,7 @@ public enum DropdownStatusBuilder {
         if micInUse || cameraInUse {
             result.append(.init(
                 kind: .media(mic: micInUse, camera: cameraInUse),
-                route: .permissions(selectAppKey: nil)
+                destination: mediaDestination(micInUse: micInUse, systemLevelOnly: systemLevelOnly)
             ))
         }
         if hasUnreviewedChanges && changeCount > 0 {
@@ -120,6 +143,15 @@ public enum DropdownStatusBuilder {
             result.append(.init(kind: summary, route: .overview))
         }
         return result
+    }
+
+    /// With a reduced scope Permission Pulse can't list microphone or camera
+    /// grants, so the row opens the System Settings pane that can. The
+    /// microphone wins when both are live.
+    static func mediaDestination(micInUse: Bool, systemLevelOnly: Bool) -> DropdownStatusRow.Destination {
+        let service: PermissionService = micInUse ? .microphone : .camera
+        if systemLevelOnly { return .systemSettings(service) }
+        return .app(.permissions(selectAppKey: nil, searchText: service.displayName))
     }
 }
 
