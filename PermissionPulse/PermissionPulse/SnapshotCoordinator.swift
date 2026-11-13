@@ -20,7 +20,7 @@ final class SnapshotCoordinator {
     static let maxStaleProbesInFlight = 8
 
     private let viewModel: AppViewModel
-    private let store: SnapshotStore
+    private let store: any SnapshotHistoryStore
     private let lastUsedProbe: any LastUsedProbe
     private let defaults: UserDefaults
     private let calendar: Calendar
@@ -29,6 +29,9 @@ final class SnapshotCoordinator {
 
     private let snapshotRetentionDays: @MainActor () -> Int
     private let staleThresholdDays: @MainActor () -> Int
+    /// Counts diff refreshes started; a refresh applies its result only if
+    /// no later one started while it was reading the store.
+    private var refreshesStarted = 0
 
     /// Called after a scan wrote a snapshot and the diffs were refreshed:
     /// the latest snapshot before the write (nil on first run), then the new one.
@@ -36,7 +39,7 @@ final class SnapshotCoordinator {
 
     init(
         viewModel: AppViewModel,
-        store: SnapshotStore,
+        store: any SnapshotHistoryStore,
         lastUsedProbe: any LastUsedProbe = LastUsedProbeHybrid(),
         defaults: UserDefaults = .standard,
         calendar: Calendar = .autoupdatingCurrent,
@@ -259,32 +262,45 @@ final class SnapshotCoordinator {
 
     /// Recomputes both Recent Changes windows. Returns the snapshots they
     /// compare against plus the last-reviewed one (what pruning must keep),
-    /// or nil when there is no history or a query failed.
+    /// or nil when there is no history, a query failed, or a later refresh
+    /// (a scan, or Mark as Reviewed) started meanwhile and owns the result.
     @discardableResult
     private func refreshDiffs(latestID: SnapshotID?) async -> Set<SnapshotID>? {
+        refreshesStarted += 1
+        let refresh = refreshesStarted
         viewModel.diffUnavailable = false
         guard let latestID else { return nil }
         viewModel.latestSnapshotID = latestID
         restoreReviewedID(latestID: latestID)
         do {
             guard let latest = try await store.snapshotSummary(id: latestID) else { return nil }
-            viewModel.latestSnapshotDate = latest.date
             let startOfToday = calendar.startOfDay(for: now())
             let weekCutoff = calendar.date(byAdding: .day, value: -7, to: startOfToday)
                 ?? startOfToday.addingTimeInterval(-Self.weekWindowSeconds)
             let sinceReview = try await sinceReviewDiffs(latest: latest, fallbackCutoff: startOfToday)
             let week = try await diffs(cutoff: weekCutoff, latest: latest, reviewedID: nil)
+            guard isCurrent(refresh) else { return nil }
+            viewModel.latestSnapshotDate = latest.date
             viewModel.latestDiffSinceReview = sinceReview
             viewModel.latestDiffWeek = week
             let compared = [sinceReview, week].compactMap { $0?.baselines.values.map(\.id) }.joined()
             return Set(compared).union([viewModel.lastReviewedSnapshotID].compactMap { $0 })
         } catch {
             Self.logger.error("Diff query failed: \(error.localizedDescription, privacy: .public)")
+            guard isCurrent(refresh) else { return nil }
             viewModel.latestDiffSinceReview = nil
             viewModel.latestDiffWeek = nil
             viewModel.diffUnavailable = true   // (C2) error, not "no data yet"
             return nil
         }
+    }
+
+    private func isCurrent(_ refresh: Int) -> Bool {
+        guard refresh == refreshesStarted else {
+            Self.logger.info("Diff refresh superseded by a later one; result dropped")
+            return false
+        }
+        return true
     }
 
     /// Compared with the snapshot the user last reviewed; with none (first
