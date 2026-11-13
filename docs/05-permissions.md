@@ -25,7 +25,7 @@ After this, normal double-clicks work.
 The first time the app actually runs, it opens a Welcome window (an AppKit-hosted window, reopened later from the dropdown's **Welcome Tour**) with two steps:
 
 - What Permission Pulse does: read-only by design, change tracking, stale permission alerts, no network or analytics.
-- **One permission to ask for:** Full Disk Access, and what we use it for (reading the system's permission records; Permission Pulse never writes outside its own data folder). On macOS 27 it adds that macOS only lets apps see system-level permissions: Accessibility, Full Disk Access, Input Monitoring and Screen Recording.
+- **One permission to ask for:** Full Disk Access, and what we use it for (reading the system's permission records; Permission Pulse never writes outside its own data folder). On macOS 27 it adds that macOS only lets apps see system-level permissions, and lists them (`PermissionScope.systemLevelServiceList`).
 - A **Skip for Now** button (everything except permissions and background items still works without FDA).
 
 ### 3. Full Disk Access prompt

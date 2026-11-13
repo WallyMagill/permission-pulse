@@ -26,7 +26,7 @@ Permission Pulse is a menu-bar app that gives you the missing view:
 - **Check for Updates…** — in the menu-bar dropdown and Settings → General; opens the [Releases page](https://github.com/WallyMagill/permission-pulse/releases) in your browser.
 - **Launch at Login** — optional, from Settings → General.
 
-**On macOS 27 and later**, Apple no longer lets any app read per-user permission records, so Permissions shows the system-level permissions only: Accessibility, Full Disk Access, Input Monitoring, Screen Recording, Remote Desktop, and Endpoint Security. Each screen says so: the Permissions banner reads "System-level permissions only", the dropdown counts "apps with system-level permissions", Overview's permission coverage reads "System-level only (macOS 27)", Stale Apps checks system-level permissions only, and searching for a hidden permission such as Camera explains that macOS hides it and offers the System Settings pane instead.
+**On macOS 27 and later**, Apple no longer lets any app read per-user permission records, so Permissions shows the system-level permissions only: Accessibility, Full Disk Access, Input Monitoring, Screen Recording, Developer Tools, Remote Desktop, and Endpoint Security. Each screen says so: the Permissions banner reads "System-level permissions only", the dropdown counts "apps with system-level permissions", Overview's permission coverage reads "System-level only (macOS 27)", Stale Apps checks system-level permissions only, and searching for a hidden permission such as Camera explains that macOS hides it and offers the System Settings pane instead.
 
 Read-only. No cleaner-tier nonsense. No analytics. No phoning home. Free and open-source under MIT.
 
@@ -94,7 +94,7 @@ defaults delete com.wallymagill.permissionpulse
 
 ## Known limitations
 
-- **macOS 27 shows less.** Apple no longer exposes per-user permission records (Camera, Microphone, Files and Folders, Automation, Contacts, Calendar, Photos, Reminders, Bluetooth, App Management, Media Library) to any app. Only Accessibility, Full Disk Access, Input Monitoring, Screen Recording, Remote Desktop, and Endpoint Security are visible there.
+- **macOS 27 shows less.** Apple no longer exposes per-user permission records (Camera, Microphone, Files and Folders, Automation, Contacts, Calendar, Photos, Reminders, Bluetooth, App Management, Media Library) to any app. Only Accessibility, Full Disk Access, Input Monitoring, Screen Recording, Developer Tools, Remote Desktop, and Endpoint Security are visible there.
 - **Full Disk Access turns off after every update**, because each ad-hoc-signed build has a different signature. Install step 5 restores it.
 - **No auto-update.** Check for Updates… opens the [Releases page](https://github.com/WallyMagill/permission-pulse/releases); download new versions from there.
 - **Untested on Intel and on macOS 14 and 15.** The Intel slice is built but has not been run on Intel hardware.

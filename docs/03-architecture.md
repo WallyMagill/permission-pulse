@@ -40,7 +40,7 @@ The app target uses Xcode 26's `PBXFileSystemSynchronizedRootGroup`, so any `.sw
 
 ### `PermissionsCore`
 
-- Types: `PermissionService` (18 cases; `systemLevel` names the six whose grants live in the system TCC database), `PermissionGrant`, `AppIdentity`, `LaunchAgentItem` (with `detailsReadable` and `fileName`), `BTMItem` (with `ItemType` / `Disposition` / `Scope`; `identityKey` is scope + identifier), `StaleApp`, `MediaUseEvent`, `SnapshotID`, `DigestAuthorizationStatus`, plus `ScannerOutput<Item>`, `ScannerWarning`, and `ScannerSource` for coverage truth.
+- Types: `PermissionService` (18 cases; `systemLevel` names the seven whose grants live in the system TCC database), `PermissionGrant`, `AppIdentity`, `LaunchAgentItem` (with `detailsReadable` and `fileName`), `BTMItem` (with `ItemType` / `Disposition` / `Scope`; `identityKey` is scope + identifier), `StaleApp`, `MediaUseEvent`, `SnapshotID`, `DigestAuthorizationStatus`, plus `ScannerOutput<Item>`, `ScannerWarning`, and `ScannerSource` for coverage truth.
 - `BTMItem.ItemType` maps the store's raw `type` values to named cases (app, login item, app agent, developer group, Spotlight / Dock tile / QuickLook extensions, background tasks, legacy agent, legacy daemon) and keeps anything else as `unknown(rawValue:)`.
 - `PermissionsExport` + `ExportCoverage` build the JSON/Markdown export, including export `schemaVersion` 2, app and macOS versions, and per-domain coverage.
 - Scanner/observer protocols: `TCCScanner`, `LaunchAgentScanner`, and `BTMScanner` return typed `ScannerOutput` values; `MediaUseObserver`, `LastUsedProbe`, and `WeeklyDigestScheduler` provide the other runtime boundaries.

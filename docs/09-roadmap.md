@@ -123,7 +123,7 @@ Landed after the v0.7.1 tag; ships in the next release:
 - Background Items: every observed `type` value is named (login item, app agent, legacy agent and daemon, background tasks, Spotlight / QuickLook / Dock tile extensions); identity is scope + identifier; diffs compare disposition and type only. ✅
 - Permissions: Remote Desktop and Endpoint Security grants (18 services; both are system-level and counted in Overview's risk line); "App not found on this Mac" badge for grants whose app is gone; diffs compare the authorization state only. ✅
 - History: each section picks its own baseline, and pruning keeps those baselines. Recent Changes' first window is "Since Last Review" (replacing the old "Yesterday" window), marked reviewed on leaving the page, closing the window on it, or Mark All Reviewed; the first snapshot ever is the first baseline. Each section not compared says why; a macOS 26 history compared with a macOS 27 scan covers the system-level permissions only. One visible-change list feeds the page, badges, counts, change alerts, and the digest. ✅
-- Notifications: opt-in change alerts (`changeAlertsEnabled`) after a scan writes a snapshot; the weekly digest is re-armed after every scan with a non-repeating trigger; the Preferences "Digest" tab is now "Notifications". ✅
+- Notifications: opt-in change alerts (`changeAlertsEnabled`) after a scan writes a snapshot; clicking a change alert or the digest opens Recent Changes; the weekly digest is re-armed after every scan with a non-repeating trigger; the Preferences "Digest" tab is now "Notifications". ✅
 - Full Disk Access: loss after an update or a revocation opens a recovery window once per build (`lastLaunchedVersion`, `fdaPromptShownForVersion`) that waits for the user to come back, checks again, and offers Reopen; the Welcome window runs the same loop. ✅
 - App behavior: double-clicking the running app in Finder opens the detail window; only one copy runs at a time; launch-at-login shows its real status, including requires-approval; Check for Updates… (dropdown and Preferences → General → About, which shows the version) opens the Releases page in the browser; the dropdown footer's welcome item is "Welcome Tour"; the dropdown header shows "Updated <time>"; a copy running from App Translocation is told to move to Applications; live mic/camera use wins the menu-bar icon; mic and camera devices added or removed after launch are followed. ✅
 - macOS 27 scope stated everywhere: hidden-service searches, the dropdown summary, Overview's "Permission coverage" row, the app inspector, and Stale Apps (banner and separate empty states for no data and no history). ✅
@@ -135,7 +135,6 @@ Landed after the v0.7.1 tag; ships in the next release:
 Carried over from `docs/17` "Deferred to later slices":
 
 - Sub-service preservation for `.filesAndFolders` / Photos / Bluetooth (the five folder-scope TCC strings currently collapse to one grant).
-- Notification click → open Recent Changes (needs a `UNUserNotificationCenterDelegate` routing into `pendingDetailMode`).
 
 ## v1.0.0 — First public release
 

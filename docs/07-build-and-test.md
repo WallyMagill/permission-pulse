@@ -57,13 +57,13 @@ From Xcode: ⌘U runs the per-package suites and the app-level test target.
 From the CLI:
 
 ```bash
-# Package-level tests (run without the Xcode project) — 304 tests total
-swift test --package-path Packages/PermissionsCore       # 40
-swift test --package-path Packages/PermissionsScanners   # 73
-swift test --package-path Packages/PermissionsStore      # 50
-swift test --package-path Packages/PermissionsUI         # 141
+# Package-level tests (run without the Xcode project) — 449 tests total
+swift test --package-path Packages/PermissionsCore       # 50
+swift test --package-path Packages/PermissionsScanners   # 93
+swift test --package-path Packages/PermissionsStore      # 76
+swift test --package-path Packages/PermissionsUI         # 230
 
-# App build + app-target tests via xcodebuild — 87 tests
+# App build + app-target tests via xcodebuild — 147 tests
 PERMISSION_PULSE_TEST_MODE=1 xcodebuild test \
   -project PermissionPulse/PermissionPulse.xcodeproj \
   -scheme PermissionPulse \
@@ -71,7 +71,7 @@ PERMISSION_PULSE_TEST_MODE=1 xcodebuild test \
   -only-testing:PermissionPulseTests CODE_SIGNING_ALLOWED=NO
 ```
 
-Tests use **Swift Testing** (`import Testing`); the UITest target uses XCTest. The four package suites contain 304 tests and the app target contains 87 tests, for 391 automated tests total. These are observed counts from 2026-11-13 on `release/v0.7.2` on macOS 27.2 with Xcode 27.2 / Swift 6.4.2, not estimates.
+Tests use **Swift Testing** (`import Testing`); the UITest target uses XCTest. The four package suites contain 449 tests and the app target contains 147 tests, for 596 automated tests total. These are observed counts from 2026-11-13 on `release/v0.7.2` on macOS 27.2 with Xcode 27.2 / Swift 6.4.2, not estimates.
 
 ### Runtime-correctness contract
 
@@ -125,8 +125,8 @@ The packaging script produces a universal arm64 + x86_64, ad-hoc-signed, entitle
 
 GitHub Actions (`.github/workflows/ci.yml`) runs on every PR to `main`, every push to `main` or a `release/**` branch, and on manual dispatch; a newer run on the same ref cancels the older one. Each job runs on two legs that do not cancel each other (`fail-fast: false`): `macos-26` with Xcode 26.5, and `xcode-27` (macOS 27) with Xcode 27.2. Each leg selects Xcode through `DEVELOPER_DIR`, fails with the expected path and the list of installed `/Applications/Xcode_*.app` if that Xcode is missing, and prints the macOS, Xcode, and Swift versions:
 
-- **`packages` job** — runs all 304 tests in the four SwiftPM packages.
-- **`app` job** — runs all 87 app-target tests in isolated test mode, performs static analysis, proves `smoke-test.sh --keep` preserves live state, then builds and independently verifies the release archive from the clean checkout, using the version and build number read from `Config/Version.xcconfig`.
+- **`packages` job** — runs all 449 tests in the four SwiftPM packages.
+- **`app` job** — runs all 147 app-target tests in isolated test mode, performs static analysis, proves `smoke-test.sh --keep` preserves live state, then builds and independently verifies the release archive from the clean checkout, using the version and build number read from `Config/Version.xcconfig`.
 
 CI never tags, publishes, or uploads that verified artifact. GitHub Releases remains a separate manual boundary.
 
