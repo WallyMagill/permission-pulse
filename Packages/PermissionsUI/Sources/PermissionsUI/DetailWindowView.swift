@@ -6,8 +6,8 @@ import PermissionsStore
 public struct DetailWindowView: View {
     @Environment(AppViewModel.self) private var viewModel
     @Environment(\.openWindow) private var openWindow
-    /// True while this window is key or main in the active app.
-    @Environment(\.appearsActive) private var appearsActive
+    /// Key or active while this window is in front in the active app.
+    @Environment(\.controlActiveState) private var controlActiveState
     private let onRefresh: (() async -> Void)?
     private let onRecentChangesReviewed: (() -> Void)?
     private let onBecameVisible: (() -> Void)?
@@ -67,7 +67,7 @@ public struct DetailWindowView: View {
             viewModel.isViewingRecentChanges = false
         }
         .onChange(of: viewModel.pendingRoute) { _, _ in applyPendingRouteIfAny() }
-        .onChange(of: appearsActive) { _, _ in updateRecentChangesVisibility() }
+        .onChange(of: controlActiveState) { _, _ in updateRecentChangesVisibility() }
         .onChange(of: section) { oldSection, newSection in
             handleSectionChange(from: oldSection, to: newSection)
         }
@@ -193,7 +193,7 @@ public struct DetailWindowView: View {
 
     private func updateRecentChangesVisibility() {
         viewModel.isViewingRecentChanges = (section ?? .overview)
-            .suppressesUnreviewedBadge(windowAppearsActive: appearsActive)
+            .suppressesUnreviewedBadge(windowIsInFront: controlActiveState.isInFront)
     }
 
     private func applyPendingRouteIfAny() {
@@ -221,9 +221,14 @@ extension SidebarItem {
 
     /// Recent Changes counts as seen only while it is on screen in front;
     /// a window left open behind other apps must not hide new changes.
-    func suppressesUnreviewedBadge(windowAppearsActive: Bool) -> Bool {
-        self == .recentChanges && windowAppearsActive
+    func suppressesUnreviewedBadge(windowIsInFront: Bool) -> Bool {
+        self == .recentChanges && windowIsInFront
     }
+}
+
+extension ControlActiveState {
+    /// `appearsActive` would say this directly but needs macOS 15.
+    var isInFront: Bool { self == .key || self == .active }
 }
 
 // MARK: - Sidebar (native source list)

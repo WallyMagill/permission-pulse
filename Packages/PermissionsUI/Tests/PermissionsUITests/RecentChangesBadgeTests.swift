@@ -1,3 +1,4 @@
+import SwiftUI
 import Testing
 @testable import PermissionsUI
 
@@ -5,8 +6,15 @@ import Testing
 struct RecentChangesBadgeTests {
     @Test("Only Recent Changes in an active window hides the unreviewed badge")
     func suppressedOnlyInFront() {
-        #expect(SidebarItem.recentChanges.suppressesUnreviewedBadge(windowAppearsActive: true))
-        #expect(!SidebarItem.recentChanges.suppressesUnreviewedBadge(windowAppearsActive: false))
-        #expect(!SidebarItem.permissions.suppressesUnreviewedBadge(windowAppearsActive: true))
+        #expect(SidebarItem.recentChanges.suppressesUnreviewedBadge(windowIsInFront: true))
+        #expect(!SidebarItem.recentChanges.suppressesUnreviewedBadge(windowIsInFront: false))
+        #expect(!SidebarItem.permissions.suppressesUnreviewedBadge(windowIsInFront: true))
+    }
+
+    @Test("A key or active window is in front; an inactive one is not")
+    func controlActiveStateInFront() {
+        #expect(ControlActiveState.key.isInFront)
+        #expect(ControlActiveState.active.isInFront)
+        #expect(!ControlActiveState.inactive.isInFront)
     }
 }
