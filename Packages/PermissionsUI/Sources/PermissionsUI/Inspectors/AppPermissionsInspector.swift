@@ -13,6 +13,7 @@ import PermissionsCore
 struct AppPermissionsInspector: View {
     let app: AppIdentity
     let grants: [PermissionGrant]
+    var appMissing = false
 
     var body: some View {
         ScrollView {
@@ -128,6 +129,16 @@ struct AppPermissionsInspector: View {
 
     private var actionFooter: some View {
         VStack(spacing: PPSpacing.sm) {
+            if appMissing {
+                Label(
+                    String(localized: "The app that received this permission is no longer installed on this Mac."),
+                    systemImage: "questionmark.app.dashed"
+                )
+                .ppFont(.metadata)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+                .frame(maxWidth: .infinity, alignment: .leading)
+            }
             if !resetCommands.isEmpty {
                 Text(String(localized: "Permission Pulse won't run these — paste them into Terminal yourself."))
                     .ppFont(.metadata)

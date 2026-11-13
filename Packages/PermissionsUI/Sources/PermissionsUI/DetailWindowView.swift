@@ -293,6 +293,7 @@ private struct PermissionsDetailPage: View {
         let appKey: String
         let app: AppIdentity
         let grants: [PermissionGrant]
+        let appMissing: Bool
         var id: String { appKey }
     }
 
@@ -308,8 +309,16 @@ private struct PermissionsDetailPage: View {
                     || grant.service.displayName.lowercased().contains(q)
             }
         }
+        let live = viewModel.tccDataSource == .live
         return Dictionary(grouping: filtered, by: \.appKey)
-            .map { key, grants in AppGrantGroup(appKey: key, app: grants[0].app, grants: grants) }
+            .map { key, grants in
+                AppGrantGroup(
+                    appKey: key,
+                    app: grants[0].app,
+                    grants: grants,
+                    appMissing: live && AppPresence.isMissing(grants[0].app)
+                )
+            }
             .sorted { $0.app.displayName.localizedCaseInsensitiveCompare($1.app.displayName) == .orderedAscending }
     }
 
@@ -340,6 +349,9 @@ private struct PermissionsDetailPage: View {
                         .lineLimit(1)
                 }
                 Spacer(minLength: PPSpacing.sm)
+                if group.appMissing {
+                    AppNotFoundBadge()
+                }
                 Text("\(distinctServices.count)")
                     .ppFont(.metadata)
                     .foregroundStyle(.secondary)

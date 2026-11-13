@@ -11,7 +11,11 @@ struct InspectorPanel: View {
         Group {
             switch resolvedContent {
             case .app(let app, let grants):
-                AppPermissionsInspector(app: app, grants: grants)
+                AppPermissionsInspector(
+                    app: app,
+                    grants: grants,
+                    appMissing: viewModel.tccDataSource == .live && AppPresence.isMissing(app)
+                )
             case .launchAgent(let item):
                 LaunchAgentInspector(item: item)
             case .backgroundItem(let item):
