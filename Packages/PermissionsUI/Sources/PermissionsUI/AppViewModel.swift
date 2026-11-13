@@ -33,8 +33,11 @@ public final class AppViewModel {
     public var mediaDataSource: DataSource
 
     // v0.5.0 snapshot/diff/stale state.
-    public var latestSnapshotID: SnapshotID?
+    public var latestSnapshotID: SnapshotID? {
+        didSet { reviewTracker.latestSnapshotChanged(to: latestSnapshotID) }
+    }
     public var lastReviewedSnapshotID: SnapshotID?
+    @ObservationIgnored private var reviewTracker = RecentChangesReviewTracker()
     public var latestDiffSinceReview: SnapshotDiffs?
     /// When the latest stored snapshot was taken; nil until history exists.
     public var latestSnapshotDate: Date?
@@ -180,6 +183,24 @@ public final class AppViewModel {
 
     public var hasUnreviewedChanges: Bool {
         unreviewedChangeCount > 0
+    }
+
+    /// Call whenever Recent Changes' visibility or its rendered diff changes;
+    /// see `RecentChangesReviewTracker`.
+    public func observeRecentChanges(showing: Bool, inFront: Bool) {
+        reviewTracker.observe(
+            showingRecentChanges: showing,
+            inFront: inFront,
+            window: recentChangesWindow,
+            displayedSnapshotID: latestDiffSinceReview?.toID
+        )
+    }
+
+    /// The newest snapshot whose since-last-review changes the user saw, to
+    /// mark reviewed on leaving Recent Changes or quitting; tracking starts
+    /// over.
+    public func takeSeenRecentChanges() -> SnapshotID? {
+        reviewTracker.leave()
     }
 
     /// Records a "Skip forever" and drops the app from the current list, so

@@ -150,6 +150,27 @@ extension MockWeeklyDigestScheduler {
     }
 }
 
+@Suite @MainActor struct QuitReviewTests {
+    @Test func quittingWhileOnRecentChangesMarksWhatWasOnScreenReviewed() async throws {
+        let env = try ScanEnvironment()
+        defer { env.cleanUp() }
+        let id = try await env.store.writeSnapshot(grants: [], launchAgents: [], btmItems: [], coverage: .allComplete)
+        env.delegate.viewModel.latestSnapshotID = id
+        env.delegate.viewModel.latestDiffSinceReview = SnapshotDiffs(
+            toID: id,
+            tcc: TCCGrantsDiff(added: [], removed: []),
+            btm: BTMItemsDiff(added: [], removed: []),
+            launchAgents: LaunchAgentsDiff(added: [], removed: [])
+        )
+        env.delegate.viewModel.observeRecentChanges(showing: true, inFront: true)
+
+        env.delegate.applicationWillTerminate(Notification(name: NSApplication.willTerminateNotification))
+
+        #expect(env.delegate.viewModel.lastReviewedSnapshotID == id)
+        #expect(env.delegate.runtimeDefaults.object(forKey: SnapshotCoordinator.lastReviewedSnapshotIDKey) as? Int64 == id.rawValue)
+    }
+}
+
 @Suite @MainActor struct NotificationDestinationTests {
     @Test func eachNotificationOpensItsOwnPlace() {
         #expect(NotificationDestination.forRequest(ChangeAlertCoordinator.changesIdentifier) == .detail(.recentChanges))

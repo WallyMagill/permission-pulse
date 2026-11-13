@@ -23,6 +23,15 @@ struct RecentChangesReviewTracker: Equatable, Sendable {
         seenSnapshotID = displayedSnapshotID
     }
 
+    /// Snapshot IDs restart at 1 after Reset All Data, so a seen ID past the
+    /// latest one belongs to deleted history and would block every newer one.
+    mutating func latestSnapshotChanged(to latest: SnapshotID?) {
+        guard let seenSnapshotID else { return }
+        if latest.map({ $0.rawValue < seenSnapshotID.rawValue }) ?? true {
+            self.seenSnapshotID = nil
+        }
+    }
+
     /// The snapshot to mark reviewed on leaving, if any; tracking starts over.
     mutating func leave() -> SnapshotID? {
         defer { seenSnapshotID = nil }

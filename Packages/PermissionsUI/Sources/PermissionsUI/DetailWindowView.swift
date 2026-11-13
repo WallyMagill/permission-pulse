@@ -18,7 +18,6 @@ public struct DetailWindowView: View {
     @State private var searchText = ""
     @State private var isRefreshing = false
     @State private var isApplyingRoute = false
-    @State private var reviewTracker = RecentChangesReviewTracker()
     /// A routed search waiting for the section change that would clear it.
     @State private var routeSearchText: String?
 
@@ -198,16 +197,11 @@ public struct DetailWindowView: View {
         let inFront = controlActiveState.isInFront
         viewModel.isViewingRecentChanges = (section ?? .overview)
             .suppressesUnreviewedBadge(windowIsInFront: inFront)
-        reviewTracker.observe(
-            showingRecentChanges: section == .recentChanges,
-            inFront: inFront,
-            window: viewModel.recentChangesWindow,
-            displayedSnapshotID: viewModel.latestDiffSinceReview?.toID
-        )
+        viewModel.observeRecentChanges(showing: section == .recentChanges, inFront: inFront)
     }
 
     private func markSeenChangesReviewed() {
-        guard let seen = reviewTracker.leave() else { return }
+        guard let seen = viewModel.takeSeenRecentChanges() else { return }
         onRecentChangesReviewed?(seen)
     }
 

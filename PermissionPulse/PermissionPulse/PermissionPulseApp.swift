@@ -451,6 +451,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         snapshotCoordinator?.markSnapshotReviewed(id)
     }
 
+    /// Changes on screen in Recent Changes when the app quits were seen;
+    /// they must not come back as unreviewed on the next launch.
+    func applicationWillTerminate(_ notification: Notification) {
+        guard let seen = viewModel.takeSeenRecentChanges() else { return }
+        markSnapshotReviewed(seen)
+    }
+
     /// Un-skips every skipped stale app and lists the ones still stale
     /// again without waiting for the next scan.
     @discardableResult
