@@ -97,11 +97,11 @@ struct ChangeRow: View {
             let to = dispositionLabel(change.after.disposition)
             return String(localized: "Disposition changed: \(change.after.name) (\(from) → \(to))")
         case .launchAgentAdded(let i):
-            return String(localized: "New launch agent: \(i.label)")
+            return LaunchAgentChangeDescription.addedSummary(i)
         case .launchAgentRemoved(let i):
             return String(localized: "Removed launch agent: \(i.label)")
         case .launchAgentFlipped(let change):
-            return launchAgentFlipDescription(change)
+            return LaunchAgentChangeDescription.summary(change)
         }
     }
 
@@ -158,6 +158,7 @@ struct ChangeRow: View {
             item.sourceDirectory.rawValue,
             item.sourceDirectory.path,
             item.programPath,
+            item.fileName,
         ].compactMap { $0 } + item.programArguments
     }
 
@@ -167,20 +168,6 @@ struct ChangeRow: View {
         case 3: String(localized: "Limited")
         default: String(localized: "Value \(value)")
         }
-    }
-
-    private static func launchAgentFlipDescription(_ change: DomainChange<LaunchAgentItem>) -> String {
-        if change.before.runAtLoad != change.after.runAtLoad {
-            let from = change.before.runAtLoad ? String(localized: "on") : String(localized: "off")
-            let to = change.after.runAtLoad ? String(localized: "on") : String(localized: "off")
-            return String(localized: "runAtLoad flipped: \(change.after.label) (\(from) → \(to))")
-        }
-        if change.before.keepAlive != change.after.keepAlive {
-            let from = change.before.keepAlive ? String(localized: "on") : String(localized: "off")
-            let to = change.after.keepAlive ? String(localized: "on") : String(localized: "off")
-            return String(localized: "keepAlive flipped: \(change.after.label) (\(from) → \(to))")
-        }
-        return String(localized: "Modified: \(change.after.label)")
     }
 
     private static func dispositionLabel(_ d: BTMItem.Disposition) -> String {

@@ -143,8 +143,8 @@ struct DiffTabView: View {
     }
 
     private func visibleRows(_ rows: [ChangeRow.Kind], now: Date) -> [ChangeRow.Kind] {
-        let undismissed = rows.filter {
-            !dismissedStore.isDismissed(key: DiffEntryKey.key(for: $0), asOf: now)
+        let undismissed = rows.filter { row in
+            !DiffEntryKey.lookupKeys(for: row).contains { dismissedStore.isDismissed(key: $0, asOf: now) }
         }
         return ChangeRow.filtered(undismissed, searchText: searchText)
     }

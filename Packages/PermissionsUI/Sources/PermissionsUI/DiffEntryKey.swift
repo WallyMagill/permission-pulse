@@ -31,7 +31,21 @@ enum DiffEntryKey {
         case .launchAgentRemoved(let i):
             return "la-removed|\(i.sourceDirectory.rawValue)|\(i.label)"
         case .launchAgentFlipped(let change):
-            return "la-flip|\(change.after.sourceDirectory.rawValue)|\(change.after.label)"
+            let token = LaunchAgentChangeDescription.dismissalToken(change)
+            return "\(legacyLaunchAgentFlipKey(change))|\(token)"
         }
+    }
+
+    /// Every key whose dismissal hides this row: the current key plus any
+    /// pre-v0.7.2 form still stored in UserDefaults.
+    static func lookupKeys(for kind: ChangeRow.Kind) -> [String] {
+        guard case .launchAgentFlipped(let change) = kind else { return [key(for: kind)] }
+        // Before v0.7.2 a flip key named only the agent, so an old dismissal
+        // keeps hiding every change to that agent, as it did when stored.
+        return [key(for: kind), legacyLaunchAgentFlipKey(change)]
+    }
+
+    private static func legacyLaunchAgentFlipKey(_ change: DomainChange<LaunchAgentItem>) -> String {
+        "la-flip|\(change.after.sourceDirectory.rawValue)|\(change.after.label)"
     }
 }
