@@ -9,7 +9,7 @@ public struct DetailWindowView: View {
     /// Key or active while this window is in front in the active app.
     @Environment(\.controlActiveState) private var controlActiveState
     private let onRefresh: (() async -> Void)?
-    private let onRecentChangesReviewed: (() -> Void)?
+    private let onRecentChangesReviewed: ((SnapshotID) -> Void)?
     private let onBecameVisible: (() -> Void)?
 
     @State private var section: SidebarItem? = .overview
@@ -18,14 +18,16 @@ public struct DetailWindowView: View {
     @State private var searchText = ""
     @State private var isRefreshing = false
     @State private var isApplyingRoute = false
+    @State private var reviewTracker = RecentChangesReviewTracker()
     /// A routed search waiting for the section change that would clear it.
     @State private var routeSearchText: String?
 
-    /// `onRecentChangesReviewed` runs when the user leaves Recent Changes
-    /// (another section or closing the window) or chooses Mark All Reviewed.
+    /// `onRecentChangesReviewed` receives the newest snapshot whose changes
+    /// the user saw, when they leave Recent Changes (another section or
+    /// closing the window) or choose Mark All Reviewed.
     public init(
         onRefresh: (() async -> Void)? = nil,
-        onRecentChangesReviewed: (() -> Void)? = nil,
+        onRecentChangesReviewed: ((SnapshotID) -> Void)? = nil,
         onBecameVisible: (() -> Void)? = nil
     ) {
         self.onRefresh = onRefresh
@@ -62,12 +64,13 @@ public struct DetailWindowView: View {
         }
         .onDisappear {
             viewModel.isDetailWindowOpen = false
-            guard section == .recentChanges else { return }
-            onRecentChangesReviewed?()
+            markSeenChangesReviewed()
             viewModel.isViewingRecentChanges = false
         }
         .onChange(of: viewModel.pendingRoute) { _, _ in applyPendingRouteIfAny() }
         .onChange(of: controlActiveState) { _, _ in updateRecentChangesVisibility() }
+        .onChange(of: viewModel.recentChangesWindow) { _, _ in updateRecentChangesVisibility() }
+        .onChange(of: viewModel.latestDiffSinceReview?.toID) { _, _ in updateRecentChangesVisibility() }
         .onChange(of: section) { oldSection, newSection in
             handleSectionChange(from: oldSection, to: newSection)
         }
@@ -157,7 +160,7 @@ public struct DetailWindowView: View {
         case .launchAgents: LaunchAgentsDetailPage(searchText: searchText, selection: $inspectorSelection)
         case .backgroundItems: BackgroundItemsDetailPage(searchText: searchText, selection: $inspectorSelection)
         case .recentChanges:
-            RecentChangesDetailPage(searchText: searchText, onMarkAllReviewed: onRecentChangesReviewed)
+            RecentChangesDetailPage(searchText: searchText, onMarkAllReviewed: markAllReviewedAction)
         case .staleApps: StaleAppsDetailPage(searchText: searchText)
         }
     }
@@ -173,10 +176,10 @@ public struct DetailWindowView: View {
     }
 
     private func handleSectionChange(from oldSection: SidebarItem?, to newSection: SidebarItem?) {
-        // Rows stay on screen for the whole visit; leaving marks them
-        // reviewed so the next visit starts clean.
+        // Rows stay on screen for the whole visit; leaving marks the ones
+        // seen reviewed so the next visit starts from them.
         if oldSection == .recentChanges, newSection != .recentChanges {
-            onRecentChangesReviewed?()
+            markSeenChangesReviewed()
         }
         updateRecentChangesVisibility()
         // Reset per-context state: the search field and any inspector
@@ -192,8 +195,29 @@ public struct DetailWindowView: View {
     }
 
     private func updateRecentChangesVisibility() {
+        let inFront = controlActiveState.isInFront
         viewModel.isViewingRecentChanges = (section ?? .overview)
-            .suppressesUnreviewedBadge(windowIsInFront: controlActiveState.isInFront)
+            .suppressesUnreviewedBadge(windowIsInFront: inFront)
+        reviewTracker.observe(
+            showingRecentChanges: section == .recentChanges,
+            inFront: inFront,
+            window: viewModel.recentChangesWindow,
+            displayedSnapshotID: viewModel.latestDiffSinceReview?.toID
+        )
+    }
+
+    private func markSeenChangesReviewed() {
+        guard let seen = reviewTracker.leave() else { return }
+        onRecentChangesReviewed?(seen)
+    }
+
+    /// The button sits under the since-last-review rows, so they are seen.
+    private var markAllReviewedAction: (() -> Void)? {
+        guard let onRecentChangesReviewed else { return nil }
+        return {
+            guard let shown = viewModel.latestDiffSinceReview?.toID else { return }
+            onRecentChangesReviewed(shown)
+        }
     }
 
     private func applyPendingRouteIfAny() {

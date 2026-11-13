@@ -535,6 +535,19 @@ import PermissionsUI
         #expect(stored == 1)
     }
 
+    @Test func markingASeenSnapshotNeverMovesTheReviewBackOrPastTheLatest() async throws {
+        let env = try await Environment(now: fixedNow)
+        env.viewModel.latestSnapshotID = SnapshotID(rawValue: 5)
+        env.viewModel.lastReviewedSnapshotID = SnapshotID(rawValue: 4)
+
+        #expect(env.coordinator.markSnapshotReviewed(SnapshotID(rawValue: 3)) == nil)
+        #expect(env.coordinator.markSnapshotReviewed(SnapshotID(rawValue: 6)) == nil)
+        #expect(env.viewModel.lastReviewedSnapshotID == SnapshotID(rawValue: 4))
+
+        await env.coordinator.markSnapshotReviewed(SnapshotID(rawValue: 5))?.value
+        #expect(env.defaults.object(forKey: SnapshotCoordinator.lastReviewedSnapshotIDKey) as? Int64 == 5)
+    }
+
     @Test func yesterdayDiffUsesCalendarDayBoundaryNotRollingWindow() async throws {
         // Regression for C1. "Now" is early morning today; a snapshot taken
         // yesterday afternoon is only ~18h old, so the old rolling 24h window

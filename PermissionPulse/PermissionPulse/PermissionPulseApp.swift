@@ -78,8 +78,8 @@ struct PermissionPulseApp: App {
                 onRefresh: { [appDelegate] in
                     await appDelegate.rescan()
                 },
-                onRecentChangesReviewed: { [appDelegate] in
-                    appDelegate.markCurrentSnapshotReviewed()
+                onRecentChangesReviewed: { [appDelegate] seen in
+                    appDelegate.markSnapshotReviewed(seen)
                 },
                 onBecameVisible: { [appDelegate] in
                     appDelegate.scanScheduler?.noteBecameVisible()
@@ -429,8 +429,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         await changeAlertCoordinator.snapshotWritten(changes: changes)
     }
 
-    func markCurrentSnapshotReviewed() {
-        snapshotCoordinator?.markCurrentSnapshotReviewed()
+    func markSnapshotReviewed(_ id: SnapshotID) {
+        snapshotCoordinator?.markSnapshotReviewed(id)
     }
 
     /// Un-skips every skipped stale app and lists the ones still stale

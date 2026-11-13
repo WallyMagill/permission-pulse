@@ -181,6 +181,20 @@ final class SnapshotCoordinator {
     @discardableResult
     func markCurrentSnapshotReviewed() -> Task<Void, Never>? {
         guard let id = viewModel.latestSnapshotID else { return nil }
+        return markReviewed(id)
+    }
+
+    /// Marks `id`, the newest snapshot whose changes the user saw, reviewed.
+    /// One no newer than the current review, or past the latest snapshot,
+    /// changes nothing.
+    @discardableResult
+    func markSnapshotReviewed(_ id: SnapshotID) -> Task<Void, Never>? {
+        guard let latest = viewModel.latestSnapshotID, id.rawValue <= latest.rawValue else { return nil }
+        if let reviewed = viewModel.lastReviewedSnapshotID, reviewed.rawValue >= id.rawValue { return nil }
+        return markReviewed(id)
+    }
+
+    private func markReviewed(_ id: SnapshotID) -> Task<Void, Never> {
         recordReviewed(id)
         return Task { [weak self] in
             guard let self else { return }
