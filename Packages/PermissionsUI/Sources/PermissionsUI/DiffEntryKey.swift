@@ -63,9 +63,14 @@ enum DiffEntryKey {
     }
 
     private static func btmTransitionToken(_ change: DomainChange<BTMItem>) -> String {
-        let disposition = "\(dispositionToken(change.before.disposition))-\(dispositionToken(change.after.disposition))"
-        guard change.before.type != change.after.type else { return disposition }
-        return "\(disposition)|type:\(change.before.type.rawValue)-\(change.after.type.rawValue)"
+        var token = "\(dispositionToken(change.before.disposition))-\(dispositionToken(change.after.disposition))"
+        if change.before.type != change.after.type {
+            token += "|type:\(change.before.type.rawValue)-\(change.after.type.rawValue)"
+        }
+        if change.teamIdentifierChanged {
+            token += "|team:\(change.before.teamIdentifier ?? "")-\(change.after.teamIdentifier ?? "")"
+        }
+        return token
     }
 
     private static func dispositionToken(_ disposition: BTMItem.Disposition) -> String {

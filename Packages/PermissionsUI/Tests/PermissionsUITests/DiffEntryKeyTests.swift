@@ -104,10 +104,22 @@ import PermissionsStore
     private func btm(
         _ disposition: BTMItem.Disposition,
         scope: BTMItem.Scope = .user,
-        type: BTMItem.ItemType = .app
+        type: BTMItem.ItemType = .app,
+        team: String? = nil
     ) -> BTMItem {
-        BTMItem(identifier: "2.us.zoom.xos", name: "zoom.us", type: type, disposition: disposition,
-                scope: scope, modificationDate: Date(timeIntervalSince1970: 0))
+        BTMItem(identifier: "2.us.zoom.xos", name: "zoom.us", teamIdentifier: team, type: type,
+                disposition: disposition, scope: scope, modificationDate: Date(timeIntervalSince1970: 0))
+    }
+
+    @Test func developerChangeNamesBothTeamsAndCarriesThemInTheKey() {
+        let change = DomainChange(before: btm(.enabled, team: "BJ4HAAB9B3"), after: btm(.enabled, team: "ZZZZZZZZZZ"))
+        let back = DomainChange(before: change.after, after: change.before)
+
+        #expect(ChangeRow.summary(for: .btmDispositionFlipped(change))
+            == "Developer changed: zoom.us (BJ4HAAB9B3 → ZZZZZZZZZZ)")
+        #expect(DiffEntryKey.key(for: .btmDispositionFlipped(change))
+            == "btm-flip|user|2.us.zoom.xos|enabled-enabled|team:BJ4HAAB9B3-ZZZZZZZZZZ")
+        #expect(DiffEntryKey.key(for: .btmDispositionFlipped(back)) != DiffEntryKey.key(for: .btmDispositionFlipped(change)))
     }
 
     @Test func btmFlipKeyCarriesDirectionAndHonorsLegacyKey() {

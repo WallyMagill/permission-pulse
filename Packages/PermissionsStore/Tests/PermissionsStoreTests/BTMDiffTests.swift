@@ -140,6 +140,24 @@ import PermissionsCore
         #expect(!SnapshotStore.diffBTMItems(before: stored, after: [scanned]).hasContent)
     }
 
+    @Test func differentSigningTeamIsAChange() {
+        let before = item(id: "helper")
+        let after = signed(before, team: "OTHERTEAM1")
+
+        let diff = SnapshotStore.diffBTMItems(before: [before], after: [after])
+
+        #expect(diff.changed == [DomainChange(before: before, after: after)])
+        #expect(diff.changed.first?.teamIdentifierChanged == true)
+    }
+
+    // A team ID one scan could not read is not a different developer.
+    @Test func missingTeamOnEitherSideIsNotAChange() {
+        let signedItem = item(id: "helper")
+        for (before, after) in [(signed(signedItem, team: nil), signedItem), (signedItem, signed(signedItem, team: ""))] {
+            #expect(!SnapshotStore.diffBTMItems(before: [before], after: [after]).hasContent)
+        }
+    }
+
     @Test func sameIdentifierInThreeScopesDiffsIndependently() {
         let perUser = BTMItem.Scope.perUser(uuid: "EBE3FCE9-AAB7-4856-9DE0-DA73CD18AAEE")
         let before = [
@@ -155,6 +173,15 @@ import PermissionsCore
         #expect(diff.added.isEmpty)
         #expect(diff.removed.map(\.scope) == [.user])
         #expect(diff.changed.map(\.after.scope) == [.system])
+    }
+
+    private func signed(_ item: BTMItem, team: String?) -> BTMItem {
+        BTMItem(
+            identifier: item.identifier, name: item.name, developerName: item.developerName,
+            bundleIdentifier: item.bundleIdentifier, teamIdentifier: team, type: item.type,
+            disposition: item.disposition, scope: item.scope,
+            modificationDate: item.modificationDate, parentIdentifier: item.parentIdentifier
+        )
     }
 
     private func item(

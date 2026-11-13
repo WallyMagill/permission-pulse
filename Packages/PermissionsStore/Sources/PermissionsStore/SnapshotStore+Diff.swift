@@ -322,10 +322,13 @@ extension SnapshotStore {
         lhs.authValue == rhs.authValue
     }
 
-    // Same rule for background items: enabled/disabled and the item's kind.
-    // The raw disposition bits, display names and dates are excluded.
+    // Same rule for background items: enabled/disabled, the item's kind, and
+    // who signed it. The raw disposition bits, display names and dates are
+    // excluded.
     static func btmItemsEquivalent(_ lhs: BTMItem, _ rhs: BTMItem) -> Bool {
-        lhs.disposition == rhs.disposition && lhs.type == rhs.type
+        lhs.disposition == rhs.disposition
+            && lhs.type == rhs.type
+            && !DomainChange(before: lhs, after: rhs).teamIdentifierChanged
     }
 }
 

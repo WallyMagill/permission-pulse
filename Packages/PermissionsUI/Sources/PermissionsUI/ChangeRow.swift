@@ -200,6 +200,9 @@ struct ChangeRow: View {
     }
 
     private static func btmChangeSummary(_ change: DomainChange<BTMItem>) -> String {
+        if change.teamIdentifierChanged, let from = change.before.teamIdentifier, let to = change.after.teamIdentifier {
+            return String(localized: "Developer changed: \(change.after.name) (\(from) → \(to))")
+        }
         guard change.before.disposition == change.after.disposition else {
             let from = dispositionLabel(change.before.disposition)
             let to = dispositionLabel(change.after.disposition)
