@@ -361,7 +361,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         case .detail(let route):
             showDetailWindow(route: route)
         case .fullDiskAccessRecovery:
-            showFullDiskAccessWindow(lastFullDiskAccessLoss ?? .revoked)
+            openFullDiskAccessNotification()
         case nil:
             break
         }

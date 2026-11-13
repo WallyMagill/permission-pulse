@@ -27,6 +27,24 @@ import PermissionsUI
         #expect(env.delegate.runtimeDefaults.string(forKey: AppDelegate.lastLaunchedVersionKey) == "0.7.2 (12)")
     }
 
+    @Test func anOldAccessNotificationOpensRecoveryOnlyWhileAccessIsOff() throws {
+        var shown: [FullDiskAccessLoss] = []
+        let env = try ScanEnvironment(appVersion: version) { shown.append($0) }
+        defer { env.cleanUp() }
+        env.delegate.viewModel.tccAvailability = .complete(lastUpdated: Date())
+
+        env.delegate.openNotification(identifier: ChangeAlertCoordinator.fullDiskAccessIdentifier)
+
+        #expect(shown.isEmpty)
+        #expect(env.delegate.viewModel.windowToOpen == "detail")
+        #expect(env.delegate.viewModel.pendingRoute == .overview)
+
+        env.delegate.viewModel.tccAvailability = .failed(lastSuccessful: nil, error: .permissionDenied(reason: "FDA"))
+        env.delegate.openNotification(identifier: ChangeAlertCoordinator.fullDiskAccessIdentifier)
+
+        #expect(shown == [.revoked])
+    }
+
     @Test func promptOpensOncePerVersionAndNeverOnFirstRun() async throws {
         var shown: [FullDiskAccessLoss] = []
         let env = try ScanEnvironment(appVersion: version) { shown.append($0) }

@@ -38,13 +38,29 @@ extension AppDelegate {
         let version = appVersion.identifier
         guard runtimeDefaults.string(forKey: Self.fdaPromptShownForVersionKey) != version else { return }
         runtimeDefaults.set(version, forKey: Self.fdaPromptShownForVersionKey)
+        presentFullDiskAccessRecovery(loss)
+        await changeAlertCoordinator.fullDiskAccessTurnedOff()
+    }
+
+    /// A click on the "Full Disk Access was turned off" notification. Access
+    /// may be back since it was posted, and the recovery window would then
+    /// wait for a change that already happened, so it opens only while the
+    /// permissions scan is denied.
+    func openFullDiskAccessNotification() {
+        guard FullDiskAccessLoss.isDenied(tcc: viewModel.tccAvailability) else {
+            showDetailWindow(route: .overview)
+            return
+        }
+        presentFullDiskAccessRecovery(lastFullDiskAccessLoss ?? .revoked)
+    }
+
+    private func presentFullDiskAccessRecovery(_ loss: FullDiskAccessLoss) {
         lastFullDiskAccessLoss = loss
         if let fullDiskAccessPromptPresenter {
             fullDiskAccessPromptPresenter(loss)
         } else {
             showFullDiskAccessWindow(loss)
         }
-        await changeAlertCoordinator.fullDiskAccessTurnedOff()
     }
 
     /// Called when the app becomes active: if a recovery window is waiting
