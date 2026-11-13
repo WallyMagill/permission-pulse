@@ -58,9 +58,9 @@ From Xcode: ⌘U runs the per-package suites and the app-level test target.
 From the CLI:
 
 ```bash
-# Package-level tests (run without the Xcode project) — 303 tests total
+# Package-level tests (run without the Xcode project) — 304 tests total
 swift test --package-path Packages/PermissionsCore       # 40
-swift test --package-path Packages/PermissionsScanners   # 72
+swift test --package-path Packages/PermissionsScanners   # 73
 swift test --package-path Packages/PermissionsStore      # 50
 swift test --package-path Packages/PermissionsUI         # 141
 
@@ -72,7 +72,7 @@ PERMISSION_PULSE_TEST_MODE=1 xcodebuild test \
   -only-testing:PermissionPulseTests CODE_SIGNING_ALLOWED=NO
 ```
 
-Tests use **Swift Testing** (`import Testing`); the UITest target uses XCTest. The four package suites contain 303 tests and the app target contains 87 tests, for 390 automated tests total. These are observed counts from 2026-11-13 on `release/v0.7.2` on macOS 27.2 with Xcode 27.2 / Swift 6.4.2, not estimates.
+Tests use **Swift Testing** (`import Testing`); the UITest target uses XCTest. The four package suites contain 304 tests and the app target contains 87 tests, for 391 automated tests total. These are observed counts from 2026-11-13 on `release/v0.7.2` on macOS 27.2 with Xcode 27.2 / Swift 6.4.2, not estimates.
 
 ### Runtime-correctness contract
 
@@ -125,7 +125,7 @@ The packaging script produces a universal arm64 + x86_64, ad-hoc-signed, entitle
 
 GitHub Actions (`.github/workflows/ci.yml`) runs on every PR and every push to `main`. Both jobs use `macos-26` and `/Applications/Xcode_26.5.app/Contents/Developer`, and print the macOS, Xcode, and Swift versions:
 
-- **`packages` job** — runs all 303 tests in the four SwiftPM packages.
+- **`packages` job** — runs all 304 tests in the four SwiftPM packages.
 - **`app` job** — runs all 87 app-target tests in isolated test mode, performs static analysis, proves `smoke-test.sh --keep` preserves live state, then builds and independently verifies the exact v0.7.2/build 12 archive from the clean checkout.
 
 CI never tags, publishes, or uploads that verified artifact. GitHub Releases remains a separate manual boundary.

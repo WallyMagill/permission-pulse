@@ -155,12 +155,26 @@ final class SnapshotCoordinator {
     )
 
     private func currentCoverage() -> SnapshotDomainCoverage {
-        let tcc = Self.coverage(of: viewModel.tccAvailability)
-        return SnapshotDomainCoverage(
-            tcc: tcc == .complete && !viewModel.tccUnavailableSources.isEmpty ? .reduced : tcc,
+        SnapshotDomainCoverage(
+            tcc: Self.tccCoverage(
+                of: viewModel.tccAvailability,
+                unavailableSources: viewModel.tccUnavailableSources
+            ),
             btm: Self.coverage(of: viewModel.btmAvailability),
             launchAgents: Self.coverage(of: viewModel.launchAgentAvailability)
         )
+    }
+
+    /// `.reduced` names exactly one scope — the per-user database hidden, as
+    /// on macOS 27 — so two reduced snapshots always cover the same data. Any
+    /// other hidden source is not a scope history can compare.
+    private static func tccCoverage(
+        of availability: ScanAvailability,
+        unavailableSources: [ScannerSource]
+    ) -> SnapshotCoverage {
+        let coverage = coverage(of: availability)
+        guard coverage == .complete, !unavailableSources.isEmpty else { return coverage }
+        return unavailableSources == [.userTCCDatabase] ? .reduced : .degraded
     }
 
     private static func coverage(of availability: ScanAvailability) -> SnapshotCoverage {

@@ -12,6 +12,7 @@ public struct BTMScannerDirect: BTMScanner, Sendable {
     static let storageClassName = "Storage"
     static let topLevelUserStoreKey = "userStore"
     static let userStoreClassName = "BTMUserStore"
+    static let indexUsersKey = "infoByUserIdentifier"
     static let itemRecordClassName = "ItemRecord"
     static let rootUserUUIDSentinel = "FFFFEEEE-DDDD-CCCC-BBBB-AAAAFFFFFFFE"
     static let systemUserUUIDSentinel = "FFFFEEEE-DDDD-CCCC-BBBB-AAAA00000000"
@@ -99,8 +100,48 @@ public struct BTMScannerDirect: BTMScanner, Sendable {
         }
         let latest = candidates.filter { $0.name.version == latestVersion }
         let perUser = latest.filter { $0.name.userUUID != nil }
-        let chosen = perUser.isEmpty ? latest : perUser
-        return chosen.map(\.url).sorted { $0.lastPathComponent < $1.lastPathComponent }
+        guard !perUser.isEmpty else { return latest.map(\.url) }
+        if let index = latest.first(where: { $0.name.userUUID == nil }) {
+            try requireFileForEveryIndexedUser(
+                indexURL: index.url,
+                presentUsers: Set(perUser.compactMap(\.name.userUUID))
+            )
+        }
+        return perUser.map(\.url).sorted { $0.lastPathComponent < $1.lastPathComponent }
+    }
+
+    /// The index lists every user that has a store. A listed user with no
+    /// file would silently drop that user's items, which a later diff would
+    /// read as removals, so the scan fails instead.
+    private func requireFileForEveryIndexedUser(indexURL: URL, presentUsers: Set<String>) throws {
+        let unarchiver: NSKeyedUnarchiver
+        do {
+            unarchiver = try NSKeyedUnarchiver(forReadingFrom: try readFile(at: indexURL))
+        } catch let error as ScannerError {
+            throw error
+        } catch {
+            throw ScannerError.schemaMismatch(
+                detail: String(
+                    localized: "Unable to unarchive \(indexURL.lastPathComponent): \(error.localizedDescription)"
+                )
+            )
+        }
+        unarchiver.requiresSecureCoding = false
+        guard let info = unarchiver.decodeObject(forKey: Self.indexUsersKey) as? NSDictionary else {
+            throw ScannerError.schemaMismatch(
+                detail: String(
+                    localized: "\(indexURL.lastPathComponent) has no '\(Self.indexUsersKey)' dictionary."
+                )
+            )
+        }
+        let missing = Set(info.allKeys.compactMap { $0 as? String }).subtracting(presentUsers)
+        guard missing.isEmpty else {
+            throw ScannerError.schemaMismatch(
+                detail: String(
+                    localized: "\(indexURL.lastPathComponent) lists \(info.count) users but \(missing.count) of them have no per-user file."
+                )
+            )
+        }
     }
 
     struct ParsedFileName: Equatable {

@@ -108,6 +108,21 @@ import PermissionsCore
         }
     }
 
+    @Test func scanThrowsWhenAnIndexedUserHasNoFile() async throws {
+        let dir = try BTMTempDir()
+        try BTMFixtures.makeSplitLayoutFixture(at: dir.url, recordsByUser: [
+            BTMFixtures.systemUserUUID: [BTMFixtures.zoomDaemon],
+            BTMFixtures.perUserUUID: [BTMFixtures.zoomApp],
+        ])
+        try FileManager.default.removeItem(
+            at: BTMFixtures.splitLayoutFileURL(in: dir.url, userUUID: BTMFixtures.perUserUUID)
+        )
+
+        await #expect(throws: ScannerError.self) {
+            _ = try await BTMScannerDirect(directoryURL: dir.url).scan()
+        }
+    }
+
     @Test func scanThrowsSchemaMismatchOnMissingTopLevelKey() async throws {
         let dir = try BTMTempDir()
         try BTMFixtures.makeMissingTopLevelKeyFixture(at: dir.url)

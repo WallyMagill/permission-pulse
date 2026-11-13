@@ -79,7 +79,7 @@ Each scanner is documented as: **what it reads, which API, what permission is ne
 **Where:**
 - `/private/var/db/com.apple.backgroundtaskmanagement/BackgroundItems-v*.btm`
 - Two versions coexist on Tahoe 26 (`v13`, `v16`). The scanner globs and picks the highest integer suffix.
-- **macOS 27 (store v18) splits the store per user.** `BackgroundItems-v18.btm` is an index (`$top`: `version`, `infoByUserIdentifier`, `mdmPayloadsByIdentifier`) with no items. Items live in `BackgroundItems-v18-<user UUID>.btm`, whose `$top.userStore` is a `BTMUserStore` (`userIdentifier`, `records`, `userSettings`, `lastUsedDate`); `records` is the `ItemRecord` list, unchanged apart from a new `lastUseDate`. When the newest version has per-user files the scanner reads all of them (shim: `BTMUserStoreShim`); otherwise it reads the single file. One unreadable per-user file fails the scan, because missing items would read as removals.
+- **macOS 27 (store v18) splits the store per user.** `BackgroundItems-v18.btm` is an index (`$top`: `version`, `infoByUserIdentifier`, `mdmPayloadsByIdentifier`) with no items. Items live in `BackgroundItems-v18-<user UUID>.btm`, whose `$top.userStore` is a `BTMUserStore` (`userIdentifier`, `records`, `userSettings`, `lastUsedDate`); `records` is the `ItemRecord` list, unchanged apart from a new `lastUseDate`. When the newest version has per-user files the scanner reads all of them (shim: `BTMUserStoreShim`); otherwise it reads the single file. One unreadable per-user file, or a user the index lists with no file, fails the scan, because missing items would read as removals.
 
 **API:** Direct decode via `NSKeyedUnarchiver(forReadingFrom:)` with `requiresSecureCoding = false`.
 

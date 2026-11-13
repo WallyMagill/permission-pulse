@@ -18,7 +18,7 @@ public struct ScanAvailabilityBanner: View {
     }
 
     private var isReducedScope: Bool {
-        availability.isComplete && unavailableSources.contains(.userTCCDatabase)
+        availability.isComplete && unavailableSources == [.userTCCDatabase]
     }
 
     public var body: some View {
