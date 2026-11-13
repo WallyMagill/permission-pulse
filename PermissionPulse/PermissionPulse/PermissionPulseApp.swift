@@ -173,6 +173,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private let resetOperation: (@MainActor () async -> Void)?
     let weeklyDigestScheduler: any WeeklyDigestScheduler
     private(set) var resetTask: Task<Void, Never>?
+    /// The scan in flight, if any.
+    private(set) var scanTask: Task<Bool, Never>?
     /// Set by the snapshot coordinator when the current scan wrote a snapshot.
     private var snapshotWrite: (previous: SnapshotID?, written: SnapshotID)?
 
@@ -343,23 +345,44 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// results (the digest body above all) is refreshed after each scan.
     @discardableResult
     func performRescanIfIdle() async -> Bool {
+        guard let scan = startScanIfIdle() else { return false }
+        return await scan.value
+    }
+
+    /// Starts a scan and returns it, or nil when one is already in flight or
+    /// launch has not finished. The task is kept in `scanTask` so callers
+    /// that need fresh results can await a scan someone else started.
+    func startScanIfIdle() -> Task<Bool, Never>? {
         // Don't start a second scan while one is in flight (e.g. user hits
         // Refresh during the initial launch scan, or a wake and a menu open
         // land together). Concurrent scans could both see changed evidence
         // before either writes, producing duplicate snapshot rows. (R2)
         guard !viewModel.scanInProgress else {
             Self.logger.debug("Rescan ignored — a scan is already in progress")
-            return false
+            return nil
         }
         // Nil until launch finishes (a relaunched copy may still be waiting
         // for the old process); recording this build's version or touching
         // notifications before then would act on no scan at all.
         guard let coordinator else {
             Self.logger.debug("Rescan ignored — launch has not finished")
-            return false
+            return nil
         }
         viewModel.scanInProgress = true
-        defer { viewModel.scanInProgress = false }
+        let scan = Task { @MainActor [weak self] () -> Bool in
+            guard let self else { return false }
+            defer {
+                self.viewModel.scanInProgress = false
+                self.scanTask = nil
+            }
+            await self.runScan(coordinator)
+            return true
+        }
+        scanTask = scan
+        return scan
+    }
+
+    private func runScan(_ coordinator: ScanCoordinator) async {
         viewModel.staleThresholdDays = preferencesStore.staleThresholdDays
         snapshotWrite = nil
         await coordinator.rescan()
@@ -369,7 +392,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         await handleFullDiskAccessLoss(fullDiskAccessLoss)
         await postChangeAlertIfNeeded()
         _ = await weeklyDigestCoordinator.reconcileSchedule()
-        return true
     }
 
     private func postChangeAlertIfNeeded() async {

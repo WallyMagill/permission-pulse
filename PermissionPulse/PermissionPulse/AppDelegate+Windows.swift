@@ -35,7 +35,6 @@ extension AppDelegate: NSWindowDelegate {
             self.runtimeDefaults.set(true, forKey: Self.hasSeenWelcomeKey)
             self.welcomeWindow?.close()
             self.welcomeWindow = nil
-            self.fullDiskAccessRecovery.end()
         }
     }
 

@@ -163,14 +163,15 @@ final class SnapshotCoordinator {
     /// True when any stored snapshot captured Permissions or Background
     /// Items, both of which need Full Disk Access. Pruning keeps the newest
     /// captured snapshot of each domain, so a past capture is never lost.
-    func hasCapturedProtectedData() async -> Bool {
+    /// Nil when the lookup failed.
+    func hasCapturedProtectedData() async -> Bool? {
         do {
             return try await store.snapshotSummaries(atOrBefore: .distantFuture).contains {
                 $0.coverage.tcc != .failed || $0.coverage.btm != .failed
             }
         } catch {
             Self.logger.error("Capture lookup failed: \(error.localizedDescription, privacy: .public)")
-            return false
+            return nil
         }
     }
 

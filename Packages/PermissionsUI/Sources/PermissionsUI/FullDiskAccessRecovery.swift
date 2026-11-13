@@ -45,7 +45,7 @@ public final class FullDiskAccessRecovery {
         return leftAppWhileWaiting && (phase == .waiting || phase == .stillDenied)
     }
 
-    public static func outcome(tcc: ScanAvailability, btm: ScanAvailability) -> Phase {
-        FullDiskAccessLoss.isDenied(tcc: tcc, btm: btm) ? .stillDenied : .restored
+    public nonisolated static func outcome(tcc: ScanAvailability) -> Phase {
+        FullDiskAccessLoss.isDenied(tcc: tcc) ? .stillDenied : .restored
     }
 }

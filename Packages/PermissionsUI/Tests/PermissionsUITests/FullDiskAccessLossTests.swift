@@ -18,12 +18,18 @@ import PermissionsCore
         #expect(FullDiskAccessLoss.classify(capturedBefore: true, lastLaunchedVersion: "0.7.2 (12)", runningVersion: "0.7.2 (12)") == .revoked)
     }
 
-    @Test func onlyPermissionDeniedCountsAsDenied() {
-        let date = Date(timeIntervalSince1970: 1_700_000_000)
-        let ok = ScanAvailability.complete(lastUpdated: date)
-        #expect(FullDiskAccessLoss.isDenied(tcc: .failed(lastSuccessful: nil, error: .permissionDenied(reason: "x")), btm: ok))
-        #expect(FullDiskAccessLoss.isDenied(tcc: ok, btm: .failed(lastSuccessful: nil, error: .permissionDenied(reason: "x"))))
-        #expect(!FullDiskAccessLoss.isDenied(tcc: .failed(lastSuccessful: nil, error: .temporarilyUnavailable(reason: "busy")), btm: ok))
+    @Test func onlyAPermissionDeniedPermissionsScanCountsAsDenied() {
+        #expect(FullDiskAccessLoss.isDenied(tcc: .failed(lastSuccessful: nil, error: .permissionDenied(reason: "x"))))
+        #expect(!FullDiskAccessLoss.isDenied(tcc: .failed(lastSuccessful: nil, error: .temporarilyUnavailable(reason: "busy"))))
+    }
+
+    /// One unreadable `.btm` file reads as permission denied with access on;
+    /// it must not reopen the recovery window or keep it saying "still off".
+    @Test func aDeniedBackgroundItemsScanAloneIsNotALossOfAccess() {
+        let ok = ScanAvailability.complete(lastUpdated: Date(timeIntervalSince1970: 1_700_000_000))
+        #expect(!FullDiskAccessLoss.isDenied(tcc: ok))
+        #expect(FullDiskAccessRecovery.outcome(tcc: ok) == .restored)
+        #expect(FullDiskAccessRecovery.outcome(tcc: .failed(lastSuccessful: nil, error: .permissionDenied(reason: "x"))) == .stillDenied)
     }
 }
 

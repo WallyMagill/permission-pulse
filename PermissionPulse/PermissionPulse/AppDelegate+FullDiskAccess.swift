@@ -10,16 +10,20 @@ extension AppDelegate {
 
     /// Runs after a scan and before its snapshot is written, so "captured
     /// before" can only mean an earlier snapshot. Records this build as the
-    /// last launched one afterwards.
+    /// last launched one afterwards, but only when history could answer:
+    /// without it a later loss after an update would read as revoked.
     func classifyFullDiskAccessLoss() async -> FullDiskAccessLoss? {
+        guard let snapshotCoordinator else { return nil }
         let running = appVersion.identifier
         let lastLaunched = runtimeDefaults.string(forKey: Self.lastLaunchedVersionKey)
-        defer { runtimeDefaults.set(running, forKey: Self.lastLaunchedVersionKey) }
-        guard FullDiskAccessLoss.isDenied(
-            tcc: viewModel.tccAvailability,
-            btm: viewModel.btmAvailability
-        ) else { return nil }
-        let capturedBefore = await snapshotCoordinator?.hasCapturedProtectedData() ?? false
+        guard FullDiskAccessLoss.isDenied(tcc: viewModel.tccAvailability) else {
+            runtimeDefaults.set(running, forKey: Self.lastLaunchedVersionKey)
+            return nil
+        }
+        guard let capturedBefore = await snapshotCoordinator.hasCapturedProtectedData() else {
+            return nil
+        }
+        runtimeDefaults.set(running, forKey: Self.lastLaunchedVersionKey)
         return FullDiskAccessLoss.classify(
             capturedBefore: capturedBefore,
             lastLaunchedVersion: lastLaunched,
@@ -43,14 +47,20 @@ extension AppDelegate {
     }
 
     /// Called when the app becomes active: if a recovery window is waiting
-    /// and the user just came back, scan again and report the result.
+    /// and the user just came back, scan again (or wait for the scan already
+    /// running) and report the result.
     func recheckFullDiskAccessIfReturning() async {
         guard fullDiskAccessRecovery.shouldRecheckOnActivation(), resetTask == nil else { return }
         fullDiskAccessRecovery.phase = .checking
-        let scanned = await performRescanIfIdle()
+        let scanned: Bool
+        if let scanTask {
+            scanned = await scanTask.value
+        } else {
+            scanned = await performRescanIfIdle()
+        }
         guard fullDiskAccessRecovery.phase == .checking else { return }
         fullDiskAccessRecovery.phase = scanned
-            ? FullDiskAccessRecovery.outcome(tcc: viewModel.tccAvailability, btm: viewModel.btmAvailability)
+            ? FullDiskAccessRecovery.outcome(tcc: viewModel.tccAvailability)
             : .waiting
     }
 
