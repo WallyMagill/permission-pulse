@@ -21,7 +21,8 @@ import PermissionsUI
             current: current,
             executableModified: built,
             others: others,
-            relaunchedFrom: relaunchedFrom
+            relaunchedFrom: relaunchedFrom,
+            now: Date(timeIntervalSince1970: 3_000)
         )
     }
 
@@ -47,6 +48,49 @@ import PermissionsUI
     @Test func aCopyWithUnknownLaunchDateIsReplacedRatherThanTrusted() {
         let running = instance(412, launched: nil)
         #expect(decide(current: instance(500, launched: 3_000), others: [running]) == .replace(waitFor: nil, terminate: [412]))
+    }
+
+    // A copy run directly from its executable has no Launch Services launch
+    // date; it must not sort ahead of a copy already running.
+    @Test func thisCopyWithNoLaunchDateStillHandsOffToAnEarlierCopy() {
+        let running = instance(412, launched: 2_000)
+        #expect(decide(current: instance(500, launched: nil), others: [running]) == .handOff(to: 412))
+    }
+
+    @Test func anotherCopyWithNoStartTimeIsReplacedNotLeftRunning() {
+        let running = instance(600, launched: nil)
+        #expect(decide(current: instance(500, launched: nil), others: [running]) == .replace(waitFor: nil, terminate: [600]))
+    }
+
+    @Test func processStartTimeIsReadForAProcessLaunchServicesDidNotStart() throws {
+        let start = try #require(SingleInstanceGuard.processStartTime(ProcessInfo.processInfo.processIdentifier))
+        #expect(start <= Date())
+        #expect(start > Date().addingTimeInterval(-ProcessInfo.processInfo.systemUptime - 60))
+        #expect(SingleInstanceGuard.processStartTime(-1) == nil)
+    }
+
+    // A rename keeps the executable's dates; the bundle directory's change
+    // date must still mark the code as newer than a copy launched earlier.
+    @Test func renamingTheAppIntoPlaceCountsAsANewBuild() async throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let staged = root.appendingPathComponent("Staged.app")
+        let macOS = staged.appendingPathComponent("Contents/MacOS")
+        try FileManager.default.createDirectory(at: macOS, withIntermediateDirectories: true)
+        try Data("binary".utf8).write(to: macOS.appendingPathComponent("PermissionPulse"))
+        let executableDates = try #require(SingleInstanceGuard.codeModificationDate(
+            bundleURL: URL(fileURLWithPath: "/nonexistent"),
+            executableURL: macOS.appendingPathComponent("PermissionPulse")
+        ))
+        try await Task.sleep(for: .milliseconds(50))
+        let installed = root.appendingPathComponent("Permission Pulse.app")
+        try FileManager.default.moveItem(at: staged, to: installed)
+
+        let modified = try #require(SingleInstanceGuard.codeModificationDate(
+            bundleURL: URL(fileURLWithPath: installed.path),
+            executableURL: URL(fileURLWithPath: installed.path + "/Contents/MacOS/PermissionPulse")
+        ))
+        #expect(modified > executableDates)
     }
 
     @Test func twoCopiesLaunchedTogetherAgreeTheEarlierContinues() {
