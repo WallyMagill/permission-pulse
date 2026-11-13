@@ -6,6 +6,8 @@ import PermissionsStore
 public struct DetailWindowView: View {
     @Environment(AppViewModel.self) private var viewModel
     @Environment(\.openWindow) private var openWindow
+    /// True while this window is key or main in the active app.
+    @Environment(\.appearsActive) private var appearsActive
     private let onRefresh: (() async -> Void)?
     private let onRecentChangesReviewed: (() -> Void)?
     private let onBecameVisible: (() -> Void)?
@@ -54,7 +56,7 @@ public struct DetailWindowView: View {
         .background(windowShortcuts)
         .onAppear {
             applyPendingRouteIfAny()
-            viewModel.isViewingRecentChanges = section == .recentChanges
+            updateRecentChangesVisibility()
             onBecameVisible?()
         }
         .onDisappear {
@@ -63,6 +65,7 @@ public struct DetailWindowView: View {
             viewModel.isViewingRecentChanges = false
         }
         .onChange(of: viewModel.pendingRoute) { _, _ in applyPendingRouteIfAny() }
+        .onChange(of: appearsActive) { _, _ in updateRecentChangesVisibility() }
         .onChange(of: section) { oldSection, newSection in
             handleSectionChange(from: oldSection, to: newSection)
         }
@@ -89,15 +92,7 @@ public struct DetailWindowView: View {
         }
         if let onRefresh {
             ToolbarItem(placement: .primaryAction) {
-                Button {
-                    guard !isRefreshing else { return }
-                    Task { isRefreshing = true; await onRefresh(); isRefreshing = false }
-                } label: {
-                    Label(String(localized: "Rescan"), systemImage: "arrow.clockwise")
-                }
-                .disabled(isRefreshing)
-                .help(String(localized: "Rescan Now"))
-                .keyboardShortcut("r", modifiers: [.command])
+                rescanButton(onRefresh)
             }
         }
         ToolbarItem(placement: .primaryAction) { ExportToolbarMenu() }
@@ -110,6 +105,27 @@ public struct DetailWindowView: View {
             .help(String(localized: "Show or hide the inspector"))
             .keyboardShortcut("i", modifiers: [.command, .option])
         }
+    }
+
+    /// Disabled with a spinner while any scan runs, including scheduled
+    /// ones started elsewhere, not just the ones this button started.
+    private func rescanButton(_ onRefresh: @escaping () async -> Void) -> some View {
+        let isScanning = isRefreshing || viewModel.scanInProgress
+        return Button {
+            guard !isScanning else { return }
+            Task { isRefreshing = true; await onRefresh(); isRefreshing = false }
+        } label: {
+            if isScanning {
+                ProgressView()
+                    .controlSize(.small)
+                    .accessibilityLabel(String(localized: "Scanning"))
+            } else {
+                Label(String(localized: "Rescan"), systemImage: "arrow.clockwise")
+            }
+        }
+        .disabled(isScanning)
+        .help(isScanning ? String(localized: "Scanning…") : String(localized: "Rescan Now"))
+        .keyboardShortcut("r", modifiers: [.command])
     }
 
     // Hidden buttons give the window ⌘1–⌘6 section switching and ⌘, Preferences
@@ -160,7 +176,7 @@ public struct DetailWindowView: View {
         if oldSection == .recentChanges, newSection != .recentChanges {
             onRecentChangesReviewed?()
         }
-        viewModel.isViewingRecentChanges = newSection == .recentChanges
+        updateRecentChangesVisibility()
         // Reset per-context state: the search field and any inspector
         // selection would otherwise dangle into a section that can't show them.
         searchText = routeSearchText ?? ""
@@ -171,6 +187,11 @@ public struct DetailWindowView: View {
         } else {
             inspectorSelection = nil
         }
+    }
+
+    private func updateRecentChangesVisibility() {
+        viewModel.isViewingRecentChanges = (section ?? .overview)
+            .suppressesUnreviewedBadge(windowAppearsActive: appearsActive)
     }
 
     private func applyPendingRouteIfAny() {
@@ -195,6 +216,12 @@ public struct DetailWindowView: View {
 
 extension SidebarItem {
     var showsSearch: Bool { self != .overview }
+
+    /// Recent Changes counts as seen only while it is on screen in front;
+    /// a window left open behind other apps must not hide new changes.
+    func suppressesUnreviewedBadge(windowAppearsActive: Bool) -> Bool {
+        self == .recentChanges && windowAppearsActive
+    }
 }
 
 // MARK: - Sidebar (native source list)
