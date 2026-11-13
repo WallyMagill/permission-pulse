@@ -63,7 +63,7 @@ These are the spots where AI codegen most often invents APIs or assumes behavior
 
 ## UserDefaults keys (current through v0.7.2)
 
-In addition to `hasSeenWelcome`, `lastSnapshotDate`, `lastReviewedSnapshotID` from v0.3.x–v0.5.0, v0.7.0 added the keys below (v0.7.1 and v0.7.2 added no new keys):
+In addition to `hasSeenWelcome`, `lastSnapshotDate`, `lastReviewedSnapshotID` from v0.3.x–v0.5.0, v0.7.0 added the keys below (v0.7.1 added no new keys; v0.7.2 added the last three):
 
 - `com.wallymagill.permissionpulse.snapshotRetentionDays` — Int (7…365, default 90)
 - `com.wallymagill.permissionpulse.staleThresholdDays` — Int (30…365, default 90)
@@ -73,6 +73,9 @@ In addition to `hasSeenWelcome`, `lastSnapshotDate`, `lastReviewedSnapshotID` fr
 - `com.wallymagill.permissionpulse.digestMinute` — Int (0…59, default 0)
 - `com.wallymagill.permissionpulse.dismissedDiffEntries` — JSON `[String: Date]` (semantic-key → expiry; `.distantFuture` = forever)
 - `com.wallymagill.permissionpulse.dismissedStaleApps` — `[String]` (`bundle:<bundle-id>` or `path:<standardized-file-path>` stable keys; legacy raw bundle IDs migrate without losing dismissals)
+- `com.wallymagill.permissionpulse.changeAlertsEnabled` — Bool (default false)
+- `com.wallymagill.permissionpulse.lastLaunchedVersion` — String `"<short version> (<build>)"` of the last build that scanned (absent until the first scan)
+- `com.wallymagill.permissionpulse.fdaPromptShownForVersion` — String, same format: the build that already opened the Full Disk Access recovery window (absent until it first opens)
 
 "Reset All Data" wipes everything matching `com.wallymagill.permissionpulse.*` while preserving `NSWindow`/`NSStatusItem`/`NSSplitView` keys macOS auto-writes under our bundle domain.
 
