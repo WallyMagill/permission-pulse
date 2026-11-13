@@ -424,12 +424,7 @@ private struct LaunchAgentsDetailPage: View {
     }
 
     private var filteredItems: [LaunchAgentItem] {
-        if searchText.isEmpty { return viewModel.launchAgents }
-        let q = searchText.lowercased()
-        return viewModel.launchAgents.filter { item in
-            item.label.lowercased().contains(q)
-                || (item.programPath?.lowercased().contains(q) ?? false)
-        }
+        LaunchAgentDisplay.filtered(viewModel.launchAgents, searchText: searchText)
     }
 
     private var subtitle: String {
@@ -438,28 +433,6 @@ private struct LaunchAgentsDetailPage: View {
         return count == 1
             ? String(localized: "1 agent across user and system scopes")
             : String(localized: "\(count) agents across user and system scopes")
-    }
-}
-
-private struct LaunchAgentRow: View {
-    let item: LaunchAgentItem
-
-    var body: some View {
-        HStack(spacing: PPSpacing.md) {
-            Image(systemName: "gearshape.2")
-                .frame(width: 28, height: 28)
-                .foregroundStyle(.secondary)
-                .accessibilityHidden(true)
-            VStack(alignment: .leading, spacing: PPSpacing.xxs) {
-                Text(item.label).ppFont(.body).lineLimit(1)
-                Text(item.sourceDirectory.path)
-                    .ppFont(.metadata)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
-            }
-        }
-        .padding(.vertical, PPSpacing.xxs)
-        .accessibilityElement(children: .combine)
     }
 }
 
