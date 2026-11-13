@@ -1,4 +1,3 @@
-import AppKit // AppKit: NSApp.activate so a window opened from outside SwiftUI comes to the front.
 import SwiftUI
 
 /// Content of the hidden settings-trampoline window. Code without SwiftUI's
@@ -20,7 +19,8 @@ public struct WindowOpeningTrampoline: View {
     private func openRequestedWindow() {
         guard let id = viewModel.windowToOpen else { return }
         viewModel.windowToOpen = nil
-        NSApp.activate(ignoringOtherApps: true)
         openWindow(id: id)
+        // The scene's window exists once this update finishes.
+        Task { @MainActor in WindowActivation.bringToFront(sceneID: id) }
     }
 }

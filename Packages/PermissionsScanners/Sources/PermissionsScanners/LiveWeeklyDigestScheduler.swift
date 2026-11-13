@@ -4,10 +4,9 @@ import UserNotifications
 import PermissionsCore
 
 /// Production-side `WeeklyDigestScheduler` backed by
-/// `UNUserNotificationCenter.current()`. Foreground banner presentation is
-/// handled by `NotificationPresentationDelegate`; taps on the delivered
-/// notification simply activate the app (candidate to route into Recent
-/// Changes later).
+/// `UNUserNotificationCenter.current()`. Foreground banner presentation and
+/// clicks on a delivered notification are handled by
+/// `NotificationPresentationDelegate`.
 public struct LiveWeeklyDigestScheduler: WeeklyDigestScheduler {
     private static let logger = Logger(
         subsystem: "com.wallymagill.permissionpulse",

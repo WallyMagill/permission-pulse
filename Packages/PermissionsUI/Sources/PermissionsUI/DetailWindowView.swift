@@ -55,11 +55,13 @@ public struct DetailWindowView: View {
         .frame(minWidth: 760, minHeight: 480)
         .background(windowShortcuts)
         .onAppear {
+            viewModel.isDetailWindowOpen = true
             applyPendingRouteIfAny()
             updateRecentChangesVisibility()
             onBecameVisible?()
         }
         .onDisappear {
+            viewModel.isDetailWindowOpen = false
             guard section == .recentChanges else { return }
             onRecentChangesReviewed?()
             viewModel.isViewingRecentChanges = false
@@ -204,7 +206,7 @@ public struct DetailWindowView: View {
         } else if let text = route.searchText {
             searchText = text
         }
-        if route == .recentChanges { viewModel.recentChangesWindow = .sinceLastReview }
+        if let window = route.recentChangesWindow { viewModel.recentChangesWindow = window }
         section = route.sidebarItem
         if let preselect = route.inspectorSelection {
             inspectorSelection = preselect

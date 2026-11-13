@@ -9,8 +9,7 @@ extension AppDelegate: NSWindowDelegate {
         // Singleton: re-front the existing window instead of orphaning it. The
         // menu-bar "Welcome Tour" entry can call this repeatedly. (U5)
         if let welcomeWindow {
-            welcomeWindow.makeKeyAndOrderFront(nil)
-            NSApp.activate(ignoringOtherApps: true)
+            WindowActivation.bringToFront(welcomeWindow)
             return
         }
         let view = WelcomeWindowView(
@@ -50,8 +49,7 @@ extension AppDelegate: NSWindowDelegate {
         window.center()
         window.isReleasedWhenClosed = false
         window.delegate = self
-        window.makeKeyAndOrderFront(nil)
-        NSApp.activate(ignoringOtherApps: true)
+        WindowActivation.bringToFront(window)
         return window
     }
 

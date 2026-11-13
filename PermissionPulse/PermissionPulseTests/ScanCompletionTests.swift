@@ -126,4 +126,36 @@ extension MockWeeklyDigestScheduler {
         #expect(env.delegate.viewModel.windowToOpen == "detail")
         #expect(env.delegate.viewModel.pendingRoute == .overview)
     }
+
+    @Test func reopenOnlyBringsAnOpenDetailWindowForwardAndDropsAStaleRoute() throws {
+        let env = try ScanEnvironment()
+        defer { env.cleanUp() }
+        env.delegate.viewModel.isDetailWindowOpen = true
+        env.delegate.viewModel.pendingRoute = .recentChanges
+
+        _ = env.delegate.applicationShouldHandleReopen(NSApplication.shared, hasVisibleWindows: true)
+
+        #expect(env.delegate.viewModel.windowToOpen == "detail")
+        #expect(env.delegate.viewModel.pendingRoute == nil)
+    }
+
+    @Test func clickingAChangeAlertOpensRecentChanges() throws {
+        let env = try ScanEnvironment()
+        defer { env.cleanUp() }
+
+        env.delegate.openNotification(identifier: ChangeAlertCoordinator.changesIdentifier)
+
+        #expect(env.delegate.viewModel.windowToOpen == "detail")
+        #expect(env.delegate.viewModel.pendingRoute == .recentChanges)
+    }
+}
+
+@Suite @MainActor struct NotificationDestinationTests {
+    @Test func eachNotificationOpensItsOwnPlace() {
+        #expect(NotificationDestination.forRequest(ChangeAlertCoordinator.changesIdentifier) == .detail(.recentChanges))
+        #expect(NotificationDestination.forRequest(ChangeAlertCoordinator.fullDiskAccessIdentifier) == .fullDiskAccessRecovery)
+        #expect(NotificationDestination.forRequest(WeeklyDigestCoordinator.weeklyIdentifier) == .detail(.recentChangesLastSevenDays))
+        #expect(NotificationDestination.forRequest(WeeklyDigestCoordinator.overdueIdentifier) == .detail(.recentChangesLastSevenDays))
+        #expect(NotificationDestination.forRequest("\(WeeklyDigestCoordinator.testIdentifierPrefix).ABC") == nil)
+    }
 }

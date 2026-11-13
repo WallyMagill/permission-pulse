@@ -38,6 +38,7 @@ extension AppDelegate {
         let version = appVersion.identifier
         guard runtimeDefaults.string(forKey: Self.fdaPromptShownForVersionKey) != version else { return }
         runtimeDefaults.set(version, forKey: Self.fdaPromptShownForVersionKey)
+        lastFullDiskAccessLoss = loss
         if let fullDiskAccessPromptPresenter {
             fullDiskAccessPromptPresenter(loss)
         } else {
@@ -67,10 +68,10 @@ extension AppDelegate {
     // AppKit: a one-shot window opened from the delegate, which has no
     // SwiftUI openWindow, and must not depend on the menu-bar icon.
     func showFullDiskAccessWindow(_ loss: FullDiskAccessLoss) {
+        lastFullDiskAccessLoss = loss
         fullDiskAccessRecovery.beginWaiting()
         if let fullDiskAccessWindow {
-            fullDiskAccessWindow.makeKeyAndOrderFront(nil)
-            NSApp.activate(ignoringOtherApps: true)
+            WindowActivation.bringToFront(fullDiskAccessWindow)
             return
         }
         let view = FullDiskAccessPromptView(

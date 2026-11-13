@@ -15,6 +15,14 @@ struct AppRouteTests {
         #expect(AppRoute.backgroundItems(selectID: nil).sidebarItem == .backgroundItems)
         #expect(AppRoute.recentChanges.sidebarItem == .recentChanges)
         #expect(AppRoute.staleApps.sidebarItem == .staleApps)
+        #expect(AppRoute.recentChangesLastSevenDays.sidebarItem == .recentChanges)
+    }
+
+    @Test("Recent Changes routes pick their window")
+    func recentChangesWindows() {
+        #expect(AppRoute.recentChanges.recentChangesWindow == .sinceLastReview)
+        #expect(AppRoute.recentChangesLastSevenDays.recentChangesWindow == .lastSevenDays)
+        #expect(AppRoute.overview.recentChangesWindow == nil)
     }
 }
 

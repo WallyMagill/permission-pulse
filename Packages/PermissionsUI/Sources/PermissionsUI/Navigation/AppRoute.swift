@@ -19,7 +19,10 @@ public enum AppRoute: Hashable, Sendable {
     case permissions(selectAppKey: String?, searchText: String? = nil)
     case launchAgents(selectID: String?)
     case backgroundItems(selectID: String?)
+    /// Recent Changes on its since-last-review window.
     case recentChanges
+    /// Recent Changes on its last-7-days window (the weekly digest's view).
+    case recentChangesLastSevenDays
     case staleApps
 
     public var sidebarItem: SidebarItem {
@@ -28,8 +31,17 @@ public enum AppRoute: Hashable, Sendable {
         case .permissions: .permissions
         case .launchAgents: .launchAgents
         case .backgroundItems: .backgroundItems
-        case .recentChanges: .recentChanges
+        case .recentChanges, .recentChangesLastSevenDays: .recentChanges
         case .staleApps: .staleApps
+        }
+    }
+
+    /// The Recent Changes window this route selects, if it goes there.
+    public var recentChangesWindow: RecentChangesWindow? {
+        switch self {
+        case .recentChanges: .sinceLastReview
+        case .recentChangesLastSevenDays: .lastSevenDays
+        default: nil
         }
     }
 

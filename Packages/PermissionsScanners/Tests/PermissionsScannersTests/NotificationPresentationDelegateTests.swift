@@ -18,4 +18,10 @@ struct NotificationPresentationDelegateTests {
         let delegate: any UNUserNotificationCenterDelegate = NotificationPresentationDelegate()
         #expect(delegate.responds(to: #selector(UNUserNotificationCenterDelegate.userNotificationCenter(_:willPresent:withCompletionHandler:))))
     }
+
+    @Test("delegate handles a click on a delivered notification")
+    func handlesClicks() {
+        let delegate: any UNUserNotificationCenterDelegate = NotificationPresentationDelegate()
+        #expect(delegate.responds(to: #selector(UNUserNotificationCenterDelegate.userNotificationCenter(_:didReceive:withCompletionHandler:))))
+    }
 }

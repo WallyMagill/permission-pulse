@@ -115,7 +115,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     let viewModel: AppViewModel
     let preferencesStore: PreferencesStore
     // UNUserNotificationCenter.delegate is weak — must be retained here.
-    private let notificationPresentationDelegate: NotificationPresentationDelegate
+    private lazy var notificationPresentationDelegate = NotificationPresentationDelegate { [weak self] identifier in
+        self?.openNotification(identifier: identifier)
+    }
     let dismissedDiffEntries: DismissedDiffEntryStore
     let dismissedStaleApps: DismissedStaleAppStore
     lazy var weeklyDigestCoordinator = WeeklyDigestCoordinator(
@@ -172,6 +174,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private(set) var snapshotCoordinator: SnapshotCoordinator?
     var welcomeWindow: NSWindow?
     var fullDiskAccessWindow: NSWindow?
+    /// The loss the recovery window last explained, for reopening it from
+    /// its notification.
+    var lastFullDiskAccessLoss: FullDiskAccessLoss?
     let fullDiskAccessPromptPresenter: (@MainActor (FullDiskAccessLoss) -> Void)?
     private let resetMessagePresenter: (@MainActor (String) -> Void)?
     private let resetOperation: (@MainActor () async -> Void)?
@@ -205,7 +210,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         self.fullDiskAccessPromptPresenter = fullDiskAccessPromptPresenter
         self.viewModel = AppViewModel()
         self.preferencesStore = PreferencesStore(defaults: defaults)
-        self.notificationPresentationDelegate = NotificationPresentationDelegate()
         self.dismissedDiffEntries = DismissedDiffEntryStore(defaults: defaults)
         self.dismissedStaleApps = DismissedStaleAppStore(defaults: defaults)
         self.resetMessagePresenter = resetMessagePresenter
@@ -315,15 +319,34 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     /// Double-clicking the running app in Finder: it has no Dock icon, and
-    /// its menu-bar icon may be hidden, so show the main window on Overview.
+    /// its menu-bar icon may be hidden, so show the main window.
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
-        showDetailWindow(route: .overview)
+        showDetailWindow(route: Self.reopenRoute(detailWindowOpen: viewModel.isDetailWindowOpen))
         return false
     }
 
-    func showDetailWindow(route: AppRoute) {
+    /// An open detail window only comes forward, keeping the page the user
+    /// is on; a closed one opens on Overview.
+    static func reopenRoute(detailWindowOpen: Bool) -> AppRoute? {
+        detailWindowOpen ? nil : .overview
+    }
+
+    /// A nil route also clears any request no window consumed, so it can't
+    /// fire later.
+    func showDetailWindow(route: AppRoute?) {
         viewModel.pendingRoute = route
         viewModel.windowToOpen = "detail"
+    }
+
+    func openNotification(identifier: String) {
+        switch NotificationDestination.forRequest(identifier) {
+        case .detail(let route):
+            showDetailWindow(route: route)
+        case .fullDiskAccessRecovery:
+            showFullDiskAccessWindow(lastFullDiskAccessLoss ?? .revoked)
+        case nil:
+            break
+        }
     }
 
     func applicationDidBecomeActive(_ notification: Notification) {

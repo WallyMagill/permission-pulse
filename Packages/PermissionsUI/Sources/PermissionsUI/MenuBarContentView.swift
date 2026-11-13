@@ -223,7 +223,7 @@ private struct StatusRowButton: View {
             String(localized: "Opens Launch Agents in Permission Pulse")
         case .backgroundItems:
             String(localized: "Opens Background Items in Permission Pulse")
-        case .recentChanges:
+        case .recentChanges, .recentChangesLastSevenDays:
             String(localized: "Opens Recent Changes in Permission Pulse")
         case .staleApps:
             String(localized: "Opens Stale Apps in Permission Pulse")

@@ -47,6 +47,9 @@ public final class AppViewModel {
     /// A window scene id for the hidden trampoline window to open, set by
     /// code that has no SwiftUI `openWindow` (the app delegate).
     public var windowToOpen: String?
+    /// True while the detail window is on screen, so a reopen can bring it
+    /// forward without moving it off the page the user is on.
+    public var isDetailWindowOpen: Bool = false
 
     /// This copy runs from a temporary App Translocation path; set at launch.
     public var isTranslocated: Bool = false
