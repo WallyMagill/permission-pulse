@@ -103,7 +103,7 @@ verify_snapshot_schema() {
     pass "snapshots.db exists"
     local verifier_args=(--database "$DB")
     if [[ $WIPE_STATE -eq 0 && $LAUNCH_APP -eq 0 ]]; then
-        verifier_args+=(--allow-pending-v4)
+        verifier_args+=(--allow-pending-migration)
     fi
 
     local output
@@ -117,15 +117,16 @@ verify_snapshot_schema() {
     status=$(printf '%s\n' "$output" | sed -n 's/^status=//p')
     snapshot_count=$(printf '%s\n' "$output" | sed -n 's/^snapshot_count=//p')
     case "$status" in
-        complete-v5)
+        complete-v6)
             pass "snapshots.db schema present (snapshots, tcc_grants, btm_items, launch_agents)"
-            pass "snapshots.db schema version = 5 (complete)"
+            pass "snapshots.db schema version = 6 (complete)"
             pass "snapshots.launch_agent_disabled_captured is present"
             pass "launch_agents.is_disabled is present"
             pass "LaunchAgent compatibility markers are valid 0/1 values"
+            pass "per-domain coverage columns hold complete/degraded/failed"
             ;;
-        pending-v4)
-            warn "snapshots.db schema version = 4 (pending app migration; not yet verified as schema v5)"
+        pending-v4|pending-v5)
+            warn "snapshots.db schema version = ${status#pending-v} (pending app migration; not yet verified as schema v6)"
             ;;
         *)
             fail "snapshot schema verifier returned unknown status: ${status:-empty}"

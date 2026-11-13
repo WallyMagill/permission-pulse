@@ -84,6 +84,19 @@ UPDATE launch_agents SET is_disabled = 1;
 SQL
 }
 
+migrate_to_v6() {
+    local database=$1
+    sqlite3 "$database" <<'SQL'
+ALTER TABLE snapshots ADD COLUMN tcc_coverage TEXT NOT NULL DEFAULT 'complete';
+ALTER TABLE snapshots ADD COLUMN btm_coverage TEXT NOT NULL DEFAULT 'complete';
+ALTER TABLE snapshots
+    ADD COLUMN launch_agent_coverage TEXT NOT NULL DEFAULT 'complete';
+UPDATE schema_version SET version = 6;
+INSERT INTO grdb_migrations (identifier) VALUES ('v6');
+UPDATE snapshots SET launch_agent_coverage = 'degraded';
+SQL
+}
+
 expect_success() {
     local description=$1
     shift
@@ -123,6 +136,10 @@ expect_output_success() {
 
 v4_db="$tmp_dir/snapshots 'preserved v4'.db"
 v5_db="$tmp_dir/snapshots v5.db"
+v6_db="$tmp_dir/snapshots v6.db"
+invalid_coverage_db="$tmp_dir/invalid coverage.db"
+missing_coverage_column_db="$tmp_dir/missing coverage column.db"
+missing_v6_ledger_db="$tmp_dir/missing v6 ledger.db"
 invalid_capture_db="$tmp_dir/invalid capture.db"
 invalid_disabled_db="$tmp_dir/invalid disabled.db"
 invalid_shape_db="$tmp_dir/invalid v4 shape.db"
@@ -139,17 +156,22 @@ missing_db="$tmp_dir/missing snapshots.db"
 create_v4_database "$v4_db"
 cp "$v4_db" "$v5_db"
 migrate_to_v5 "$v5_db"
-cp "$v5_db" "$invalid_capture_db"
-cp "$v5_db" "$invalid_disabled_db"
+cp "$v5_db" "$v6_db"
+migrate_to_v6 "$v6_db"
+cp "$v6_db" "$invalid_coverage_db"
+cp "$v6_db" "$missing_coverage_column_db"
+cp "$v6_db" "$missing_v6_ledger_db"
+cp "$v6_db" "$invalid_capture_db"
+cp "$v6_db" "$invalid_disabled_db"
 cp "$v4_db" "$invalid_shape_db"
 cp "$v4_db" "$missing_capture_column_db"
 cp "$v4_db" "$missing_disabled_column_db"
-cp "$v5_db" "$future_db"
-cp "$v5_db" "$missing_ledger_db"
+cp "$v6_db" "$future_db"
+cp "$v6_db" "$missing_ledger_db"
 cp "$v4_db" "$missing_v4_ledger_db"
 cp "$v5_db" "$missing_v5_ledger_db"
-cp "$v5_db" "$unexpected_ledger_db"
-cp "$v5_db" "$duplicate_ledger_db"
+cp "$v6_db" "$unexpected_ledger_db"
+cp "$v6_db" "$duplicate_ledger_db"
 sqlite3 "$invalid_capture_db" \
     'UPDATE snapshots SET launch_agent_disabled_captured = 2;'
 sqlite3 "$invalid_disabled_db" \
@@ -165,7 +187,13 @@ ALTER TABLE snapshots
     ADD COLUMN launch_agent_disabled_captured INTEGER NOT NULL DEFAULT 0;
 UPDATE schema_version SET version = 5;
 SQL
-sqlite3 "$future_db" 'UPDATE schema_version SET version = 6;'
+sqlite3 "$future_db" 'UPDATE schema_version SET version = 7;'
+sqlite3 "$invalid_coverage_db" \
+    "UPDATE snapshots SET tcc_coverage = 'partial';"
+sqlite3 "$missing_coverage_column_db" \
+    'ALTER TABLE snapshots DROP COLUMN btm_coverage;'
+sqlite3 "$missing_v6_ledger_db" \
+    "DELETE FROM grdb_migrations WHERE identifier = 'v6';"
 sqlite3 "$missing_ledger_db" 'DROP TABLE grdb_migrations;'
 sqlite3 "$missing_v4_ledger_db" \
     "DELETE FROM grdb_migrations WHERE identifier = 'v4';"
@@ -178,58 +206,74 @@ ALTER TABLE grdb_migrations RENAME TO grdb_migrations_original;
 CREATE TABLE grdb_migrations (identifier TEXT NOT NULL);
 INSERT INTO grdb_migrations (identifier)
     SELECT identifier FROM grdb_migrations_original;
-INSERT INTO grdb_migrations (identifier) VALUES ('v5');
+INSERT INTO grdb_migrations (identifier) VALUES ('v6');
 DROP TABLE grdb_migrations_original;
 SQL
 
 v4_before=$(shasum -a 256 "$v4_db")
 v5_before=$(shasum -a 256 "$v5_db")
+v6_before=$(shasum -a 256 "$v6_db")
 
 expect_success 'preserved v4 is pending when no launch can migrate it' \
-    "$verifier" --database "$v4_db" --allow-pending-v4
-expect_failure 'v4 is not v5-complete on a schema-expected path' \
+    "$verifier" --database "$v4_db" --allow-pending-migration
+expect_failure 'v4 is not v6-complete on a schema-expected path' \
     "$verifier" --database "$v4_db"
-expect_success 'valid v5 is complete' \
+expect_success 'preserved v5 is pending when no launch can migrate it' \
+    "$verifier" --database "$v5_db" --allow-pending-migration
+expect_failure 'v5 is not v6-complete on a schema-expected path' \
     "$verifier" --database "$v5_db"
-expect_failure 'v5 rejects an invalid snapshot capture marker' \
+expect_success 'valid v6 is complete, including a degraded coverage value' \
+    "$verifier" --database "$v6_db"
+expect_failure 'v6 rejects a coverage value outside complete/degraded/failed' \
+    "$verifier" --database "$invalid_coverage_db"
+expect_failure 'v6 requires all three coverage columns' \
+    "$verifier" --database "$missing_coverage_column_db"
+expect_failure 'v6 rejects an invalid snapshot capture marker' \
     "$verifier" --database "$invalid_capture_db"
-expect_failure 'v5 rejects an invalid LaunchAgent disabled marker' \
+expect_failure 'v6 rejects an invalid LaunchAgent disabled marker' \
     "$verifier" --database "$invalid_disabled_db"
 expect_failure 'v4 rejects a missing required pre-v5 column' \
-    "$verifier" --database "$invalid_shape_db" --allow-pending-v4
+    "$verifier" --database "$invalid_shape_db" --allow-pending-migration
 expect_failure 'v5 requires the snapshot capture column' \
-    "$verifier" --database "$missing_capture_column_db"
+    "$verifier" --database "$missing_capture_column_db" --allow-pending-migration
 expect_failure 'v5 requires the LaunchAgent disabled column' \
-    "$verifier" --database "$missing_disabled_column_db"
+    "$verifier" --database "$missing_disabled_column_db" --allow-pending-migration
 expect_failure 'future schema versions fail closed' \
     "$verifier" --database "$future_db"
-expect_failure 'v5 requires the GRDB migration ledger table' \
+expect_failure 'v6 requires the GRDB migration ledger table' \
     "$verifier" --database "$missing_ledger_db"
 expect_failure 'schema v4 requires the exact v1-v4 migration ledger' \
-    "$verifier" --database "$missing_v4_ledger_db" --allow-pending-v4
-expect_failure 'schema v5 rejects the reviewer partial-ledger case missing v5' \
-    "$verifier" --database "$missing_v5_ledger_db"
-expect_failure 'schema v5 rejects an unexpected migration identifier' \
+    "$verifier" --database "$missing_v4_ledger_db" --allow-pending-migration
+expect_failure 'schema v5 rejects a ledger missing v5' \
+    "$verifier" --database "$missing_v5_ledger_db" --allow-pending-migration
+expect_failure 'schema v6 rejects a ledger missing v6' \
+    "$verifier" --database "$missing_v6_ledger_db"
+expect_failure 'schema v6 rejects an unexpected migration identifier' \
     "$verifier" --database "$unexpected_ledger_db"
-expect_failure 'schema v5 rejects duplicate migration identifiers in a malformed ledger' \
+expect_failure 'schema v6 rejects duplicate migration identifiers in a malformed ledger' \
     "$verifier" --database "$duplicate_ledger_db"
 expect_failure 'a missing database is reported without creating it' \
     "$verifier" --database "$missing_db"
 
 expect_output_success \
     'smoke accepts preserved v4 as pending under --keep --no-launch' \
-    'pending app migration; not yet verified as schema v5' \
+    'schema version = 4 (pending app migration; not yet verified as schema v6)' \
     env SMOKE_DRY_RUN=1 SMOKE_SCHEMA_CHECK_ONLY=1 SMOKE_DB_PATH="$v4_db" \
     "$smoke_test" --keep --no-launch
-expect_failure \
-    'smoke rejects v4 when launch makes schema v5 expected' \
-    env SMOKE_DRY_RUN=1 SMOKE_SCHEMA_CHECK_ONLY=1 SMOKE_DB_PATH="$v4_db" \
-    "$smoke_test" --keep
 expect_output_success \
-    'smoke accepts valid v5 as complete' \
-    'snapshots.db schema version = 5 (complete)' \
+    'smoke accepts preserved v5 as pending under --keep --no-launch' \
+    'schema version = 5 (pending app migration; not yet verified as schema v6)' \
     env SMOKE_DRY_RUN=1 SMOKE_SCHEMA_CHECK_ONLY=1 SMOKE_DB_PATH="$v5_db" \
     "$smoke_test" --keep --no-launch
+expect_failure \
+    'smoke rejects v5 when launch makes schema v6 expected' \
+    env SMOKE_DRY_RUN=1 SMOKE_SCHEMA_CHECK_ONLY=1 SMOKE_DB_PATH="$v5_db" \
+    "$smoke_test" --keep
+expect_output_success \
+    'smoke accepts valid v6 as complete' \
+    'snapshots.db schema version = 6 (complete)' \
+    env SMOKE_DRY_RUN=1 SMOKE_SCHEMA_CHECK_ONLY=1 SMOKE_DB_PATH="$v6_db" \
+    "$smoke_test" --keep
 expect_output_success \
     'smoke preserves the documented missing-database warning' \
     'snapshots.db not yet created' \
@@ -248,6 +292,10 @@ expect_output_success \
     printf 'FAIL: v5 database changed during verification\n' >&2
     exit 1
 }
+[[ "$v6_before" == "$(shasum -a 256 "$v6_db")" ]] || {
+    printf 'FAIL: v6 database changed during verification\n' >&2
+    exit 1
+}
 
-printf 'PASS: snapshot schema verifier accepts pending v4 only without migration opportunity\n'
-printf 'PASS: snapshot schema verifier validates v5 read-only and fails closed\n'
+printf 'PASS: snapshot schema verifier accepts pending v4/v5 only without migration opportunity\n'
+printf 'PASS: snapshot schema verifier validates v6 read-only and fails closed\n'
