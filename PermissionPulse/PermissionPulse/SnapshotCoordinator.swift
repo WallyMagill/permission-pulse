@@ -79,6 +79,12 @@ final class SnapshotCoordinator {
             return
         }
         let written = await writeSnapshotIfChanged(since: previousID)
+        if previousID == nil, let written {
+            // The first snapshot ever (also the first after Reset All Data)
+            // is the baseline: later changes show as changes since it,
+            // rather than "nothing to compare" until tomorrow.
+            recordReviewed(written)
+        }
         let latestID = written ?? previousID
         viewModel.dismissedDiffEntries?.pruneExpired(asOf: now())
         let baselines = await refreshDiffs(latestID: latestID)
@@ -171,8 +177,7 @@ final class SnapshotCoordinator {
     @discardableResult
     func markCurrentSnapshotReviewed() -> Task<Void, Never>? {
         guard let id = viewModel.latestSnapshotID else { return nil }
-        viewModel.lastReviewedSnapshotID = id
-        defaults.set(id.rawValue, forKey: Self.lastReviewedSnapshotIDKey)
+        recordReviewed(id)
         return Task { [weak self] in
             guard let self else { return }
             await self.refreshDiffs(latestID: self.viewModel.latestSnapshotID)
@@ -187,6 +192,11 @@ final class SnapshotCoordinator {
     }
 
     // MARK: - Private
+
+    private func recordReviewed(_ id: SnapshotID) {
+        viewModel.lastReviewedSnapshotID = id
+        defaults.set(id.rawValue, forKey: Self.lastReviewedSnapshotIDKey)
+    }
 
     private static let nothingCaptured = SnapshotDomainCoverage(
         tcc: .failed,

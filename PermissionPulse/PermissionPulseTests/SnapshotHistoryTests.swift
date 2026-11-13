@@ -170,6 +170,22 @@ import PermissionsUI
         #expect(Set(dismissed.allEntries().keys) == ["active"])
     }
 
+    @Test func firstSnapshotIsTheBaselineForLaterChanges() async throws {
+        let env = try await Environment(now: historyNow)
+        env.viewModel.grants = [grant("com.example.a")]
+        await env.coordinator.onScanCompleted()
+        let first = try #require(env.viewModel.latestSnapshotID)
+        #expect(env.viewModel.lastReviewedSnapshotID == first)
+        #expect(env.defaults.object(forKey: SnapshotCoordinator.lastReviewedSnapshotIDKey) as? Int64 == first.rawValue)
+
+        env.viewModel.grants.append(grant("com.example.b"))
+        await env.coordinator.onScanCompleted()
+
+        let diff = try #require(env.viewModel.latestDiffSinceReview)
+        #expect(diff.tcc.added.map(\.app.bundleID) == ["com.example.b"])
+        #expect(env.viewModel.unreviewedChangeCount == 1)
+    }
+
     @Test func writeHookReportsThePreviousAndNewSnapshot() async throws {
         let env = try await Environment(now: historyNow)
         var calls: [(SnapshotID?, SnapshotID)] = []
