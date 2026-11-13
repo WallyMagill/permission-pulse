@@ -27,7 +27,7 @@ public struct DropdownStatusRow: Equatable, Sendable, Identifiable {
     var title: String {
         switch kind {
         case .attention(.fdaDenied):
-            String(localized: "Full Disk Access needed")
+            String(localized: "Full Disk Access is off")
         case .attention(.btmOnlyFDADenied):
             String(localized: "FDA needed for background items")
         case .attention(.schemaMismatch):

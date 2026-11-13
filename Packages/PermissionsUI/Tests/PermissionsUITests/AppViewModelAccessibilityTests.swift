@@ -18,9 +18,14 @@ import PermissionsStore
         #expect(AppViewModel().menuBarAccessibilityLabel == String(localized: "Permission Pulse"))
     }
 
-    @Test func errorTakesPrecedence() {
+    @Test func fullDiskAccessDenialIsNamedNotCalledAScanError() {
         let vm = AppViewModel(tccScanError: .permissionDenied(reason: "x"))
-        #expect(vm.menuBarAccessibilityLabel.contains("action needed"))
+        #expect(vm.menuBarAccessibilityLabel == "Permission Pulse — Full Disk Access is off")
+    }
+
+    @Test func liveMediaAndAWarningAreBothRead() {
+        let vm = AppViewModel(tccScanError: .permissionDenied(reason: "x"), micInUse: true)
+        #expect(vm.menuBarAccessibilityLabel == "Permission Pulse — microphone in use; Full Disk Access is off")
     }
 
     @Test func degradedDataIsNamedWithoutRelyingOnTheIcon() {

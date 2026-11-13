@@ -176,44 +176,54 @@ public final class AppViewModel {
         set { launchAgentAvailability = Self.updating(launchAgentAvailability, error: newValue) }
     }
 
+    /// Live microphone or camera use wins: it is happening now, while a
+    /// warning or unreviewed change can wait for the dropdown.
     public var menuBarSymbolName: String {
+        if micInUse && cameraInUse { return "video.badge.waveform" }
+        if cameraInUse { return "video.fill" }
+        if micInUse { return "mic.fill" }
         if attentionState != .clean {
             return "exclamationmark.shield.fill"
         }
         if hasUnreviewedChanges {
             return Self.unreviewedSymbolName
         }
-        if micInUse && cameraInUse { return "video.badge.waveform" }
-        if cameraInUse { return "video.fill" }
-        if micInUse { return "mic.fill" }
         return "shield.lefthalf.filled"
     }
 
     // VoiceOver-readable mirror of `menuBarSymbolName` — the icon's state is
     // otherwise conveyed only by SF Symbol swap, which a VoiceOver user can't
-    // perceive. Same precedence as the symbol. (A1)
+    // perceive. Names live media use and any warning together, since the
+    // symbol can show only one of them. (A1)
     public var menuBarAccessibilityLabel: String {
+        let parts = [mediaAccessibilityPart, attentionAccessibilityPart ?? unreviewedAccessibilityPart]
+            .compactMap { $0 }
+        guard !parts.isEmpty else { return String(localized: "Permission Pulse") }
+        let details = parts.joined(separator: String(localized: "; "))
+        return String(localized: "Permission Pulse — \(details)")
+    }
+
+    private var mediaAccessibilityPart: String? {
+        if micInUse && cameraInUse { return String(localized: "microphone and camera in use") }
+        if cameraInUse { return String(localized: "camera in use") }
+        if micInUse { return String(localized: "microphone in use") }
+        return nil
+    }
+
+    private var attentionAccessibilityPart: String? {
         switch attentionState {
-        case .degradedData:
-            return String(localized: "Permission Pulse — degraded scan data, action needed")
-        case .staleData:
-            return String(localized: "Permission Pulse — stale scan data, action needed")
-        case .scanFailed:
-            return String(localized: "Permission Pulse — scan failed, no results available, action needed")
-        case .fdaDenied, .btmOnlyFDADenied, .schemaMismatch, .launchAgentError:
-            return String(localized: "Permission Pulse — scan error, action needed")
-        case .clean:
-            break
+        case .degradedData: String(localized: "degraded scan data, action needed")
+        case .staleData: String(localized: "stale scan data, action needed")
+        case .scanFailed: String(localized: "scan failed, no results available, action needed")
+        case .fdaDenied: String(localized: "Full Disk Access is off")
+        case .btmOnlyFDADenied: String(localized: "Full Disk Access is off for background items")
+        case .schemaMismatch, .launchAgentError: String(localized: "scan error, action needed")
+        case .clean: nil
         }
-        if hasUnreviewedChanges {
-            return String(localized: "Permission Pulse — unreviewed changes")
-        }
-        if micInUse && cameraInUse {
-            return String(localized: "Permission Pulse — microphone and camera in use")
-        }
-        if cameraInUse { return String(localized: "Permission Pulse — camera in use") }
-        if micInUse { return String(localized: "Permission Pulse — microphone in use") }
-        return String(localized: "Permission Pulse")
+    }
+
+    private var unreviewedAccessibilityPart: String? {
+        hasUnreviewedChanges ? String(localized: "unreviewed changes") : nil
     }
 
     private static func initialAvailability(
