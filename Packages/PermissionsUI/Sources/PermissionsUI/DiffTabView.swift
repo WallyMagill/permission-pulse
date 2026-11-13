@@ -144,7 +144,7 @@ struct DiffTabView: View {
                 pendingDismiss = nil
             }
         } message: { candidate in
-            Text(String(localized: "Permission Pulse will stop showing this change: \(candidate.summary). Use Reset All Data in Settings → Data to bring it back."))
+            Text(String(localized: "Permission Pulse will stop showing this change: \(candidate.summary). You can bring it back in Settings → Data."))
         }
     }
 

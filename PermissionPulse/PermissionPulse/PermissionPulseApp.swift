@@ -61,10 +61,15 @@ struct PermissionPulseApp: App {
                 },
                 makeDiagnostics: { [appDelegate] in
                     await appDelegate.diagnosticsText()
+                },
+                onRestoreSkippedStaleApps: { [appDelegate] in
+                    appDelegate.restoreSkippedStaleApps()
                 }
             )
             .environment(appDelegate.preferencesViewModel)
             .environment(appDelegate.viewModel)
+            .environment(appDelegate.dismissedDiffEntries)
+            .environment(appDelegate.dismissedStaleApps)
         }
         .windowResizability(.contentSize)
 
@@ -377,6 +382,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func markCurrentSnapshotReviewed() {
         snapshotCoordinator?.markCurrentSnapshotReviewed()
+    }
+
+    /// Un-skips every skipped stale app and lists the ones still stale
+    /// again without waiting for the next scan.
+    @discardableResult
+    func restoreSkippedStaleApps() -> Task<Void, Never> {
+        dismissedStaleApps.removeAll()
+        return Task { [weak self] in
+            await self?.snapshotCoordinator?.refreshStaleApps()
+        }
     }
 
     static func storeProblem(for error: any Error) -> SnapshotStoreProblem {

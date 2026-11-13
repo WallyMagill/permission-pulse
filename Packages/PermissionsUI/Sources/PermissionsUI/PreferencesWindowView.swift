@@ -8,15 +8,18 @@ public struct PreferencesWindowView: View {
     private let onResetAllData: (() -> Void)?
     private let scanInProgress: () -> Bool
     private let makeDiagnostics: (() async -> String)?
+    private let onRestoreSkippedStaleApps: (() -> Void)?
 
     public init(
         onResetAllData: (() -> Void)? = nil,
         scanInProgress: @escaping () -> Bool = { false },
-        makeDiagnostics: (() async -> String)? = nil
+        makeDiagnostics: (() async -> String)? = nil,
+        onRestoreSkippedStaleApps: (() -> Void)? = nil
     ) {
         self.onResetAllData = onResetAllData
         self.scanInProgress = scanInProgress
         self.makeDiagnostics = makeDiagnostics
+        self.onRestoreSkippedStaleApps = onRestoreSkippedStaleApps
     }
 
     public var body: some View {
@@ -30,7 +33,8 @@ public struct PreferencesWindowView: View {
             DataSettingsTab(
                 onResetAllData: onResetAllData,
                 scanInProgress: scanInProgress,
-                makeDiagnostics: makeDiagnostics
+                makeDiagnostics: makeDiagnostics,
+                onRestoreSkippedStaleApps: onRestoreSkippedStaleApps
             )
                 .tabItem { Label(String(localized: "Data"), systemImage: "externaldrive") }
         }
@@ -121,6 +125,7 @@ private struct DataSettingsTab: View {
     let onResetAllData: (() -> Void)?
     let scanInProgress: () -> Bool
     let makeDiagnostics: (() async -> String)?
+    let onRestoreSkippedStaleApps: (() -> Void)?
     @State private var isConfirmingReset = false
 
     var body: some View {
@@ -130,6 +135,7 @@ private struct DataSettingsTab: View {
                     ExportToolbarMenu()
                 }
             }
+            HiddenItemsSection(onRestoreSkippedStaleApps: onRestoreSkippedStaleApps)
             if let makeDiagnostics {
                 CopyDiagnosticsSection(makeDiagnostics: makeDiagnostics)
             }
@@ -154,6 +160,39 @@ private struct DataSettingsTab: View {
             Button(String(localized: "Reset"), role: .destructive) { onResetAllData?() }
         } message: {
             Text(String(localized: "All snapshots, dismissed items, snoozes, and settings will be deleted. Permission Pulse will rescan immediately. This cannot be undone."))
+        }
+    }
+}
+
+/// Brings back Recent Changes rows the user dismissed or snoozed and apps
+/// they skipped in Stale Apps, without resetting everything else.
+private struct HiddenItemsSection: View {
+    let onRestoreSkippedStaleApps: (() -> Void)?
+    @Environment(DismissedDiffEntryStore.self) private var dismissedChanges
+    @Environment(DismissedStaleAppStore.self) private var skippedApps
+
+    var body: some View {
+        let changeCount = dismissedChanges.activeCount(asOf: Date())
+        let skippedCount = skippedApps.allStableKeys().count
+        Section {
+            LabeledContent(String(localized: "Dismissed changes (\(changeCount))")) {
+                Button(String(localized: "Restore All")) { dismissedChanges.removeAll() }
+                    .disabled(changeCount == 0)
+            }
+            LabeledContent(String(localized: "Skipped stale apps (\(skippedCount))")) {
+                Button(String(localized: "Restore All")) {
+                    if let onRestoreSkippedStaleApps {
+                        onRestoreSkippedStaleApps()
+                    } else {
+                        skippedApps.removeAll()
+                    }
+                }
+                .disabled(skippedCount == 0)
+            }
+            Text(String(localized: "Dismissed and snoozed changes return to Recent Changes; skipped apps return to Stale Apps if they are still unused."))
+                .ppFont(.metadata)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
         }
     }
 }

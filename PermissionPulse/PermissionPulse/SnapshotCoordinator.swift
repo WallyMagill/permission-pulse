@@ -179,6 +179,13 @@ final class SnapshotCoordinator {
         }
     }
 
+    /// Recomputes Stale Apps from the current grants without a scan, e.g.
+    /// after skipped apps are restored. Nothing to do before history exists.
+    func refreshStaleApps() async {
+        guard viewModel.latestSnapshotID != nil else { return }
+        viewModel.staleApps = await computeStaleApps(nowDate: now(), thresholdDays: staleThresholdDays())
+    }
+
     // MARK: - Private
 
     private static let nothingCaptured = SnapshotDomainCoverage(

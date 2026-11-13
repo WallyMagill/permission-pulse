@@ -329,6 +329,28 @@ import PermissionsUI
         #expect(!stale.contains { $0.app.bundleID == "com.example.skipped" })
     }
 
+    @Test func restoredSkippedAppReturnsWithoutARescan() async throws {
+        let path = URL(fileURLWithPath: "/Applications/Skipped.app")
+        let old = Date(timeIntervalSince1970: fixedNow().timeIntervalSince1970 - 200 * 86_400)
+        let dismissed = DismissedStaleAppStore(
+            defaults: UserDefaults(suiteName: "restore-stale-\(UUID().uuidString)")!
+        )
+        dismissed.skipForever(stableKey: "bundle:com.example.skipped")
+        let env = try await Environment(
+            now: fixedNow,
+            probe: MockLastUsedProbe(fixed: [path: (old, .spotlight)]),
+            dismissedStaleApps: dismissed
+        )
+        env.viewModel.grants = [demoGrant(bundleID: "com.example.skipped", bundlePath: path)]
+        await env.coordinator.onScanCompleted()
+        #expect(env.viewModel.staleApps.isEmpty)
+
+        dismissed.removeAll()
+        await env.coordinator.refreshStaleApps()
+
+        #expect(env.viewModel.staleApps.map(\.app.bundleID) == ["com.example.skipped"])
+    }
+
     @Test func scannerResolvedBundlePathFlowsIntoStaleComputation() async throws {
         let fixture = FileManager.default.temporaryDirectory
             .appendingPathComponent("ppulse-c2-\(UUID().uuidString).db")

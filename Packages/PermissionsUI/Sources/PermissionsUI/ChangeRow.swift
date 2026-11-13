@@ -22,16 +22,11 @@ struct ChangeRow: View {
                 .ppFont(.body)
                 .lineLimit(2)
                 .frame(maxWidth: .infinity, alignment: .leading)
-        }
-        .contextMenu {
-            if let onSnooze {
-                Button(String(localized: "Snooze 7 days")) { onSnooze() }
-            }
-            if let onDismissForever {
-                Button(String(localized: "Dismiss forever"), role: .destructive) { onDismissForever() }
+            if hasMenuActions {
+                optionsMenu
             }
         }
-        .help(hasMenuActions ? String(localized: "Right-click for dismiss options") : "")
+        .contextMenu { menuItems }
         // VoiceOver can't discover a context menu on its own; mirror its actions.
         .accessibilityActions {
             if let onSnooze {
@@ -41,6 +36,31 @@ struct ChangeRow: View {
                 Button(String(localized: "Dismiss forever")) { onDismissForever() }
             }
         }
+    }
+
+    @ViewBuilder
+    private var menuItems: some View {
+        if let onSnooze {
+            Button(String(localized: "Snooze 7 days")) { onSnooze() }
+        }
+        if let onDismissForever {
+            Button(String(localized: "Dismiss forever"), role: .destructive) { onDismissForever() }
+        }
+    }
+
+    /// The same actions as the context menu, visible so they can be found
+    /// without right-clicking.
+    private var optionsMenu: some View {
+        Menu { menuItems } label: {
+            Image(systemName: "ellipsis.circle")
+        }
+        .menuStyle(.button)
+        .buttonStyle(.borderless)
+        .menuIndicator(.hidden)
+        .fixedSize()
+        .foregroundStyle(.secondary)
+        .help(String(localized: "Snooze or dismiss this change"))
+        .accessibilityLabel(String(localized: "Change options"))
     }
 
     @ViewBuilder

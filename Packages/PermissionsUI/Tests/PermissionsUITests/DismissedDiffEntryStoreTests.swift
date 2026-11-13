@@ -83,6 +83,16 @@ import Testing
         #expect(DismissedDiffEntryStore(defaults: defaults).allEntries().isEmpty)
     }
 
+    @Test func activeCountIncludesDismissedAndUnexpiredSnoozesOnly() {
+        let store = DismissedDiffEntryStore(defaults: fresh())
+        let now = Date(timeIntervalSince1970: 1_000)
+        store.dismissForever(key: "forever")
+        store.snooze(key: "snoozed", until: now.addingTimeInterval(60))
+        store.snooze(key: "expired", until: now.addingTimeInterval(-60))
+
+        #expect(store.activeCount(asOf: now) == 2)
+    }
+
     // MARK: - Helpers
 
     private func fresh() -> UserDefaults {

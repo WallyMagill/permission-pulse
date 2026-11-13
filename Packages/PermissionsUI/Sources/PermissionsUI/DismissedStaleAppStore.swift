@@ -6,8 +6,8 @@ import Observation
 /// Stale Apps tab forever. Backed by a `[String]` UserDefaults array
 /// under `com.wallymagill.permissionpulse.dismissedStaleApps`.
 ///
-/// No expiry — "Skip forever" is intentional. The user can un-skip via
-/// the Preferences "Reset all data" flow.
+/// No expiry — "Skip forever" is intentional. The user can bring skipped
+/// apps back with Settings → Data → Restore All.
 @Observable
 @MainActor
 public final class DismissedStaleAppStore {

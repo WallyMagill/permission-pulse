@@ -71,6 +71,11 @@ public final class DismissedDiffEntryStore {
         }
     }
 
+    /// Changes dismissed forever or still snoozed at `date`.
+    public func activeCount(asOf date: Date) -> Int {
+        entries.values.filter { $0 > date }.count
+    }
+
     public func allEntries() -> [String: Date] {
         entries
     }
