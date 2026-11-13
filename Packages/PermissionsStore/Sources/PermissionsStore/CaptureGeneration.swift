@@ -7,8 +7,9 @@ import PermissionsCore
 /// Security grants, launchd's disabled-override database, and the string
 /// elements of a `ProgramArguments` array that also holds other types (the
 /// old decoder stored `[]`). A diff between snapshots of different
-/// generations ignores those facts, so an upgrade does not show pre-existing
-/// state as fresh changes.
+/// generations compares those facts only from the first generation-2
+/// snapshot onward, so an upgrade does not show pre-existing state as fresh
+/// changes but a change made after it still shows.
 public enum CaptureGeneration {
     public static let current = 2
 

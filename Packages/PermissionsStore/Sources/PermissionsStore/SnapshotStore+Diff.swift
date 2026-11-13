@@ -10,29 +10,88 @@ extension SnapshotStore {
         to: SnapshotID
     ) async throws -> LaunchAgentsDiff {
         let facts = try await comparableFacts(from: from, to: to)
+        let before = try await readLaunchAgents(snapshotID: from)
+        let after = try await readLaunchAgents(snapshotID: to)
+        if facts.spansGeneration,
+           let bridge = try await generationBridge(from: from, to: to, domain: \.launchAgents) {
+            // The bridge's values stand in for the facts `from` never
+            // captured; an agent the bridge lacks is not compared on them.
+            let reference = try await readLaunchAgents(snapshotID: bridge) + after
+            return Self.diffLaunchAgents(
+                before: Self.takingUncapturedFacts(before, from: reference),
+                after: after,
+                compareDisabled: try await comparableFacts(from: bridge, to: to).disabled
+            )
+        }
         return Self.diffLaunchAgents(
-            before: try await readLaunchAgents(snapshotID: from),
-            after: try await readLaunchAgents(snapshotID: to),
+            before: before,
+            after: after,
             compareDisabled: facts.disabled,
             compareArguments: facts.arguments
         )
     }
 
     /// `services` limits both endpoints to those services, for a baseline
-    /// that saw more than the later scan can.
+    /// that saw more than the later scan can. Services `from` never captured
+    /// are compared from the generation bridge instead, when there is one.
     public func diffTCCGrants(
         from: SnapshotID,
         to: SnapshotID,
         limitedTo services: Set<PermissionService>? = nil
     ) async throws -> TCCGrantsDiff {
-        let excluded = try await comparableFacts(from: from, to: to).uncapturedServices
-        let included: (PermissionGrant) -> Bool = {
-            !excluded.contains($0.service) && (services?.contains($0.service) ?? true)
+        let uncaptured = try await comparableFacts(from: from, to: to).uncapturedServices
+        let limit: (PermissionGrant) -> Bool = { services?.contains($0.service) ?? true }
+        var before = try await readTCCGrants(snapshotID: from)
+            .filter { limit($0) && !uncaptured.contains($0.service) }
+        var after = try await readTCCGrants(snapshotID: to).filter(limit)
+        if !uncaptured.isEmpty {
+            if let bridge = try await generationBridge(from: from, to: to, domain: \.tcc) {
+                before += try await readTCCGrants(snapshotID: bridge)
+                    .filter { limit($0) && uncaptured.contains($0.service) }
+            } else {
+                after.removeAll { uncaptured.contains($0.service) }
+            }
         }
-        return Self.diffTCCGrants(
-            before: try await readTCCGrants(snapshotID: from).filter(included),
-            after: try await readTCCGrants(snapshotID: to).filter(included)
-        )
+        return Self.diffTCCGrants(before: before, after: after)
+    }
+
+    /// For a pair spanning capture generation 2, the first later-generation
+    /// snapshot after `from` and before `to` whose `domain` coverage is
+    /// comparable with `to`'s. Facts `from` never captured are diffed from
+    /// it, so a change made after the upgrade still shows against an old
+    /// baseline. Nil when `to` is itself the first such snapshot.
+    func generationBridge(
+        from: SnapshotID,
+        to: SnapshotID,
+        domain: KeyPath<SnapshotDomainCoverage, SnapshotCoverage>
+    ) async throws -> SnapshotID? {
+        let (later, candidates) = try await dbQueue.read { db -> (SnapshotSummary?, [SnapshotSummary]) in
+            guard try Self.captureGeneration(db, snapshotID: from) < 2 else { return (nil, []) }
+            let later = try Self.fetchSummaries(
+                db, sql: "\(Self.summarySelect) WHERE id = ?", arguments: [to.rawValue]
+            ).first
+            let candidates = try Self.fetchSummaries(
+                db,
+                sql: "\(Self.summarySelect) WHERE id > ? AND id < ? AND capture_generation >= 2 ORDER BY id",
+                arguments: [from.rawValue, to.rawValue]
+            )
+            return (later, candidates)
+        }
+        guard let laterCoverage = later?.coverage[keyPath: domain] else { return nil }
+        return candidates.first { $0.coverage[keyPath: domain].isComparable(with: laterCoverage) }?.id
+    }
+
+    /// Each item takes `isDisabled` and `programArguments` from the first
+    /// item in `source` with the same identity, when there is one.
+    static func takingUncapturedFacts(
+        _ items: [LaunchAgentItem],
+        from source: [LaunchAgentItem]
+    ) -> [LaunchAgentItem] {
+        let byKey = Dictionary(source.map { (launchAgentIdentityKey($0), $0) }, uniquingKeysWith: { first, _ in first })
+        return items.map { item in
+            guard let match = byKey[launchAgentIdentityKey(item)] else { return item }
+            return replacing(item, disabled: match.isDisabled, arguments: match.programArguments)
+        }
     }
 
     public func diffBTMItems(
@@ -87,18 +146,30 @@ extension SnapshotStore {
         guard disabled || arguments else { return change }
         let before = change.before
         return DomainChange(
-            before: LaunchAgentItem(
-                label: before.label,
-                sourceDirectory: before.sourceDirectory,
-                programPath: before.programPath,
-                programArguments: arguments ? change.after.programArguments : before.programArguments,
-                runAtLoad: before.runAtLoad,
-                keepAlive: before.keepAlive,
-                isDisabled: disabled ? change.after.isDisabled : before.isDisabled,
-                detailsReadable: before.detailsReadable,
-                fileName: before.fileName
+            before: replacing(
+                before,
+                disabled: disabled ? change.after.isDisabled : before.isDisabled,
+                arguments: arguments ? change.after.programArguments : before.programArguments
             ),
             after: change.after
+        )
+    }
+
+    private static func replacing(
+        _ item: LaunchAgentItem,
+        disabled: Bool,
+        arguments: [String]
+    ) -> LaunchAgentItem {
+        LaunchAgentItem(
+            label: item.label,
+            sourceDirectory: item.sourceDirectory,
+            programPath: item.programPath,
+            programArguments: arguments,
+            runAtLoad: item.runAtLoad,
+            keepAlive: item.keepAlive,
+            isDisabled: disabled,
+            detailsReadable: item.detailsReadable,
+            fileName: item.fileName
         )
     }
 
@@ -272,7 +343,8 @@ extension SnapshotStore {
             return ComparableFacts(
                 disabled: disabledCaptured && !spans,
                 arguments: !spans,
-                uncapturedServices: spans ? CaptureGeneration.servicesAddedInGeneration2 : []
+                uncapturedServices: spans ? CaptureGeneration.servicesAddedInGeneration2 : [],
+                spansGeneration: spans
             )
         }
     }
@@ -336,4 +408,5 @@ struct ComparableFacts {
     let disabled: Bool
     let arguments: Bool
     let uncapturedServices: Set<PermissionService>
+    let spansGeneration: Bool
 }

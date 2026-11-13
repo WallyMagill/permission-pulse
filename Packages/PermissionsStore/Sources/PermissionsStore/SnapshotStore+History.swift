@@ -51,7 +51,7 @@ extension SnapshotStore {
 
     // MARK: - Private
 
-    private static let summarySelect = """
+    static let summarySelect = """
         SELECT id, created_at, tcc_coverage, btm_coverage, launch_agent_coverage
         FROM snapshots
         """
@@ -64,7 +64,7 @@ extension SnapshotStore {
         )
     }
 
-    private static func fetchSummaries(
+    static func fetchSummaries(
         _ db: Database,
         sql: String,
         arguments: StatementArguments = StatementArguments()

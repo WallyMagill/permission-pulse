@@ -75,6 +75,33 @@ import PermissionsCore
         #expect(change.before.isDisabled == moved.isDisabled)
     }
 
+    // A review baseline from before the upgrade must still show what changed
+    // after it: the uncaptured facts are compared from the first
+    // current-generation snapshot onward.
+    @Test func crossGenerationDiffShowsChangesMadeAfterTheUpgrade() async throws {
+        let store = try SnapshotStore.inMemory()
+        let disabling = Self.agent("com.example.disabling", arguments: ["/bin/a"], disabled: false)
+        let rearguing = Self.agent("com.example.rearguing", arguments: ["/bin/b"], disabled: false)
+        let endpointSecurity = StoreFixtures.grant("com.example.shield", service: .endpointSecurity)
+        let upgraded = [disabling, rearguing]
+        let changed = [
+            Self.agent(disabling.label, arguments: ["/bin/a"], disabled: true),
+            Self.agent(rearguing.label, arguments: ["/bin/b", "--verbose"], disabled: false),
+        ]
+        let s1 = try await Self.write(store, grants: Self.oldGrants, agents: Self.oldStyle(upgraded), generation: 1)
+        let s2 = try await Self.write(store, grants: Self.newGrants, agents: upgraded)
+        let s3 = try await Self.write(store, grants: Self.newGrants + [endpointSecurity], agents: changed)
+
+        let tcc = try await store.diffTCCGrants(from: s1, to: s3)
+        let agents = try await store.diffLaunchAgents(from: s1, to: s3)
+
+        #expect(tcc == TCCGrantsDiff(added: [endpointSecurity], removed: []))
+        #expect(agents.added.isEmpty && agents.removed.isEmpty)
+        #expect(agents.changed == zip(upgraded, changed).map { DomainChange(before: $0, after: $1) })
+        #expect(try await !store.diffTCCGrants(from: s1, to: s2).hasContent)
+        #expect(try await !store.diffLaunchAgents(from: s1, to: s2).hasContent)
+    }
+
     // The first scan after upgrading must write a current-generation
     // snapshot that later scans compare against normally.
     @Test func olderGenerationBaselineAlwaysReadsAsChanged() async throws {
@@ -108,6 +135,11 @@ import PermissionsCore
         try await store.evidenceChanged(
             since: id, grants: newGrants, launchAgents: newAgents, btmItems: [], coverage: .allComplete
         )
+    }
+
+    /// What the old capture rules stored for these agents.
+    private static func oldStyle(_ agents: [LaunchAgentItem]) -> [LaunchAgentItem] {
+        agents.map { agent($0.label, arguments: [], disabled: false) }
     }
 
     private static func agent(
