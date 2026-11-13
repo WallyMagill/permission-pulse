@@ -30,28 +30,6 @@ public struct PreferencesWindowView: View {
     }
 }
 
-// MARK: - General tab
-
-private struct GeneralSettingsTab: View {
-    @Environment(PreferencesViewModel.self) private var viewModel
-
-    var body: some View {
-        Form {
-            Toggle(
-                String(localized: "Launch at login"),
-                isOn: Binding(
-                    get: { viewModel.launchAtLoginEnabled },
-                    set: { newValue in Task { await viewModel.setLaunchAtLogin(newValue) } }
-                )
-            )
-            Text(String(localized: "Permission Pulse starts in the menu bar when you log in."))
-                .ppFont(.metadata)
-                .foregroundStyle(.secondary)
-        }
-        .formStyle(.grouped)
-    }
-}
-
 // MARK: - Scanning tab
 
 private struct ScanningSettingsTab: View {

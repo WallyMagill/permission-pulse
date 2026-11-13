@@ -139,7 +139,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         onChangeAlertsToggle: { [weak self] turnOn in
             await self?.changeAlertCoordinator.handleToggle(turnOn: turnOn) ?? .off
         },
-        initialLaunchAtLogin: SMAppService.mainApp.status == .enabled,
+        fetchLaunchAtLoginStatus: { LaunchAtLoginStatus(SMAppService.mainApp.status) },
         onLaunchAtLoginToggle: { enable in
             do {
                 if enable { try SMAppService.mainApp.register() }
@@ -149,8 +149,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                     subsystem: "com.wallymagill.permissionpulse",
                     category: "app-delegate"
                 ).error("Launch-at-login toggle failed: \(error.localizedDescription, privacy: .public)")
+                throw error
             }
-            return SMAppService.mainApp.status == .enabled
         }
     )
     private var coordinator: ScanCoordinator?
@@ -313,6 +313,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationDidBecomeActive(_ notification: Notification) {
         guard !runtimeEnvironment.isRunningTests else { return }
+        preferencesViewModel.refreshLaunchAtLoginStatus()
         Task { [weak self] in await self?.recheckFullDiskAccessIfReturning() }
     }
 
@@ -548,5 +549,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // Blocking modal is intentional: the user must acknowledge the failure
         // before any subsequent scan begins.
         alert.runModal()
+    }
+}
+
+extension LaunchAtLoginStatus {
+    init(_ status: SMAppService.Status) {
+        switch status {
+        case .enabled: self = .enabled
+        case .requiresApproval: self = .requiresApproval
+        case .notRegistered: self = .notRegistered
+        case .notFound: self = .notFound
+        @unknown default: self = .notFound
+        }
     }
 }
