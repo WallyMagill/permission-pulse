@@ -58,6 +58,9 @@ struct PermissionPulseApp: App {
                 },
                 scanInProgress: { [appDelegate] in
                     appDelegate.viewModel.scanInProgress
+                },
+                makeDiagnostics: { [appDelegate] in
+                    await appDelegate.diagnosticsText()
                 }
             )
             .environment(appDelegate.preferencesViewModel)
@@ -156,14 +159,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var coordinator: ScanCoordinator?
     private(set) var scanScheduler: ScanScheduler?
     private var mediaCoordinator: MediaUseCoordinator?
-    private var snapshotStore: SnapshotStore?
+    private(set) var snapshotStore: SnapshotStore?
     private(set) var snapshotCoordinator: SnapshotCoordinator?
     var welcomeWindow: NSWindow?
     var fullDiskAccessWindow: NSWindow?
     let fullDiskAccessPromptPresenter: (@MainActor (FullDiskAccessLoss) -> Void)?
     private let resetMessagePresenter: (@MainActor (String) -> Void)?
     private let resetOperation: (@MainActor () async -> Void)?
-    private let weeklyDigestScheduler: any WeeklyDigestScheduler
+    let weeklyDigestScheduler: any WeeklyDigestScheduler
     private(set) var resetTask: Task<Void, Never>?
     /// Set by the snapshot coordinator when the current scan wrote a snapshot.
     private var snapshotWrite: (previous: SnapshotID?, written: SnapshotID)?

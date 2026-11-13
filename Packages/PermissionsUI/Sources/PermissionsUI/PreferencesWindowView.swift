@@ -1,3 +1,4 @@
+import AppKit // AppKit: NSPasteboard for Copy Diagnostics; SwiftUI has no clipboard writer.
 import SwiftUI
 
 /// Preferences window — native macOS TabView with four tabs:
@@ -6,13 +7,16 @@ public struct PreferencesWindowView: View {
     @Environment(PreferencesViewModel.self) private var viewModel
     private let onResetAllData: (() -> Void)?
     private let scanInProgress: () -> Bool
+    private let makeDiagnostics: (() async -> String)?
 
     public init(
         onResetAllData: (() -> Void)? = nil,
-        scanInProgress: @escaping () -> Bool = { false }
+        scanInProgress: @escaping () -> Bool = { false },
+        makeDiagnostics: (() async -> String)? = nil
     ) {
         self.onResetAllData = onResetAllData
         self.scanInProgress = scanInProgress
+        self.makeDiagnostics = makeDiagnostics
     }
 
     public var body: some View {
@@ -23,7 +27,11 @@ public struct PreferencesWindowView: View {
                 .tabItem { Label(String(localized: "Scanning"), systemImage: "clock.arrow.circlepath") }
             NotificationsSettingsTab()
                 .tabItem { Label(String(localized: "Notifications"), systemImage: "bell.badge") }
-            DataSettingsTab(onResetAllData: onResetAllData, scanInProgress: scanInProgress)
+            DataSettingsTab(
+                onResetAllData: onResetAllData,
+                scanInProgress: scanInProgress,
+                makeDiagnostics: makeDiagnostics
+            )
                 .tabItem { Label(String(localized: "Data"), systemImage: "externaldrive") }
         }
         .frame(width: 560, height: 440)
@@ -112,6 +120,7 @@ private struct DaysSliderRow: View {
 private struct DataSettingsTab: View {
     let onResetAllData: (() -> Void)?
     let scanInProgress: () -> Bool
+    let makeDiagnostics: (() async -> String)?
     @State private var isConfirmingReset = false
 
     var body: some View {
@@ -120,6 +129,9 @@ private struct DataSettingsTab: View {
                 LabeledContent(String(localized: "Export current state")) {
                     ExportToolbarMenu()
                 }
+            }
+            if let makeDiagnostics {
+                CopyDiagnosticsSection(makeDiagnostics: makeDiagnostics)
             }
             Section {
                 Button(String(localized: "Reset All Data…"), role: .destructive) {
@@ -142,6 +154,35 @@ private struct DataSettingsTab: View {
             Button(String(localized: "Reset"), role: .destructive) { onResetAllData?() }
         } message: {
             Text(String(localized: "All snapshots, dismissed items, snoozes, and settings will be deleted. Permission Pulse will rescan immediately. This cannot be undone."))
+        }
+    }
+}
+
+private struct CopyDiagnosticsSection: View {
+    let makeDiagnostics: () async -> String
+    @State private var copied = false
+
+    var body: some View {
+        Section {
+            HStack {
+                Button(String(localized: "Copy Diagnostics")) {
+                    Task {
+                        let text = await makeDiagnostics()
+                        NSPasteboard.general.clearContents()
+                        NSPasteboard.general.setString(text, forType: .string)
+                        copied = true
+                    }
+                }
+                if copied {
+                    Text(String(localized: "Copied to the clipboard."))
+                        .ppFont(.metadata)
+                        .foregroundStyle(.secondary)
+                }
+            }
+            Text(String(localized: "Copies the app's version, scan status and settings as plain text for a bug report. It includes no app names, identifiers or file paths other than Permission Pulse's own."))
+                .ppFont(.metadata)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
         }
     }
 }
