@@ -198,7 +198,9 @@ public struct LaunchAgentScannerFS: LaunchAgentScanner, Sendable {
 
     /// Not a launchd job: unparseable, not a dictionary, or a non-string
     /// `Label`. A file caught mid-write by an installer looks the same, so it
-    /// is listed as unreadable only once settled and omitted until then.
+    /// is listed as unreadable only once settled. Until then it is inert:
+    /// omitting it would degrade coverage and write a snapshot for the flip
+    /// and another for its return.
     private func malformed(
         at url: URL,
         category: LaunchAgentItem.SourceDirectory,
@@ -206,7 +208,7 @@ public struct LaunchAgentScannerFS: LaunchAgentScanner, Sendable {
     ) -> PlistDecodeResult {
         guard isSettled(url) else {
             Self.logger.debug("Skip malformed plist still settling \(url.lastPathComponent, privacy: .public)")
-            return .omitted
+            return .inert
         }
         Self.logger.debug("Plist malformed \(url.lastPathComponent, privacy: .public); listing without details")
         return .item(unreadableItem(at: url, category: category, overrides: overrides))

@@ -183,8 +183,8 @@ import PermissionsCore
     }
 
     // A plist caught mid-write by an installer must not appear as a phantom
-    // item for one scan; it is omitted with a warning until it settles.
-    @Test func freshUnparseablePlistIsOmittedForThisScan() async throws {
+    // item for one scan, nor degrade coverage: it is ignored until it settles.
+    @Test func freshUnparseablePlistIsIgnoredForThisScan() async throws {
         let dir = try TempDir()
         try dir.write(filename: "good.plist", contents: PlistFixtures.runAtLoad(label: "com.test.alpha"))
         try dir.write(filename: "com.test.writing.plist", contents: Data("<?xml version=".utf8))
@@ -192,9 +192,7 @@ import PermissionsCore
         let output = try await scanner(dir, ageSeconds: LaunchAgentScannerFS.settlingInterval - 1).scan()
 
         #expect(output.items.map(\.label) == ["com.test.alpha"])
-        #expect(output.warnings == [
-            ScannerWarning(source: .entries, omittedCount: 1, omittedNames: ["com.test.writing.plist"]),
-        ])
+        #expect(output.warnings.isEmpty)
     }
 
     @Test func nonStringLabelIsListedWithoutDetailsOnceSettled() async throws {
@@ -205,7 +203,7 @@ import PermissionsCore
         let settled = try await scanner(dir, ageSeconds: LaunchAgentScannerFS.settlingInterval).scan()
 
         #expect(young.items.isEmpty)
-        #expect(young.warnings == [ScannerWarning(source: .entries, omittedCount: 1, omittedNames: ["bad-label.plist"])])
+        #expect(young.warnings.isEmpty)
         let item = try #require(settled.items.first)
         #expect(settled.warnings.isEmpty)
         #expect(item.label == "bad-label")
