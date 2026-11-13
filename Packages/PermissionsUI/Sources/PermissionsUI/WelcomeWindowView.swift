@@ -23,6 +23,10 @@ public struct WelcomeWindowView: View {
         self.onDismiss = onDismiss
     }
 
+    static var systemLevelOnlyNote: String {
+        String(localized: "On macOS 27, macOS only lets apps see system-level permissions: \(PermissionScope.systemLevelServiceList).")
+    }
+
     public var body: some View {
         VStack(spacing: 0) {
             switch step {
@@ -88,7 +92,7 @@ public struct WelcomeWindowView: View {
                 .ppFont(.metadata)
                 .foregroundStyle(.secondary)
             if showsSystemLevelOnlyNote {
-                Text(String(localized: "On macOS 27, macOS only lets apps see system-level permissions: Accessibility, Full Disk Access, Input Monitoring and Screen Recording."))
+                Text(Self.systemLevelOnlyNote)
                     .ppFont(.metadata)
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)

@@ -19,7 +19,20 @@ struct PermissionScopeTests {
         #expect(reduced.isHidden(.filesAndFolders))
         #expect(!reduced.isHidden(.accessibility))
         #expect(!reduced.isHidden(.endpointSecurity))
+        #expect(!reduced.isHidden(.developerTool))
         #expect(!PermissionScope.full.isHidden(.camera))
+    }
+
+    // macOS 27.2's system TCC database holds kTCCServiceDeveloperTool rows.
+    @Test("Every list of visible services names Developer Tools")
+    func visibleServiceListsAgree() {
+        let empty = PermissionsEmptyStateView.emptyCopy(domain: .tcc, scope: .systemLevelOnly)
+        for service in PermissionService.systemLevel {
+            #expect(empty.description.contains(service.displayName))
+            #expect(WelcomeWindowView.systemLevelOnlyNote.contains(service.displayName))
+        }
+        #expect(WelcomeWindowView.systemLevelOnlyNote.contains("Developer Tools"))
+        #expect(PermissionScope.systemLevelOnly.hiddenService(matching: "Developer") == nil)
     }
 
     @Test("A search naming a hidden service finds it only under a reduced scope")

@@ -41,6 +41,14 @@ import Testing
         #expect(PermissionService(tccServiceString: "kTCCServiceFutureThing") == nil)
     }
 
+    // The services macOS 27.2's system TCC database holds that the scanner maps.
+    @Test func systemLevelMatchesTheSystemDatabase() {
+        #expect(PermissionService.systemLevel == [
+            .accessibility, .fullDiskAccess, .inputMonitoring, .screenRecording,
+            .developerTool, .remoteDesktop, .endpointSecurity,
+        ])
+    }
+
     @Test func knownSkippedContainsSixServices() {
         #expect(PermissionService.knownSkipped.count == 6)
     }

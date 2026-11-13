@@ -50,6 +50,7 @@ public enum PermissionService: String, Sendable, CaseIterable, Hashable {
         .fullDiskAccess,
         .inputMonitoring,
         .screenRecording,
+        .developerTool,
         .remoteDesktop,
         .endpointSecurity,
     ]
