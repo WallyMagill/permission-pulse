@@ -40,19 +40,46 @@ enum RecentChangesStatus {
         }
     }
 
+    /// One complete sentence per domain, so each translation can make its
+    /// verb agree with the domain's name.
     static func uncomparedLine(_ domain: HistoryDomain, reason: UncomparedReason) -> String {
-        let name = domain.displayName
         switch reason {
-        case .scopeChanged:
-            return String(localized: "\(name) weren't compared: macOS changed what Permission Pulse can read during this window.")
-        case .latestScanFailed where domain == .launchAgents:
-            return String(localized: "\(name) weren't compared: the latest scan couldn't read them.")
-        case .latestScanFailed:
-            return String(localized: "\(name) weren't compared: the latest scan couldn't read them, usually because Full Disk Access is off.")
-        case .itemsUnreadable:
-            return String(localized: "\(name) weren't compared: some items couldn't be read during this window.")
-        case .noEarlierSnapshot:
-            return String(localized: "\(name) weren't compared: no earlier snapshot recorded them.")
+        case .scopeChanged: scopeChangedLine(domain)
+        case .latestScanFailed: latestScanFailedLine(domain)
+        case .itemsUnreadable: itemsUnreadableLine(domain)
+        case .noEarlierSnapshot: noEarlierSnapshotLine(domain)
+        }
+    }
+
+    private static func scopeChangedLine(_ domain: HistoryDomain) -> String {
+        switch domain {
+        case .tcc: String(localized: "Permissions weren't compared: macOS changed what Permission Pulse can read during this window.")
+        case .btm: String(localized: "Background Items weren't compared: macOS changed what Permission Pulse can read during this window.")
+        case .launchAgents: String(localized: "Launch Agents weren't compared: macOS changed what Permission Pulse can read during this window.")
+        }
+    }
+
+    private static func latestScanFailedLine(_ domain: HistoryDomain) -> String {
+        switch domain {
+        case .tcc: String(localized: "Permissions weren't compared: the latest scan couldn't read them, usually because Full Disk Access is off.")
+        case .btm: String(localized: "Background Items weren't compared: the latest scan couldn't read them, usually because Full Disk Access is off.")
+        case .launchAgents: String(localized: "Launch Agents weren't compared: the latest scan couldn't read them.")
+        }
+    }
+
+    private static func itemsUnreadableLine(_ domain: HistoryDomain) -> String {
+        switch domain {
+        case .tcc: String(localized: "Permissions weren't compared: some items couldn't be read during this window.")
+        case .btm: String(localized: "Background Items weren't compared: some items couldn't be read during this window.")
+        case .launchAgents: String(localized: "Launch Agents weren't compared: some items couldn't be read during this window.")
+        }
+    }
+
+    private static func noEarlierSnapshotLine(_ domain: HistoryDomain) -> String {
+        switch domain {
+        case .tcc: String(localized: "Permissions weren't compared: no earlier snapshot recorded them.")
+        case .btm: String(localized: "Background Items weren't compared: no earlier snapshot recorded them.")
+        case .launchAgents: String(localized: "Launch Agents weren't compared: no earlier snapshot recorded them.")
         }
     }
 

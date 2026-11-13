@@ -46,7 +46,7 @@ import PermissionsUI
         #expect(alerts.first?.title == "Permission Pulse: something changed")
         let body = try #require(alerts.first?.body)
         #expect(body.contains(" changes: "))
-        #expect(body.hasSuffix(" more."))
+        #expect(body.contains(" other change"))
     }
 
     @Test func firstSnapshotEverPostsNoChangeAlert() async throws {

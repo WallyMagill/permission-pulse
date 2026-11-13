@@ -29,9 +29,10 @@ public struct ChangeAlert: Sendable, Equatable {
         guard entries.count > 1 else { return ChangeAlert(title: title, body: first.summary) }
         let count = entries.count
         let others = count - 1
-        return ChangeAlert(
-            title: title,
-            body: String(localized: "\(count) changes: \(first.summary) and \(others) more.")
-        )
+        // Two or more in all, so only "the rest" can be singular.
+        let body = others == 1
+            ? String(localized: "2 changes: \(first.summary) and 1 other change.")
+            : String(localized: "\(count) changes: \(first.summary) and \(others) other changes.")
+        return ChangeAlert(title: title, body: body)
     }
 }

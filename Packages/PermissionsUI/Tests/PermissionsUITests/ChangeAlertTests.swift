@@ -36,7 +36,17 @@ import PermissionsStore
             asOf: now
         )
 
-        #expect(alert?.body == "3 changes: Granted Screen Recording to Zoom and 2 more.")
+        #expect(alert?.body == "3 changes: Granted Screen Recording to Zoom and 2 other changes.")
+    }
+
+    @Test func oneOtherChangeIsSingular() {
+        let alert = ChangeAlert.make(
+            for: diff(grants: [grant("us.zoom.xos", "Zoom"), grant("com.b", "Bee")]),
+            dismissals: nil,
+            asOf: now
+        )
+
+        #expect(alert?.body == "2 changes: Granted Screen Recording to Zoom and 1 other change.")
     }
 
     @Test func uncomparedDomainIsIgnored() {
