@@ -360,7 +360,7 @@ private struct LaunchAgentsDetailPage: View {
     private var agentList: some View {
         List(selection: $selection) {
             ForEach(filteredItems) { item in
-                LaunchAgentRow(item: item)
+                LaunchAgentRow(item: item, programMissing: viewModel.missingProgramAgentIDs.contains(item.id))
                     .tag(InspectorSelection.launchAgent(id: item.id))
             }
         }

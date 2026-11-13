@@ -84,14 +84,14 @@ struct PermissionsDetailPage: View {
                     || grant.service.displayName.lowercased().contains(q)
             }
         }
-        let live = viewModel.tccDataSource == .live
+        let missing = viewModel.missingAppKeys
         return Dictionary(grouping: filtered, by: \.appKey)
             .map { key, grants in
                 AppGrantGroup(
                     appKey: key,
                     app: grants[0].app,
                     grants: grants,
-                    appMissing: live && AppPresence.isMissing(grants[0].app)
+                    appMissing: missing.contains(key)
                 )
             }
             .sorted { $0.app.displayName.localizedCaseInsensitiveCompare($1.app.displayName) == .orderedAscending }

@@ -3,7 +3,7 @@ import PermissionsCore
 
 struct LaunchAgentRow: View {
     let item: LaunchAgentItem
-    var missingProgramCheck: MissingProgramCheck = .live
+    var programMissing: Bool = false
 
     var body: some View {
         HStack(spacing: PPSpacing.md) {
@@ -14,7 +14,7 @@ struct LaunchAgentRow: View {
             VStack(alignment: .leading, spacing: PPSpacing.xxs) {
                 Text(item.label).ppFont(.body).lineLimit(1)
                 subtitle
-                if missingProgramCheck.isProgramMissing(item) {
+                if programMissing {
                     MissingProgramNote()
                 }
             }

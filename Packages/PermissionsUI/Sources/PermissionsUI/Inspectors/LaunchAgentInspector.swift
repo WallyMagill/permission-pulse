@@ -9,7 +9,7 @@ import PermissionsCore
 /// full-width "Reveal in Finder" action.
 struct LaunchAgentInspector: View {
     let item: LaunchAgentItem
-    var missingProgramCheck: MissingProgramCheck = .live
+    var programMissing: Bool = false
 
     var body: some View {
         ScrollView {
@@ -46,7 +46,7 @@ struct LaunchAgentInspector: View {
         VStack(alignment: .leading, spacing: PPSpacing.sm) {
             SheetSectionLabel(String(localized: "Properties"))
             SheetKVCard(rows: Self.propertyRows(for: item))
-            if missingProgramCheck.isProgramMissing(item) {
+            if programMissing {
                 MissingProgramNote()
             }
         }

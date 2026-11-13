@@ -14,11 +14,14 @@ struct InspectorPanel: View {
                 AppPermissionsInspector(
                     app: app,
                     grants: grants,
-                    appMissing: viewModel.tccDataSource == .live && AppPresence.isMissing(app),
+                    appMissing: grants.first.map { viewModel.missingAppKeys.contains($0.appKey) } ?? false,
                     systemLevelOnly: viewModel.permissionScope.isReduced
                 )
             case .launchAgent(let item):
-                LaunchAgentInspector(item: item)
+                LaunchAgentInspector(
+                    item: item,
+                    programMissing: viewModel.missingProgramAgentIDs.contains(item.id)
+                )
             case .backgroundItem(let item):
                 BackgroundItemInspector(item: item)
             case nil:

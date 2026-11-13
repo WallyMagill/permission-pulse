@@ -65,6 +65,7 @@ final class ScanCoordinator {
         applyTCC(tccResult, at: scanDate)
         applyLaunchAgents(launchAgentResult, at: scanDate)
         applyBTM(btmResult, at: scanDate)
+        viewModel.refreshInstallState()
     }
 
     func rescan() async {

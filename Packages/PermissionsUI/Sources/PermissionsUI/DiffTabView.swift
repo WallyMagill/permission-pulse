@@ -118,12 +118,13 @@ struct DiffTabView: View {
     }
 
     private func diffList(_ entries: [DiffEntry]) -> some View {
-        List {
+        let scopedIdentifiers = btmScopedIdentifiers
+        return List {
             ForEach(HistoryDomain.allCases, id: \.self) { domain in
                 let rows = entries.filter { $0.domain == domain }
                 if !rows.isEmpty {
                     Section(domain.displayName) {
-                        changeRows(rows)
+                        changeRows(rows, scopedIdentifiers: scopedIdentifiers)
                     }
                 }
             }
@@ -158,16 +159,16 @@ struct DiffTabView: View {
     }
 
     @ViewBuilder
-    private func changeRows(_ rows: [DiffEntry]) -> some View {
+    private func changeRows(_ rows: [DiffEntry], scopedIdentifiers: Set<String>) -> some View {
         ForEach(rows) { entry in
             let key = DiffEntryKey.key(for: entry)
             ChangeRow(
                 kind: entry,
-                scopedIdentifiers: btmScopedIdentifiers,
+                scopedIdentifiers: scopedIdentifiers,
                 onDismissForever: {
                     pendingDismiss = PendingDismiss(
                         key: key,
-                        summary: ChangeRow.summary(for: entry, scopedIdentifiers: btmScopedIdentifiers)
+                        summary: ChangeRow.summary(for: entry, scopedIdentifiers: scopedIdentifiers)
                     )
                 },
                 onSnooze: {

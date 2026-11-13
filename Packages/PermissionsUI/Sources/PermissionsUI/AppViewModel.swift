@@ -80,6 +80,12 @@ public final class AppViewModel {
     /// shown stop at the previous snapshot.
     public var snapshotWriteFailed: Bool = false
 
+    /// App keys whose app is gone from this Mac, and launch agent ids whose
+    /// program is gone. Checking touches Launch Services and the disk, so it
+    /// runs once per completed scan and views read these sets.
+    public private(set) var missingAppKeys: Set<String> = []
+    public private(set) var missingProgramAgentIDs: Set<String> = []
+
     /// Applies Recent Changes dismissals and snoozes to every count.
     public var dismissedDiffEntries: DismissedDiffEntryStore?
     /// True while the detail window shows Recent Changes.
@@ -131,6 +137,29 @@ public final class AppViewModel {
         self.latestDiffWeek = latestDiffWeek
         self.staleApps = staleApps
         self.staleThresholdDays = staleThresholdDays
+    }
+
+    /// Call once a scan has applied its results.
+    public func refreshInstallState() {
+        refreshInstallState(
+            isAppMissing: { AppPresence.isMissing($0) },
+            isProgramMissing: { MissingProgramCheck.live.isProgramMissing($0) }
+        )
+    }
+
+    /// Only a live permissions scan names real apps, so mock grants are
+    /// never checked. Each app is checked once however many grants it holds.
+    func refreshInstallState(
+        isAppMissing: (AppIdentity) -> Bool,
+        isProgramMissing: (LaunchAgentItem) -> Bool
+    ) {
+        var checked: Set<String> = []
+        var missingApps: Set<String> = []
+        for grant in grants where tccDataSource == .live && checked.insert(grant.appKey).inserted {
+            if isAppMissing(grant.app) { missingApps.insert(grant.appKey) }
+        }
+        missingAppKeys = missingApps
+        missingProgramAgentIDs = Set(launchAgents.filter(isProgramMissing).map(\.id))
     }
 
     /// The changes in `diff` the user has not dismissed or snoozed — what
