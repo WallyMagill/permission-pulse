@@ -42,6 +42,12 @@ struct PermissionsEmptyStateView: View {
                 Text(String(localized: "You'll need to relaunch Permission Pulse after granting."))
                     .ppFont(.metadata)
                     .foregroundStyle(.tertiary)
+                Text(String(localized: "Just updated? macOS turns Full Disk Access off for each new version. If Permission Pulse already looks enabled, switch it off and on again, then quit and reopen."))
+                    .ppFont(.metadata)
+                    .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.center)
+                    .frame(maxWidth: 420)
+                    .fixedSize(horizontal: false, vertical: true)
                 Button {
                     AppRelauncher.relaunch()
                 } label: {

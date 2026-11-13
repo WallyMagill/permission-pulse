@@ -67,7 +67,11 @@ final class ScanEnvironment {
     let scheduler: MockWeeklyDigestScheduler
     let delegate: AppDelegate
 
-    init(status: DigestAuthorizationStatus = .authorized) throws {
+    init(
+        status: DigestAuthorizationStatus = .authorized,
+        appVersion: AppVersion = .running,
+        fullDiskAccessPromptPresenter: (@MainActor (FullDiskAccessLoss) -> Void)? = { _ in }
+    ) throws {
         directory = FileManager.default.temporaryDirectory
             .appendingPathComponent("scan-environment-\(UUID().uuidString)")
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
@@ -77,7 +81,9 @@ final class ScanEnvironment {
         scheduler = MockWeeklyDigestScheduler(initialStatus: status)
         delegate = AppDelegate(
             runtimeEnvironment: AppRuntimeEnvironment(environment: ["PERMISSION_PULSE_TEST_MODE": "1"]),
-            weeklyDigestScheduler: scheduler
+            weeklyDigestScheduler: scheduler,
+            appVersion: appVersion,
+            fullDiskAccessPromptPresenter: fullDiskAccessPromptPresenter
         )
         delegate.installSnapshotRuntime(store)
     }

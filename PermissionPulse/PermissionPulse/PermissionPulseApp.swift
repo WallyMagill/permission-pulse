@@ -95,8 +95,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     static let testDefaultsSuiteName =
         "com.wallymagill.permissionpulse.test-host.\(ProcessInfo.processInfo.processIdentifier)"
 
-    private let runtimeEnvironment: AppRuntimeEnvironment
-    private let runtimeDefaults: UserDefaults
+    let runtimeEnvironment: AppRuntimeEnvironment
+    let runtimeDefaults: UserDefaults
+    let appVersion: AppVersion
+    let fullDiskAccessRecovery = FullDiskAccessRecovery()
     let viewModel: AppViewModel
     let preferencesStore: PreferencesStore
     // UNUserNotificationCenter.delegate is weak — must be retained here.
@@ -154,12 +156,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private(set) var scanScheduler: ScanScheduler?
     private var mediaCoordinator: MediaUseCoordinator?
     private var snapshotStore: SnapshotStore?
-    private var snapshotCoordinator: SnapshotCoordinator?
-    private var welcomeWindow: NSWindow?
+    private(set) var snapshotCoordinator: SnapshotCoordinator?
+    var welcomeWindow: NSWindow?
+    var fullDiskAccessWindow: NSWindow?
+    let fullDiskAccessPromptPresenter: (@MainActor (FullDiskAccessLoss) -> Void)?
     private let resetMessagePresenter: (@MainActor (String) -> Void)?
     private let resetOperation: (@MainActor () async -> Void)?
     private let weeklyDigestScheduler: any WeeklyDigestScheduler
-    private var resetTask: Task<Void, Never>?
+    private(set) var resetTask: Task<Void, Never>?
     /// Set by the snapshot coordinator when the current scan wrote a snapshot.
     private var snapshotWrite: (previous: SnapshotID?, written: SnapshotID)?
 
@@ -171,11 +175,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         runtimeEnvironment: AppRuntimeEnvironment,
         resetMessagePresenter: (@MainActor (String) -> Void)? = nil,
         resetOperation: (@MainActor () async -> Void)? = nil,
-        weeklyDigestScheduler: any WeeklyDigestScheduler = LiveWeeklyDigestScheduler()
+        weeklyDigestScheduler: any WeeklyDigestScheduler = LiveWeeklyDigestScheduler(),
+        appVersion: AppVersion = .running,
+        fullDiskAccessPromptPresenter: (@MainActor (FullDiskAccessLoss) -> Void)? = nil
     ) {
         let defaults = Self.makeRuntimeDefaults(for: runtimeEnvironment)
         self.runtimeEnvironment = runtimeEnvironment
         self.runtimeDefaults = defaults
+        self.appVersion = appVersion
+        self.fullDiskAccessPromptPresenter = fullDiskAccessPromptPresenter
         self.viewModel = AppViewModel()
         self.preferencesStore = PreferencesStore(defaults: defaults)
         self.notificationPresentationDelegate = NotificationPresentationDelegate()
@@ -281,6 +289,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
+    func applicationDidBecomeActive(_ notification: Notification) {
+        guard !runtimeEnvironment.isRunningTests else { return }
+        Task { [weak self] in await self?.recheckFullDiskAccessIfReturning() }
+    }
+
+    func applicationDidResignActive(_ notification: Notification) {
+        fullDiskAccessRecovery.appResignedActive()
+    }
+
     func rescan() async {
         guard resetTask == nil else {
             Self.logger.debug("Rescan ignored — a reset is already in progress")
@@ -307,8 +324,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         viewModel.staleThresholdDays = preferencesStore.staleThresholdDays
         snapshotWrite = nil
         await coordinator?.rescan()
+        let fullDiskAccessLoss = await classifyFullDiskAccessLoss()
         await updateSnapshotHistoryAfterScan()
         viewModel.lastScanDate = Date()
+        await handleFullDiskAccessLoss(fullDiskAccessLoss)
         await postChangeAlertIfNeeded()
         _ = await weeklyDigestCoordinator.reconcileSchedule()
         return true
@@ -507,38 +526,5 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // Blocking modal is intentional: the user must acknowledge the failure
         // before any subsequent scan begins.
         alert.runModal()
-    }
-
-    func showWelcomeWindow() {
-        // Singleton: re-front the existing window instead of orphaning it. The
-        // menu-bar "Welcome & About" entry can call this repeatedly. (U5)
-        if let welcomeWindow {
-            welcomeWindow.makeKeyAndOrderFront(nil)
-            NSApp.activate(ignoringOtherApps: true)
-            return
-        }
-        let view = WelcomeWindowView(onDismiss: welcomeDismissAction())
-        let window = NSWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 480, height: 440),
-            styleMask: [.titled, .closable],
-            backing: .buffered,
-            defer: false
-        )
-        window.title = String(localized: "Welcome")
-        window.contentView = NSHostingView(rootView: view)
-        window.center()
-        window.isReleasedWhenClosed = false
-        window.makeKeyAndOrderFront(nil)
-        NSApp.activate(ignoringOtherApps: true)
-        welcomeWindow = window
-    }
-
-    func welcomeDismissAction() -> () -> Void {
-        { [weak self] in
-            guard let self else { return }
-            self.runtimeDefaults.set(true, forKey: Self.hasSeenWelcomeKey)
-            self.welcomeWindow?.close()
-            self.welcomeWindow = nil
-        }
     }
 }

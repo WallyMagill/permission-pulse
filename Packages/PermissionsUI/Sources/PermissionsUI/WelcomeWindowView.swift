@@ -2,11 +2,24 @@ import SwiftUI
 
 public struct WelcomeWindowView: View {
     private let onDismiss: () -> Void
+    private let onOpenedSettings: () -> Void
+    private let recovery: FullDiskAccessRecovery
+    private let showsSystemLevelOnlyNote: Bool
     @State private var step: Step = .features
 
     private enum Step { case features, fullDiskAccess }
 
-    public init(onDismiss: @escaping () -> Void) {
+    /// `showsSystemLevelOnlyNote` is for macOS 27 and later, where only the
+    /// system-level permissions are readable.
+    public init(
+        recovery: FullDiskAccessRecovery,
+        showsSystemLevelOnlyNote: Bool,
+        onOpenedSettings: @escaping () -> Void = {},
+        onDismiss: @escaping () -> Void
+    ) {
+        self.recovery = recovery
+        self.showsSystemLevelOnlyNote = showsSystemLevelOnlyNote
+        self.onOpenedSettings = onOpenedSettings
         self.onDismiss = onDismiss
     }
 
@@ -18,7 +31,7 @@ public struct WelcomeWindowView: View {
             }
         }
         .padding(PPSpacing.xl)
-        .frame(width: 480, height: 440)
+        .frame(width: 480, height: 520)
     }
 
     private var featuresStep: some View {
@@ -69,27 +82,40 @@ public struct WelcomeWindowView: View {
                 .ppFont(.pageTitle)
             Text(String(localized: "Reading the system's permission records (TCC) requires Full Disk Access. Permission Pulse only ever reads — it cannot change permissions, and it never writes outside its own data folder."))
                 .ppFont(.body)
-            VStack(alignment: .leading, spacing: PPSpacing.sm) {
-                NumberedStep(number: 1, text: String(localized: "Click Open System Settings below."))
-                NumberedStep(number: 2, text: String(localized: "Turn on Permission Pulse under Full Disk Access."))
-                NumberedStep(number: 3, text: String(localized: "Quit and reopen Permission Pulse."))
-            }
-            .vibrancyCard()
-            Text(String(localized: "You can skip this — everything except permission scanning still works."))
+                .fixedSize(horizontal: false, vertical: true)
+            fdaSteps
+            Text(String(localized: "You can skip this — everything except permissions and background items still works."))
                 .ppFont(.metadata)
                 .foregroundStyle(.secondary)
-            Spacer(minLength: 0)
-            HStack {
-                Spacer()
-                Button(String(localized: "Skip for Now")) { onDismiss() }
-                Button(String(localized: "Open System Settings")) {
-                    SystemSettingsLink.openFullDiskAccess()
-                    onDismiss()
-                }
-                .buttonStyle(.borderedProminent)
-                .keyboardShortcut(.defaultAction)
+            if showsSystemLevelOnlyNote {
+                Text(String(localized: "On macOS 27, macOS only lets apps see system-level permissions: Accessibility, Full Disk Access, Input Monitoring and Screen Recording."))
+                    .ppFont(.metadata)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
             }
+            FullDiskAccessRecoveryStatus(
+                recovery: recovery,
+                successText: String(localized: "Full Disk Access is on. You're all set.")
+            )
+            Spacer(minLength: 0)
+            FullDiskAccessRecoveryButtons(
+                recovery: recovery,
+                dismissTitle: recovery.phase == .idle
+                    ? String(localized: "Skip for Now")
+                    : String(localized: "Done"),
+                onDismiss: onDismiss,
+                onOpenSettings: onOpenedSettings
+            )
         }
+    }
+
+    private var fdaSteps: some View {
+        VStack(alignment: .leading, spacing: PPSpacing.sm) {
+            NumberedStep(number: 1, text: String(localized: "Click Open System Settings below."))
+            NumberedStep(number: 2, text: String(localized: "Turn on Permission Pulse under Full Disk Access. If Permission Pulse isn't listed, click + and add it from Applications."))
+            NumberedStep(number: 3, text: String(localized: "Come back to this window. Permission Pulse checks again and offers to reopen if macOS needs a restart."))
+        }
+        .vibrancyCard()
     }
 }
 
@@ -117,7 +143,7 @@ private struct FeatureRow: View {
     }
 }
 
-private struct NumberedStep: View {
+struct NumberedStep: View {
     let number: Int
     let text: String
 
