@@ -243,22 +243,13 @@ public struct BTMScannerDirect: BTMScanner, Sendable {
             developerName: entry.shim.developerName,
             bundleIdentifier: entry.shim.bundleIdentifier,
             teamIdentifier: entry.shim.teamIdentifier,
-            type: mapType(entry.shim.type),
+            type: BTMItem.ItemType(rawValue: entry.shim.type),
             disposition: mapDisposition(entry.shim.disposition),
             dispositionRaw: entry.shim.disposition,
             scope: mapScope(userUUID: entry.userUUID),
             modificationDate: Date(timeIntervalSinceReferenceDate: entry.shim.modificationDate),
             parentIdentifier: entry.shim.container
         )
-    }
-
-    static func mapType(_ raw: Int) -> BTMItem.ItemType {
-        switch raw {
-        case 0x2: .app
-        case 0x10010: .legacyDaemon
-        case 0x20: .developerGroup
-        default: .unknown(rawValue: raw)
-        }
     }
 
     static func mapDisposition(_ raw: Int) -> BTMItem.Disposition {

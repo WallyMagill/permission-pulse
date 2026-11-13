@@ -126,10 +126,11 @@ struct DiffTabView: View {
             let key = DiffEntryKey.key(for: kind)
             ChangeRow(
                 kind: kind,
+                scopedIdentifiers: btmScopedIdentifiers,
                 onDismissForever: {
                     pendingDismiss = PendingDismiss(
                         key: key,
-                        summary: ChangeRow.summary(for: kind)
+                        summary: ChangeRow.summary(for: kind, scopedIdentifiers: btmScopedIdentifiers)
                     )
                 },
                 onSnooze: {
@@ -140,6 +141,11 @@ struct DiffTabView: View {
                 }
             )
         }
+    }
+
+    private var btmScopedIdentifiers: Set<String> {
+        guard let btm = diff?.btm else { return [] }
+        return ChangeRow.identifiersInSeveralScopes(btm.added + btm.removed + btm.changed.map(\.after))
     }
 
     private func visibleRows(_ rows: [ChangeRow.Kind], now: Date) -> [ChangeRow.Kind] {

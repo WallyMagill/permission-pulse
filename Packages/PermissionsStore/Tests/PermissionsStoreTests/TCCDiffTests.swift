@@ -121,6 +121,21 @@ import PermissionsCore
         #expect(diff.changed.count == 1)
     }
 
+    @Test func metadataOnlyGrantChangeIsNotADiffEntry() {
+        let before = PermissionGrant(
+            service: .screenRecording,
+            app: AppIdentity(bundleID: "us.zoom.xos", displayName: "zoom.us"),
+            lastModified: Date(timeIntervalSince1970: 0)
+        )
+        let after = PermissionGrant(
+            service: .screenRecording,
+            app: AppIdentity(bundleID: "us.zoom.xos", displayName: "Zoom Workplace",
+                             bundlePath: URL(fileURLWithPath: "/Applications/zoom.us.app")),
+            lastModified: Date(timeIntervalSince1970: 86_400)
+        )
+        #expect(!SnapshotStore.diffTCCGrants(before: [before], after: [after]).hasContent)
+    }
+
     @Test func distinctPathOnlyGrantsBothAppearInDiff() async throws {
         let store = try SnapshotStore.inMemory()
         let s1 = try await store.writeTCCGrantsSnapshot([], at: Date(timeIntervalSince1970: 0))

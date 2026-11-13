@@ -34,18 +34,6 @@ import PermissionsCore
     }
 
     @Test(arguments: [
-        (0x2, BTMItem.ItemType.app),
-        (0x10010, BTMItem.ItemType.legacyDaemon),
-        (0x20, BTMItem.ItemType.developerGroup),
-        (0x99, BTMItem.ItemType.unknown(rawValue: 0x99)),
-    ])
-    func scanMapsTypeBitmaskCorrectly(raw: Int, expected: BTMItem.ItemType) async throws {
-        // mapType is the same code-path used by scan(); test the pure mapping directly so
-        // the developerGroup case is not filtered out before assertion.
-        #expect(BTMScannerDirect.mapType(raw) == expected)
-    }
-
-    @Test(arguments: [
         (0xb, BTMItem.Disposition.enabled),
         (0x2, BTMItem.Disposition.disabled),
         (0x0, BTMItem.Disposition.disabled),

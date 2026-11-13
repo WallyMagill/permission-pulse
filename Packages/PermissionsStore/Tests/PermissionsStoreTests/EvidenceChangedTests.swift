@@ -49,6 +49,37 @@ import PermissionsCore
         #expect(!changed)
     }
 
+    @Test func metadataOnlyChurnIsNotAChange() async throws {
+        let (store, id) = try await storeWithBaseline()
+        let grant = PermissionGrant(
+            service: .camera,
+            app: AppIdentity(bundleID: "com.a", displayName: "A 2.0",
+                             bundlePath: URL(fileURLWithPath: "/Applications/A.app")),
+            lastModified: StoreFixtures.date.addingTimeInterval(86_400)
+        )
+        let item = BTMItem(
+            identifier: "x", name: "X renamed", bundleIdentifier: "com.example.x",
+            type: .app, disposition: .enabled, dispositionRaw: 0x8b, scope: .system,
+            modificationDate: StoreFixtures.date.addingTimeInterval(86_400)
+        )
+        let changed = try await store.evidenceChanged(
+            since: id, grants: [grant], launchAgents: agents, btmItems: [item], coverage: .allComplete
+        )
+        #expect(!changed)
+    }
+
+    @Test func backgroundItemDisabledIsAChange() async throws {
+        let (store, id) = try await storeWithBaseline()
+        let disabled = BTMItem(
+            identifier: "x", name: "Item-x", bundleIdentifier: "com.example.x",
+            type: .app, disposition: .disabled, scope: .system, modificationDate: StoreFixtures.date
+        )
+        let changed = try await store.evidenceChanged(
+            since: id, grants: grants, launchAgents: agents, btmItems: [disabled], coverage: .allComplete
+        )
+        #expect(changed)
+    }
+
     @Test func addedGrantIsAChange() async throws {
         let (store, id) = try await storeWithBaseline()
         let changed = try await store.evidenceChanged(

@@ -20,6 +20,8 @@ struct ChangeRow: View {
     }
 
     let kind: Kind
+    /// BTM identifiers registered in more than one scope; their rows name the scope.
+    var scopedIdentifiers: Set<String> = []
     var onDismissForever: (() -> Void)? = nil
     var onSnooze: (() -> Void)? = nil
 
@@ -75,7 +77,28 @@ struct ChangeRow: View {
     }
 
     private var description: String {
-        Self.summary(for: kind)
+        Self.summary(for: kind, scopedIdentifiers: scopedIdentifiers)
+    }
+
+    static func summary(for kind: Kind, scopedIdentifiers: Set<String>) -> String {
+        let base = summary(for: kind)
+        guard let item = btmItem(of: kind), scopedIdentifiers.contains(item.identifier) else { return base }
+        return String(localized: "\(base) · \(item.scope.displayName)")
+    }
+
+    /// Identifiers that appear under more than one scope among `items`.
+    static func identifiersInSeveralScopes(_ items: [BTMItem]) -> Set<String> {
+        let scopesByIdentifier = Dictionary(grouping: items, by: \.identifier)
+            .mapValues { Set($0.map(\.scope)) }
+        return Set(scopesByIdentifier.filter { $0.value.count > 1 }.keys)
+    }
+
+    private static func btmItem(of kind: Kind) -> BTMItem? {
+        switch kind {
+        case .btmAdded(let item), .btmRemoved(let item): item
+        case .btmDispositionFlipped(let change): change.after
+        default: nil
+        }
     }
 
     static func summary(for kind: Kind) -> String {
@@ -93,9 +116,7 @@ struct ChangeRow: View {
         case .btmRemoved(let i):
             return String(localized: "Removed background item: \(i.name)")
         case .btmDispositionFlipped(let change):
-            let from = dispositionLabel(change.before.disposition)
-            let to = dispositionLabel(change.after.disposition)
-            return String(localized: "Disposition changed: \(change.after.name) (\(from) → \(to))")
+            return btmChangeSummary(change)
         case .launchAgentAdded(let i):
             return LaunchAgentChangeDescription.addedSummary(i)
         case .launchAgentRemoved(let i):
@@ -168,6 +189,17 @@ struct ChangeRow: View {
         case 3: String(localized: "Limited")
         default: String(localized: "Value \(value)")
         }
+    }
+
+    private static func btmChangeSummary(_ change: DomainChange<BTMItem>) -> String {
+        guard change.before.disposition == change.after.disposition else {
+            let from = dispositionLabel(change.before.disposition)
+            let to = dispositionLabel(change.after.disposition)
+            return String(localized: "Disposition changed: \(change.after.name) (\(from) → \(to))")
+        }
+        let from = change.before.type.displayName
+        let to = change.after.type.displayName
+        return String(localized: "Type changed: \(change.after.name) (\(from) → \(to))")
     }
 
     private static func dispositionLabel(_ d: BTMItem.Disposition) -> String {

@@ -88,7 +88,7 @@ extension SnapshotStore {
             before: before,
             after: after,
             identity: tccGrantIdentityKey,
-            equivalent: { $0 == $1 },
+            equivalent: tccGrantsEquivalent,
             wrap: { TCCGrantsDiff(added: $0, removed: $1, changed: $2) }
         )
     }
@@ -98,7 +98,7 @@ extension SnapshotStore {
             before: before,
             after: after,
             identity: btmItemIdentityKey,
-            equivalent: { $0 == $1 },
+            equivalent: btmItemsEquivalent,
             wrap: { BTMItemsDiff(added: $0, removed: $1, changed: $2) }
         )
     }
@@ -264,6 +264,19 @@ extension SnapshotStore {
     }
 
     static func btmItemIdentityKey(_ item: BTMItem) -> String {
-        item.identifier
+        item.identityKey
+    }
+
+    // A change row must describe something the user can see changed. Names,
+    // paths and modification dates churn on app updates without any change
+    // to what an app may do, so only the authorization state counts.
+    static func tccGrantsEquivalent(_ lhs: PermissionGrant, _ rhs: PermissionGrant) -> Bool {
+        lhs.authValue == rhs.authValue
+    }
+
+    // Same rule for background items: enabled/disabled and the item's kind.
+    // The raw disposition bits, display names and dates are excluded.
+    static func btmItemsEquivalent(_ lhs: BTMItem, _ rhs: BTMItem) -> Bool {
+        lhs.disposition == rhs.disposition && lhs.type == rhs.type
     }
 }

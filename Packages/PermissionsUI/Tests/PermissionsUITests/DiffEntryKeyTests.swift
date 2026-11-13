@@ -101,6 +101,49 @@ import PermissionsStore
         #expect(Set([added, removed, flipped]).count == 3)
     }
 
+    private func btm(
+        _ disposition: BTMItem.Disposition,
+        scope: BTMItem.Scope = .user,
+        type: BTMItem.ItemType = .app
+    ) -> BTMItem {
+        BTMItem(identifier: "2.us.zoom.xos", name: "zoom.us", type: type, disposition: disposition,
+                scope: scope, modificationDate: Date(timeIntervalSince1970: 0))
+    }
+
+    @Test func btmFlipKeyCarriesDirectionAndHonorsLegacyKey() {
+        let disabling = ChangeRow.Kind.btmDispositionFlipped(DomainChange(before: btm(.enabled), after: btm(.disabled)))
+        let enabling = ChangeRow.Kind.btmDispositionFlipped(DomainChange(before: btm(.disabled), after: btm(.enabled)))
+
+        #expect(DiffEntryKey.key(for: disabling) == "btm-flip|user|2.us.zoom.xos|enabled-disabled")
+        #expect(DiffEntryKey.key(for: disabling) != DiffEntryKey.key(for: enabling))
+        #expect(DiffEntryKey.lookupKeys(for: enabling).contains("btm-flip|2.us.zoom.xos"))
+    }
+
+    @Test func btmKeysSeparateScopesAndHonorLegacyKeys() {
+        let system = ChangeRow.Kind.btmRemoved(btm(.enabled, scope: .system))
+        let user = ChangeRow.Kind.btmRemoved(btm(.enabled, scope: .user))
+
+        #expect(DiffEntryKey.key(for: system) != DiffEntryKey.key(for: user))
+        #expect(DiffEntryKey.lookupKeys(for: system).contains("btm-removed|2.us.zoom.xos"))
+        #expect(DiffEntryKey.lookupKeys(for: .btmAdded(btm(.enabled))).contains("btm-added|2.us.zoom.xos"))
+    }
+
+    @Test func btmRowNamesScopeOnlyWhenIdentifierIsInSeveralScopes() {
+        let items = [btm(.enabled, scope: .system), btm(.enabled, scope: .user), btm(.enabled, scope: .system)]
+        let scoped = ChangeRow.identifiersInSeveralScopes(items)
+        let row = ChangeRow.Kind.btmRemoved(btm(.enabled, scope: .system))
+
+        #expect(scoped == ["2.us.zoom.xos"])
+        #expect(ChangeRow.summary(for: row, scopedIdentifiers: scoped) == "Removed background item: zoom.us · System-wide")
+        #expect(ChangeRow.summary(for: row, scopedIdentifiers: []) == "Removed background item: zoom.us")
+        #expect(ChangeRow.identifiersInSeveralScopes(Array(items.prefix(1))).isEmpty)
+    }
+
+    @Test func btmTypeOnlyChangeDescribesTheType() {
+        let change = DomainChange(before: btm(.enabled, type: .agent), after: btm(.enabled, type: .legacyAgent))
+        #expect(ChangeRow.summary(for: .btmDispositionFlipped(change)) == "Type changed: zoom.us (App agent → Legacy agent)")
+    }
+
     @Test func launchAgentFlipKeyDistinctFromAddedAndRemoved() {
         let agent = LaunchAgentItem(
             label: "com.example.demo",

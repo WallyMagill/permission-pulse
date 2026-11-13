@@ -554,25 +554,22 @@ public struct SnapshotStore: Sendable {
     // MARK: - BTM enum encoding
 
     private static func encodeItemType(_ type: BTMItem.ItemType) -> (kind: String, raw: Int?) {
-        switch type {
-        case .app:            ("app", nil)
-        case .legacyDaemon:   ("legacyDaemon", nil)
-        case .developerGroup: ("developerGroup", nil)
-        case .unknown(let r): ("unknown", r)
-        }
+        (type.kindName, type.rawValue)
     }
 
     // internal (not private): the unknown-kind throw is a data-integrity guarantee
     // (a corrupt/foreign snapshot row surfaces as an error state, not silent
     // default). Exposed for BTMDecodeErrorTests. (R3)
+    //
+    // An `unknown` row is re-mapped from its raw value: builds before v0.7.2
+    // stored types they could not name that way, and they must compare equal
+    // to the same item scanned by a build that can.
     static func decodeItemType(kind: String, raw: Int?) throws -> BTMItem.ItemType {
-        switch kind {
-        case "app":            return .app
-        case "legacyDaemon":   return .legacyDaemon
-        case "developerGroup": return .developerGroup
-        case "unknown":        return .unknown(rawValue: raw ?? 0)
-        default:               throw StoreError.unknownBTMItemTypeKind(kind)
+        if kind == "unknown" { return BTMItem.ItemType(rawValue: raw ?? 0) }
+        guard let type = BTMItem.ItemType(kindName: kind) else {
+            throw StoreError.unknownBTMItemTypeKind(kind)
         }
+        return type
     }
 
     private static func encodeDisposition(_ d: BTMItem.Disposition) -> (kind: String, raw: Int?) {

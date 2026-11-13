@@ -4,8 +4,8 @@ import PermissionsCore
 public struct BTMItemsDiff: Sendable, Equatable {
     public let added: [BTMItem]
     public let removed: [BTMItem]
-    // Picks up disposition flips, scope changes, name renames — anything that
-    // makes two BTMItems with the same identifier non-equal under Hashable.
+    // Items with the same scope and identifier whose disposition or type
+    // differs. Metadata-only churn (names, dates, raw bits) is not a change.
     public let changed: [DomainChange<BTMItem>]
 
     public init(

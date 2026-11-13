@@ -10,7 +10,9 @@ import PermissionsStore
 /// All keys are computed from the same identity fields the diff engine
 /// uses (`SnapshotStore.tccGrantIdentityKey` / `btmItemIdentityKey` /
 /// `launchAgentIdentityKey`), so renames on either side fail together
-/// rather than silently orphaning entries.
+/// rather than silently orphaning entries. Change keys also carry the
+/// before→after states, so dismissing one transition does not hide the
+/// opposite one later.
 enum DiffEntryKey {
     static func key(for kind: ChangeRow.Kind) -> String {
         switch kind {
@@ -21,11 +23,11 @@ enum DiffEntryKey {
         case .permissionChanged(let change):
             return "tcc-changed|\(change.after.identityKey)|\(change.before.authValue)-\(change.after.authValue)"
         case .btmAdded(let i):
-            return "btm-added|\(i.identifier)"
+            return "btm-added|\(i.identityKey)"
         case .btmRemoved(let i):
-            return "btm-removed|\(i.identifier)"
+            return "btm-removed|\(i.identityKey)"
         case .btmDispositionFlipped(let change):
-            return "btm-flip|\(change.after.identifier)"
+            return "btm-flip|\(change.after.identityKey)|\(btmTransitionToken(change))"
         case .launchAgentAdded(let i):
             return "la-added|\(i.sourceDirectory.rawValue)|\(i.label)"
         case .launchAgentRemoved(let i):
@@ -39,13 +41,38 @@ enum DiffEntryKey {
     /// Every key whose dismissal hides this row: the current key plus any
     /// pre-v0.7.2 form still stored in UserDefaults.
     static func lookupKeys(for kind: ChangeRow.Kind) -> [String] {
-        guard case .launchAgentFlipped(let change) = kind else { return [key(for: kind)] }
-        // Before v0.7.2 a flip key named only the agent, so an old dismissal
-        // keeps hiding every change to that agent, as it did when stored.
-        return [key(for: kind), legacyLaunchAgentFlipKey(change)]
+        guard let legacy = legacyKey(for: kind) else { return [key(for: kind)] }
+        return [key(for: kind), legacy]
+    }
+
+    /// The pre-v0.7.2 key for a row. Those keys named only the agent or the
+    /// bare BTM identifier, with no scope or direction, so an old dismissal
+    /// keeps hiding every matching row, as it did when stored.
+    private static func legacyKey(for kind: ChangeRow.Kind) -> String? {
+        switch kind {
+        case .launchAgentFlipped(let change): legacyLaunchAgentFlipKey(change)
+        case .btmAdded(let item): "btm-added|\(item.identifier)"
+        case .btmRemoved(let item): "btm-removed|\(item.identifier)"
+        case .btmDispositionFlipped(let change): "btm-flip|\(change.after.identifier)"
+        default: nil
+        }
     }
 
     private static func legacyLaunchAgentFlipKey(_ change: DomainChange<LaunchAgentItem>) -> String {
         "la-flip|\(change.after.sourceDirectory.rawValue)|\(change.after.label)"
+    }
+
+    private static func btmTransitionToken(_ change: DomainChange<BTMItem>) -> String {
+        let disposition = "\(dispositionToken(change.before.disposition))-\(dispositionToken(change.after.disposition))"
+        guard change.before.type != change.after.type else { return disposition }
+        return "\(disposition)|type:\(change.before.type.rawValue)-\(change.after.type.rawValue)"
+    }
+
+    private static func dispositionToken(_ disposition: BTMItem.Disposition) -> String {
+        switch disposition {
+        case .enabled: "enabled"
+        case .disabled: "disabled"
+        case .unknown(let raw): "unknown\(raw)"
+        }
     }
 }

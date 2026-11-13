@@ -182,12 +182,8 @@ public enum PermissionsExport {
     }
 
     private static func string(for type: BTMItem.ItemType) -> String {
-        switch type {
-        case .app: "app"
-        case .legacyDaemon: "legacyDaemon"
-        case .developerGroup: "developerGroup"
-        case .unknown(let raw): "unknown(\(raw))"
-        }
+        if case .unknown(let raw) = type { return "unknown(\(raw))" }
+        return type.kindName
     }
 
     private static func string(for disposition: BTMItem.Disposition) -> String {
