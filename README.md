@@ -41,6 +41,7 @@ Builds are **unsigned / ad-hoc-signed** — there is no paid Apple Developer ID 
    - On **macOS 14 (Sonoma)** the older shortcut still works: right-click the app → **Open** → **Open**. macOS 15 (Sequoia) and later removed that shortcut for unsigned apps.
    - Terminal alternative: `xattr -d com.apple.quarantine /Applications/PermissionPulse.app` removes the quarantine flag so the app opens directly.
 4. On the first-run prompt, grant **Full Disk Access** in System Settings → Privacy & Security → Full Disk Access; macOS may ask you to quit and reopen the app for it to take effect. FDA is required to read the TCC database (app permissions) and the BTM background-items store — Permission Pulse only ever *reads* these files, never writes to them. The Launch Agents and live mic/cam features work without FDA.
+5. **After updating to a new version:** macOS ties a Full Disk Access grant to the exact signature of the app that received it, and every ad-hoc-signed release has a different one. Replacing the app with a new version therefore turns the grant off. If Permission Pulse reports that Full Disk Access is missing after an update, turn its toggle back on in System Settings → Privacy & Security → Full Disk Access (off and on again if it already looks on), then quit and reopen the app.
 
 ## Requirements
 
