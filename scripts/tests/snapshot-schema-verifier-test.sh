@@ -103,9 +103,12 @@ migrate_to_v7() {
 ALTER TABLE launch_agents
     ADD COLUMN details_readable INTEGER NOT NULL DEFAULT 1;
 ALTER TABLE launch_agents ADD COLUMN file_name TEXT;
+ALTER TABLE snapshots
+    ADD COLUMN capture_generation INTEGER NOT NULL DEFAULT 1;
 UPDATE schema_version SET version = 7;
 INSERT INTO grdb_migrations (identifier) VALUES ('v7');
 UPDATE launch_agents SET details_readable = 0, file_name = 'fixture.plist';
+INSERT INTO snapshots (created_at, capture_generation) VALUES (1, 2);
 SQL
 }
 
@@ -152,6 +155,10 @@ v6_db="$tmp_dir/snapshots v6.db"
 v7_db="$tmp_dir/snapshots v7.db"
 invalid_readable_db="$tmp_dir/invalid readable.db"
 missing_v7_column_db="$tmp_dir/missing v7 column.db"
+missing_generation_column_db="$tmp_dir/missing generation column.db"
+invalid_generation_db="$tmp_dir/invalid generation.db"
+null_generation_db="$tmp_dir/null generation.db"
+partial_v6_generation_db="$tmp_dir/partial v6 generation.db"
 partial_v6_shape_db="$tmp_dir/partial v6 shape.db"
 missing_v7_ledger_db="$tmp_dir/missing v7 ledger.db"
 invalid_coverage_db="$tmp_dir/invalid coverage.db"
@@ -179,6 +186,10 @@ cp "$v6_db" "$v7_db"
 migrate_to_v7 "$v7_db"
 cp "$v7_db" "$invalid_readable_db"
 cp "$v7_db" "$missing_v7_column_db"
+cp "$v7_db" "$missing_generation_column_db"
+cp "$v7_db" "$invalid_generation_db"
+cp "$v7_db" "$null_generation_db"
+cp "$v6_db" "$partial_v6_generation_db"
 cp "$v7_db" "$missing_v7_ledger_db"
 cp "$v6_db" "$partial_v6_shape_db"
 cp "$v7_db" "$invalid_coverage_db"
@@ -217,6 +228,16 @@ sqlite3 "$missing_v7_column_db" \
     'ALTER TABLE launch_agents DROP COLUMN file_name;'
 sqlite3 "$partial_v6_shape_db" \
     'ALTER TABLE launch_agents ADD COLUMN file_name TEXT;'
+sqlite3 "$missing_generation_column_db" \
+    'ALTER TABLE snapshots DROP COLUMN capture_generation;'
+sqlite3 "$invalid_generation_db" \
+    'UPDATE snapshots SET capture_generation = 0 WHERE id = 1;'
+sqlite3 "$null_generation_db" <<'SQL'
+ALTER TABLE snapshots DROP COLUMN capture_generation;
+ALTER TABLE snapshots ADD COLUMN capture_generation INTEGER;
+SQL
+sqlite3 "$partial_v6_generation_db" \
+    'ALTER TABLE snapshots ADD COLUMN capture_generation INTEGER NOT NULL DEFAULT 1;'
 sqlite3 "$missing_v7_ledger_db" \
     "DELETE FROM grdb_migrations WHERE identifier = 'v7';"
 sqlite3 "$invalid_coverage_db" \
@@ -262,6 +283,14 @@ expect_failure 'v6 rejects a partial v7 shape' \
     "$verifier" --database "$partial_v6_shape_db" --allow-pending-migration
 expect_success 'valid v7 is complete, including degraded and reduced coverage values' \
     "$verifier" --database "$v7_db"
+expect_failure 'v7 requires snapshots.capture_generation' \
+    "$verifier" --database "$missing_generation_column_db"
+expect_failure 'v7 rejects a capture_generation below 1' \
+    "$verifier" --database "$invalid_generation_db"
+expect_failure 'v7 rejects a NULL capture_generation' \
+    "$verifier" --database "$null_generation_db"
+expect_failure 'v6 rejects a partial v7 capture_generation column' \
+    "$verifier" --database "$partial_v6_generation_db" --allow-pending-migration
 expect_failure 'v7 rejects a details_readable value outside 0/1' \
     "$verifier" --database "$invalid_readable_db"
 expect_failure 'v7 requires both launch_agents.details_readable and file_name' \

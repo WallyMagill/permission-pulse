@@ -4,8 +4,10 @@ import PermissionsCore
 @testable import PermissionsStore
 
 @Suite struct LaunchAgentsV7Tests {
-    // Pre-v7 rows have no file name. A fresh scan that now records one must
-    // not report every agent as changed on the first scan after upgrading.
+    // A fresh scan of the same agents now also records the file name, reads
+    // launchd's override database, and keeps the string elements of a mixed
+    // ProgramArguments array. None of that may show as a change against the
+    // migrated v6 snapshot on the first scan after upgrading.
     @Test func migratedV6SnapshotMatchesAFreshScanOfTheSameAgents() async throws {
         let databaseURL = FileManager.default.temporaryDirectory
             .appendingPathComponent("permission-pulse-v6-\(UUID().uuidString).sqlite")
@@ -15,17 +17,25 @@ import PermissionsCore
         let store = try SnapshotStore(path: databaseURL.path)
         let freshScan = SnapshotV6Fixture.agents.map { agent in
             copy(agent, fileName: "\(agent.label).plist")
+        }.map { agent in
+            guard agent.label == "com.example.updater" else { return agent }
+            return copy(agent, arguments: [agent.programPath ?? "", "--daemon"], disabled: true)
         }
 
         #expect(try store.schemaVersion() == 7)
         let migrated = try await store.readLaunchAgents(snapshotID: SnapshotV6Fixture.capturedSnapshotID)
         #expect(migrated.count == 2)
         #expect(migrated.allSatisfy { $0.detailsReadable && $0.fileName == nil })
-        let changed = try await store.evidenceChanged(
+        #expect(try await store.evidenceChanged(
             since: SnapshotV6Fixture.capturedSnapshotID,
             grants: [], launchAgents: freshScan, btmItems: [], coverage: .allComplete
-        )
-        #expect(!changed)
+        ))
+        let written = try await store.writeFullSnapshot(grants: [], launchAgents: freshScan, btmItems: [])
+        let diff = try await store.diffLaunchAgents(from: SnapshotV6Fixture.capturedSnapshotID, to: written)
+        #expect(!diff.hasContent)
+        #expect(try await !store.evidenceChanged(
+            since: written, grants: [], launchAgents: freshScan, btmItems: [], coverage: .allComplete
+        ))
     }
 
     @Test func unreadableItemRoundTripsReadabilityAndFileName() async throws {
@@ -87,17 +97,22 @@ import PermissionsCore
         #expect(change.before.programPath == before.programPath)
     }
 
-    private func copy(_ item: LaunchAgentItem, fileName: String) -> LaunchAgentItem {
+    private func copy(
+        _ item: LaunchAgentItem,
+        fileName: String? = nil,
+        arguments: [String]? = nil,
+        disabled: Bool? = nil
+    ) -> LaunchAgentItem {
         LaunchAgentItem(
             label: item.label,
             sourceDirectory: item.sourceDirectory,
             programPath: item.programPath,
-            programArguments: item.programArguments,
+            programArguments: arguments ?? item.programArguments,
             runAtLoad: item.runAtLoad,
             keepAlive: item.keepAlive,
-            isDisabled: item.isDisabled,
+            isDisabled: disabled ?? item.isDisabled,
             detailsReadable: item.detailsReadable,
-            fileName: fileName
+            fileName: fileName ?? item.fileName
         )
     }
 }

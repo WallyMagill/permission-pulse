@@ -144,10 +144,14 @@ public struct SnapshotStore: Sendable {
 
         // Every pre-v7 row was decoded from a readable plist, so the default
         // is truthful. The file name was never recorded, so it stays NULL.
+        // Every pre-v7 snapshot was written under capture generation 1.
         migrator.registerMigration("v7") { db in
             try db.alter(table: "launch_agents") { table in
                 table.add(column: "details_readable", .integer).notNull().defaults(to: true)
                 table.add(column: "file_name", .text)
+            }
+            try db.alter(table: "snapshots") { table in
+                table.add(column: "capture_generation", .integer).notNull().defaults(to: 1)
             }
             try db.execute(sql: "UPDATE schema_version SET version = 7")
         }
@@ -370,14 +374,15 @@ public struct SnapshotStore: Sendable {
             sql: """
                 INSERT INTO snapshots
                 (created_at, launch_agent_disabled_captured,
-                 tcc_coverage, btm_coverage, launch_agent_coverage)
-                VALUES (?, 1, ?, ?, ?)
+                 tcc_coverage, btm_coverage, launch_agent_coverage, capture_generation)
+                VALUES (?, 1, ?, ?, ?, ?)
                 """,
             arguments: [
                 date,
                 coverage.tcc.rawValue,
                 coverage.btm.rawValue,
                 coverage.launchAgents.rawValue,
+                CaptureGeneration.current,
             ]
         )
         return db.lastInsertedRowID

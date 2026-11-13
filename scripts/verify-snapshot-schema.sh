@@ -145,8 +145,8 @@ for coverage_column in tcc_coverage btm_coverage launch_agent_coverage; do
     coverage_columns=$((coverage_columns + present))
 done
 v7_columns=0
-for v7_column in details_readable file_name; do
-    present=$(column_count launch_agents "$v7_column")
+for v7_column in launch_agents:details_readable launch_agents:file_name snapshots:capture_generation; do
+    present=$(column_count "${v7_column%%:*}" "${v7_column#*:}")
     v7_columns=$((v7_columns + present))
 done
 
@@ -206,14 +206,20 @@ if [[ "$versions" == '6' ]]; then
     report_pending
 fi
 
-[[ "$v7_columns" == '2' ]] \
-    || fail_schema "schema version 7 requires launch_agents.details_readable and file_name; found $v7_columns of 2"
+[[ "$v7_columns" == '3' ]] \
+    || fail_schema "schema version 7 requires launch_agents.details_readable, launch_agents.file_name, and snapshots.capture_generation; found $v7_columns of 3"
 
 invalid_readable_markers=$(readonly_query \
     'SELECT COUNT(*) FROM launch_agents WHERE details_readable IS NULL OR details_readable NOT IN (0, 1);') \
     || fail_schema 'could not validate LaunchAgent details_readable markers'
 [[ "$invalid_readable_markers" == '0' ]] \
     || fail_schema "$invalid_readable_markers invalid LaunchAgent details_readable marker(s)"
+
+invalid_generations=$(readonly_query \
+    "SELECT COUNT(*) FROM snapshots WHERE typeof(capture_generation) <> 'integer' OR capture_generation < 1;") \
+    || fail_schema 'could not validate snapshot capture generations'
+[[ "$invalid_generations" == '0' ]] \
+    || fail_schema "$invalid_generations snapshot(s) with a capture_generation that is not a positive integer"
 
 snapshot_count=$(readonly_query 'SELECT COUNT(*) FROM snapshots;') \
     || fail_schema 'could not count snapshots'

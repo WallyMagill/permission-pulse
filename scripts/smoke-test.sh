@@ -139,6 +139,7 @@ verify_snapshot_schema() {
             pass "LaunchAgent compatibility markers are valid 0/1 values"
             pass "per-domain coverage columns hold complete/reduced/degraded/failed"
             pass "launch_agents.details_readable and file_name are present"
+            pass "snapshots.capture_generation holds positive integers"
             ;;
         pending-v4|pending-v5|pending-v6)
             warn "snapshots.db schema version = ${status#pending-v} (pending app migration; not yet verified as schema v7)"

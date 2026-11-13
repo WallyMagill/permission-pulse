@@ -9,10 +9,12 @@ extension SnapshotStore {
         from: SnapshotID,
         to: SnapshotID
     ) async throws -> LaunchAgentsDiff {
-        Self.diffLaunchAgents(
+        let facts = try await comparableFacts(from: from, to: to)
+        return Self.diffLaunchAgents(
             before: try await readLaunchAgents(snapshotID: from),
             after: try await readLaunchAgents(snapshotID: to),
-            compareDisabled: try await launchAgentDisabledCaptured(from: from, to: to)
+            compareDisabled: facts.disabled,
+            compareArguments: facts.arguments
         )
     }
 
@@ -23,7 +25,10 @@ extension SnapshotStore {
         to: SnapshotID,
         limitedTo services: Set<PermissionService>? = nil
     ) async throws -> TCCGrantsDiff {
-        let included: (PermissionGrant) -> Bool = { services?.contains($0.service) ?? true }
+        let excluded = try await comparableFacts(from: from, to: to).uncapturedServices
+        let included: (PermissionGrant) -> Bool = {
+            !excluded.contains($0.service) && (services?.contains($0.service) ?? true)
+        }
         return Self.diffTCCGrants(
             before: try await readTCCGrants(snapshotID: from).filter(included),
             after: try await readTCCGrants(snapshotID: to).filter(included)
@@ -42,41 +47,54 @@ extension SnapshotStore {
 
     // MARK: - Array diffs
 
+    /// `compareDisabled` / `compareArguments` false: an endpoint did not
+    /// capture that field the way the other did, so it is not compared and a
+    /// change row for another field shows the later value on both sides.
     public static func diffLaunchAgents(
         before: [LaunchAgentItem],
         after: [LaunchAgentItem],
-        compareDisabled: Bool
+        compareDisabled: Bool,
+        compareArguments: Bool = true
     ) -> LaunchAgentsDiff {
         computeDiff(
             before: before,
             after: after,
             identity: launchAgentIdentityKey,
-            equivalent: { launchAgentsEquivalent($0, $1, compareDisabled: compareDisabled) },
+            equivalent: {
+                launchAgentsEquivalent(
+                    $0, $1,
+                    compareDisabled: compareDisabled,
+                    compareArguments: compareArguments
+                )
+            },
             wrap: { added, removed, changed in
                 LaunchAgentsDiff(
                     added: added,
                     removed: removed,
-                    changed: compareDisabled ? changed : changed.map(carryingUncapturedDisabled)
+                    changed: changed.map {
+                        carryingUncaptured($0, disabled: !compareDisabled, arguments: !compareArguments)
+                    }
                 )
             }
         )
     }
 
-    // A legacy endpoint never captured `isDisabled`; its stored `false` is a
-    // placeholder, so a change row must not describe it as a transition.
-    private static func carryingUncapturedDisabled(
-        _ change: DomainChange<LaunchAgentItem>
+    private static func carryingUncaptured(
+        _ change: DomainChange<LaunchAgentItem>,
+        disabled: Bool,
+        arguments: Bool
     ) -> DomainChange<LaunchAgentItem> {
+        guard disabled || arguments else { return change }
         let before = change.before
         return DomainChange(
             before: LaunchAgentItem(
                 label: before.label,
                 sourceDirectory: before.sourceDirectory,
                 programPath: before.programPath,
-                programArguments: before.programArguments,
+                programArguments: arguments ? change.after.programArguments : before.programArguments,
                 runAtLoad: before.runAtLoad,
                 keepAlive: before.keepAlive,
-                isDisabled: change.after.isDisabled,
+                isDisabled: disabled ? change.after.isDisabled : before.isDisabled,
                 detailsReadable: before.detailsReadable,
                 fileName: before.fileName
             ),
@@ -125,6 +143,11 @@ extension SnapshotStore {
         if try await self.coverage(snapshotID: snapshotID) != coverage {
             return Self.changed("coverage")
         }
+        // Older capture rules missed facts this scan records, so the first
+        // scan after an upgrade always writes a current-generation baseline.
+        if try await captureGeneration(snapshotID: snapshotID) != CaptureGeneration.current {
+            return Self.changed("captureGeneration")
+        }
         if coverage.tcc != .failed {
             let stored = try await readTCCGrants(snapshotID: snapshotID)
             let fresh = grants.map(Self.storageNormalized)
@@ -137,8 +160,8 @@ extension SnapshotStore {
         }
         if coverage.launchAgents != .failed {
             let stored = try await readLaunchAgents(snapshotID: snapshotID)
-            let compareDisabled = try await launchAgentDisabledCaptured(from: snapshotID, to: snapshotID)
-            let diff = Self.diffLaunchAgents(before: stored, after: launchAgents, compareDisabled: compareDisabled)
+            let facts = try await comparableFacts(from: snapshotID, to: snapshotID)
+            let diff = Self.diffLaunchAgents(before: stored, after: launchAgents, compareDisabled: facts.disabled)
             if diff.hasContent { return Self.changed("launchAgents") }
         }
         return false
@@ -225,25 +248,45 @@ extension SnapshotStore {
         "\(item.sourceDirectory.rawValue)|\(item.label)"
     }
 
-    func launchAgentDisabledCaptured(
+    /// What both endpoints captured under the same rules. A legacy snapshot
+    /// (`launch_agent_disabled_captured = 0`) stored `isDisabled` as a
+    /// placeholder; a pair spanning capture generation 2 differs in the facts
+    /// `CaptureGeneration` lists.
+    func comparableFacts(
         from beforeSnapshotID: SnapshotID,
         to afterSnapshotID: SnapshotID
-    ) async throws -> Bool {
+    ) async throws -> ComparableFacts {
         try await dbQueue.read { db in
-            for snapshotID in [beforeSnapshotID, afterSnapshotID] {
+            var disabledCaptured = true
+            var generations: [Int] = []
+            for id in [beforeSnapshotID, afterSnapshotID] {
                 let marker = try Int.fetchOne(
                     db,
-                    sql: """
-                        SELECT launch_agent_disabled_captured
-                        FROM snapshots
-                        WHERE id = ?
-                        """,
-                    arguments: [snapshotID.rawValue]
-                ) ?? 0
-                guard marker == 1 else { return false }
+                    sql: "SELECT launch_agent_disabled_captured FROM snapshots WHERE id = ?",
+                    arguments: [id.rawValue]
+                )
+                disabledCaptured = disabledCaptured && marker == 1
+                generations.append(try Self.captureGeneration(db, snapshotID: id))
             }
-            return true
+            let spans = CaptureGeneration.spansGeneration2(generations[0], generations[1])
+            return ComparableFacts(
+                disabled: disabledCaptured && !spans,
+                arguments: !spans,
+                uncapturedServices: spans ? CaptureGeneration.servicesAddedInGeneration2 : []
+            )
         }
+    }
+
+    func captureGeneration(snapshotID: SnapshotID) async throws -> Int {
+        try await dbQueue.read { db in try Self.captureGeneration(db, snapshotID: snapshotID) }
+    }
+
+    private static func captureGeneration(_ db: Database, snapshotID: SnapshotID) throws -> Int {
+        try Int.fetchOne(
+            db,
+            sql: "SELECT capture_generation FROM snapshots WHERE id = ?",
+            arguments: [snapshotID.rawValue]
+        ) ?? 1
     }
 
     // `fileName` is deliberately excluded: pre-v7 rows store NULL, so including
@@ -251,12 +294,13 @@ extension SnapshotStore {
     static func launchAgentsEquivalent(
         _ lhs: LaunchAgentItem,
         _ rhs: LaunchAgentItem,
-        compareDisabled: Bool
+        compareDisabled: Bool,
+        compareArguments: Bool = true
     ) -> Bool {
         lhs.label == rhs.label
             && lhs.sourceDirectory == rhs.sourceDirectory
             && lhs.programPath == rhs.programPath
-            && lhs.programArguments == rhs.programArguments
+            && (!compareArguments || lhs.programArguments == rhs.programArguments)
             && lhs.runAtLoad == rhs.runAtLoad
             && lhs.keepAlive == rhs.keepAlive
             && lhs.detailsReadable == rhs.detailsReadable
@@ -283,4 +327,10 @@ extension SnapshotStore {
     static func btmItemsEquivalent(_ lhs: BTMItem, _ rhs: BTMItem) -> Bool {
         lhs.disposition == rhs.disposition && lhs.type == rhs.type
     }
+}
+
+struct ComparableFacts {
+    let disabled: Bool
+    let arguments: Bool
+    let uncapturedServices: Set<PermissionService>
 }
