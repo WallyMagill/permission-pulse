@@ -3,7 +3,7 @@ import Testing
 import PermissionsUI
 @testable import PermissionPulse
 
-@Suite struct SingleInstanceTests {
+@Suite @MainActor struct SingleInstanceTests {
     @Test func aloneProceeds() {
         #expect(SingleInstanceDecision.decide(otherInstancePIDs: [], relaunchedFrom: nil) == .proceed)
     }

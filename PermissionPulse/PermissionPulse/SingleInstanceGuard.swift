@@ -4,7 +4,7 @@ import PermissionsUI
 
 /// Two copies with one bundle identifier, run from two paths, would share and
 /// fight over one history database. Only one may run.
-nonisolated enum SingleInstanceDecision: Equatable, Sendable {
+enum SingleInstanceDecision: Equatable, Sendable {
     case proceed
     /// Started by `AppRelauncher`: the old process quits on its own shortly.
     case waitForExit(pid_t)
