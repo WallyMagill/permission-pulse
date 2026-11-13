@@ -8,40 +8,83 @@ import PermissionsUI
 
 @Suite @MainActor struct ScanCompletionTests {
     @Test func scanThatChangesTheWeekDiffRefreshesThePendingDigestBody() async throws {
-        let directory = FileManager.default.temporaryDirectory
-            .appendingPathComponent("scan-completion-digest-\(UUID().uuidString)")
-        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-        defer { try? FileManager.default.removeItem(at: directory) }
-        let store = try SnapshotStore(
-            path: directory.appendingPathComponent("snapshots.db").path(percentEncoded: false)
-        )
+        let env = try ScanEnvironment()
+        defer { env.cleanUp() }
         // An empty, fully captured snapshot from before the 7-day cutoff is
         // the week baseline the scan's mock results are compared against.
-        _ = try await store.writeSnapshot(
-            grants: [],
-            launchAgents: [],
-            btmItems: [],
-            coverage: .allComplete,
+        _ = try await env.store.writeSnapshot(
+            grants: [], launchAgents: [], btmItems: [], coverage: .allComplete,
             at: Date().addingTimeInterval(-9 * 86_400)
         )
-        let scheduler = MockWeeklyDigestScheduler(initialStatus: .authorized)
-        let delegate = AppDelegate(
-            runtimeEnvironment: AppRuntimeEnvironment(environment: ["PERMISSION_PULSE_TEST_MODE": "1"]),
-            weeklyDigestScheduler: scheduler
-        )
-        defer { UserDefaults().removePersistentDomain(forName: AppDelegate.testDefaultsSuiteName) }
-        delegate.installSnapshotRuntime(store)
-        delegate.preferencesStore.digestEnabled = true
-        _ = await delegate.weeklyDigestCoordinator.reconcileSchedule()
-        let before = await scheduler.lastScheduledWeeklyBody()
+        env.delegate.preferencesStore.digestEnabled = true
+        _ = await env.delegate.weeklyDigestCoordinator.reconcileSchedule()
+        let before = await env.scheduler.lastScheduledWeeklyBody()
 
-        await delegate.rescan()
+        await env.delegate.rescan()
 
-        let after = await scheduler.lastScheduledWeeklyBody()
+        let after = await env.scheduler.lastScheduledWeeklyBody()
         #expect(before == "History is less than a week old, so there's nothing to compare yet.")
         #expect(after != before)
         #expect(after?.hasSuffix("in the last week.") == true)
-        #expect(await scheduler.pendingIdentifiers() == [WeeklyDigestCoordinator.weeklyIdentifier])
+        #expect(await env.scheduler.pendingIdentifiers() == [WeeklyDigestCoordinator.weeklyIdentifier])
+    }
+
+    @Test func changeAlertNamesTheChangesSinceThePreviousSnapshot() async throws {
+        let env = try ScanEnvironment()
+        defer { env.cleanUp() }
+        _ = try await env.store.writeSnapshot(
+            grants: [], launchAgents: [], btmItems: [], coverage: .allComplete,
+            at: Date().addingTimeInterval(-3_600)
+        )
+        env.delegate.preferencesStore.changeAlertsEnabled = true
+
+        await env.delegate.rescan()
+
+        let alerts = await env.scheduler.oneShots(withPrefix: ChangeAlertCoordinator.identifierPrefix)
+        #expect(alerts.map(\.identifier) == [ChangeAlertCoordinator.changesIdentifier])
+        #expect(alerts.first?.title == "Permission Pulse: something changed")
+        let body = try #require(alerts.first?.body)
+        #expect(body.contains(" changes: "))
+        #expect(body.hasSuffix(" more."))
+    }
+
+    @Test func firstSnapshotEverPostsNoChangeAlert() async throws {
+        let env = try ScanEnvironment()
+        defer { env.cleanUp() }
+        env.delegate.preferencesStore.changeAlertsEnabled = true
+
+        await env.delegate.rescan()
+
+        #expect(env.delegate.viewModel.latestSnapshotID != nil)
+        #expect(await env.scheduler.oneShots(withPrefix: ChangeAlertCoordinator.identifierPrefix).isEmpty)
+    }
+}
+
+@MainActor
+final class ScanEnvironment {
+    let directory: URL
+    let store: SnapshotStore
+    let scheduler: MockWeeklyDigestScheduler
+    let delegate: AppDelegate
+
+    init(status: DigestAuthorizationStatus = .authorized) throws {
+        directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("scan-environment-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        store = try SnapshotStore(
+            path: directory.appendingPathComponent("snapshots.db").path(percentEncoded: false)
+        )
+        scheduler = MockWeeklyDigestScheduler(initialStatus: status)
+        delegate = AppDelegate(
+            runtimeEnvironment: AppRuntimeEnvironment(environment: ["PERMISSION_PULSE_TEST_MODE": "1"]),
+            weeklyDigestScheduler: scheduler
+        )
+        delegate.installSnapshotRuntime(store)
+    }
+
+    func cleanUp() {
+        try? FileManager.default.removeItem(at: directory)
+        UserDefaults().removePersistentDomain(forName: AppDelegate.testDefaultsSuiteName)
     }
 }
 
@@ -51,5 +94,13 @@ extension MockWeeklyDigestScheduler {
             guard case .scheduled(_, _, _, _, _, let body) = action else { return nil }
             return body
         }.first
+    }
+
+    func oneShots(withPrefix prefix: String) -> [(identifier: String, title: String, body: String)] {
+        recorded.compactMap { action in
+            guard case .scheduledOneShot(let identifier, _, let title, let body) = action,
+                  identifier.hasPrefix(prefix) else { return nil }
+            return (identifier, title, body)
+        }
     }
 }

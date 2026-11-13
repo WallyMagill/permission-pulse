@@ -109,26 +109,10 @@ final class WeeklyDigestCoordinator {
             return .disabled
         }
 
-        let initial = await scheduler.currentAuthorizationStatus()
-        let final: DigestAuthorizationStatus
-        if initial == .notDetermined {
-            do {
-                final = try await scheduler.requestAuthorization()
-            } catch {
-                Self.logger.error(
-                    "requestAuthorization threw: \(error.localizedDescription, privacy: .public)"
-                )
-                return .failed(error.localizedDescription)
-            }
-        } else {
-            final = initial
-        }
-
-        switch final {
-        case .authorized, .provisional:
-            return await reconcileScheduleOwned()
-        case .denied, .notDetermined, .unknown:
-            return .notAuthorized
+        switch await NotificationAuthorization.ensure(using: scheduler) {
+        case .authorized: return await reconcileScheduleOwned()
+        case .denied: return .notAuthorized
+        case .failed(let message): return .failed(message)
         }
     }
 

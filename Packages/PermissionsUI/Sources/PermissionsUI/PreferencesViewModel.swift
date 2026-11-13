@@ -18,6 +18,14 @@ public final class PreferencesViewModel {
         case failed(String)
     }
 
+    /// Change alerts need nothing scheduled, only permission to notify.
+    public enum ChangeAlertsHint: Sendable, Equatable {
+        case off
+        case on
+        case denied
+        case failed(String)
+    }
+
     public enum TestNotificationResult: Sendable, Equatable {
         case idle
         case scheduling
@@ -32,12 +40,14 @@ public final class PreferencesViewModel {
     public var authorizationHint: AuthorizationHint = .notYetRequested
     public var nextWeeklyFireDate: Date?
     public var testNotificationResult: TestNotificationResult = .idle
+    public var changeAlertsHint: ChangeAlertsHint = .off
     public private(set) var launchAtLoginEnabled: Bool
 
     private let onDigestToggle: @MainActor (Bool) async -> AuthorizationHint
     private let onDigestScheduleChange: @MainActor () async -> AuthorizationHint
     private let onSendTestNotification: @MainActor () async -> TestNotificationResult
     private let onFetchNextFireDate: @MainActor () async -> Date?
+    private let onChangeAlertsToggle: @MainActor (Bool) async -> ChangeAlertsHint
     private let scheduleDebounce: Duration
     private let onLaunchAtLoginToggle: ((Bool) async -> Bool)?
     // Swift 6 deinit is nonisolated. Task is Sendable, and every mutation
@@ -52,6 +62,7 @@ public final class PreferencesViewModel {
         onDigestScheduleChange: @escaping @MainActor () async -> AuthorizationHint = { .disabled },
         onSendTestNotification: @escaping @MainActor () async -> TestNotificationResult = { .idle },
         onFetchNextFireDate: @escaping @MainActor () async -> Date? = { nil },
+        onChangeAlertsToggle: @escaping @MainActor (Bool) async -> ChangeAlertsHint = { $0 ? .on : .off },
         scheduleDebounce: Duration = .milliseconds(300),
         initialLaunchAtLogin: Bool = false,
         onLaunchAtLoginToggle: ((Bool) async -> Bool)? = nil
@@ -61,6 +72,7 @@ public final class PreferencesViewModel {
         self.onDigestScheduleChange = onDigestScheduleChange
         self.onSendTestNotification = onSendTestNotification
         self.onFetchNextFireDate = onFetchNextFireDate
+        self.onChangeAlertsToggle = onChangeAlertsToggle
         self.scheduleDebounce = scheduleDebounce
         self.launchAtLoginEnabled = initialLaunchAtLogin
         self.onLaunchAtLoginToggle = onLaunchAtLoginToggle
@@ -131,6 +143,7 @@ public final class PreferencesViewModel {
         // Called on appear so the hint reflects the latest OS state even if
         // the user toggled notifications in System Settings while the app
         // was alive.
+        await refreshChangeAlertsHint()
         scheduleTask?.cancel()
         let operationID = beginDigestOperation()
         let enabled = store.digestEnabled
@@ -155,6 +168,41 @@ public final class PreferencesViewModel {
         guard case .scheduled = hint else { return nil }
         return await onFetchNextFireDate()
     }
+
+    // MARK: - Change alerts
+
+    public var changeAlertsEnabled: Bool {
+        get { store.changeAlertsEnabled }
+        set { store.changeAlertsEnabled = newValue }
+    }
+
+    public func handleChangeAlertsToggle(to newValue: Bool) async {
+        store.changeAlertsEnabled = newValue
+        let hint = await onChangeAlertsToggle(newValue)
+        guard store.changeAlertsEnabled == newValue else { return }
+        changeAlertsHint = hint
+    }
+
+    private func refreshChangeAlertsHint() async {
+        guard store.changeAlertsEnabled else {
+            changeAlertsHint = .off
+            return
+        }
+        let hint = await onChangeAlertsToggle(true)
+        guard store.changeAlertsEnabled else { return }
+        changeAlertsHint = hint
+    }
+
+    /// Either notification feature is on but macOS will not deliver.
+    public var notificationsDenied: Bool {
+        authorizationHint == .denied || changeAlertsHint == .denied
+    }
+
+    public var anyNotificationEnabled: Bool {
+        store.digestEnabled || store.changeAlertsEnabled
+    }
+
+    // MARK: - Test notification
 
     public func sendTestNotification() async {
         testNotificationResult = .scheduling

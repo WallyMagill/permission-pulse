@@ -108,6 +108,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         preferencesStore: preferencesStore,
         scheduler: weeklyDigestScheduler
     )
+    lazy var changeAlertCoordinator = ChangeAlertCoordinator(
+        viewModel: viewModel,
+        preferencesStore: preferencesStore,
+        scheduler: weeklyDigestScheduler
+    )
     lazy var preferencesViewModel = PreferencesViewModel(
         store: preferencesStore,
         onDigestToggle: { [weak self] turnOn in
@@ -127,6 +132,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         },
         onFetchNextFireDate: { [weak self] in
             await self?.weeklyDigestCoordinator.nextWeeklyFireDate()
+        },
+        onChangeAlertsToggle: { [weak self] turnOn in
+            await self?.changeAlertCoordinator.handleToggle(turnOn: turnOn) ?? .off
         },
         initialLaunchAtLogin: SMAppService.mainApp.status == .enabled,
         onLaunchAtLoginToggle: { enable in
@@ -152,6 +160,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private let resetOperation: (@MainActor () async -> Void)?
     private let weeklyDigestScheduler: any WeeklyDigestScheduler
     private var resetTask: Task<Void, Never>?
+    /// Set by the snapshot coordinator when the current scan wrote a snapshot.
+    private var snapshotWrite: (previous: SnapshotID?, written: SnapshotID)?
 
     override convenience init() {
         self.init(runtimeEnvironment: AppRuntimeEnvironment())
@@ -295,11 +305,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         viewModel.scanInProgress = true
         defer { viewModel.scanInProgress = false }
         viewModel.staleThresholdDays = preferencesStore.staleThresholdDays
+        snapshotWrite = nil
         await coordinator?.rescan()
         await updateSnapshotHistoryAfterScan()
         viewModel.lastScanDate = Date()
+        await postChangeAlertIfNeeded()
         _ = await weeklyDigestCoordinator.reconcileSchedule()
         return true
+    }
+
+    private func postChangeAlertIfNeeded() async {
+        guard preferencesStore.changeAlertsEnabled, let write = snapshotWrite else { return }
+        snapshotWrite = nil
+        guard let previous = write.previous else { return }
+        let changes = await snapshotCoordinator?.changes(from: previous, to: write.written)
+        await changeAlertCoordinator.snapshotWritten(changes: changes)
     }
 
     func markCurrentSnapshotReviewed() {
@@ -450,7 +470,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func installSnapshotRuntime(_ store: SnapshotStore) {
         snapshotStore = store
-        snapshotCoordinator = makeSnapshotCoordinator(store: store)
+        let coordinator = makeSnapshotCoordinator(store: store)
+        coordinator.onSnapshotWritten = { [weak self] previous, written in
+            self?.snapshotWrite = (previous, written)
+        }
+        snapshotCoordinator = coordinator
     }
 
     func updateSnapshotHistoryAfterScan() async {

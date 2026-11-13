@@ -131,6 +131,9 @@ final class ResetAllDataService {
         await weeklyDigestCoordinator.scheduler.cancelAll(
             matchingPrefix: WeeklyDigestCoordinator.testIdentifierPrefix
         )
+        await weeklyDigestCoordinator.scheduler.cancelAll(
+            matchingPrefix: ChangeAlertCoordinator.identifierPrefix
+        )
 
         releaseSnapshotStore()
         do {

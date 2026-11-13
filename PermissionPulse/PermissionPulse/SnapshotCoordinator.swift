@@ -277,6 +277,28 @@ final class SnapshotCoordinator {
             // sharing the reviewed one's timestamp but written after it.
             candidates = Array(candidates.drop { $0.id != reviewedID })
         }
+        return try await diffs(latest: latest, candidates: candidates, reviewedID: reviewedID)
+    }
+
+    /// The changes from `previous` to `written` alone: a domain `previous`
+    /// did not capture comparably is uncompared rather than diffed against
+    /// an older snapshot. Nil when either snapshot is gone or a query fails.
+    func changes(from previous: SnapshotID, to written: SnapshotID) async -> SnapshotDiffs? {
+        do {
+            guard let before = try await store.snapshotSummary(id: previous),
+                  let after = try await store.snapshotSummary(id: written) else { return nil }
+            return try await diffs(latest: after, candidates: [before], reviewedID: nil)
+        } catch {
+            Self.logger.error("Change query failed: \(error.localizedDescription, privacy: .public)")
+            return nil
+        }
+    }
+
+    private func diffs(
+        latest: SnapshotSummary,
+        candidates: [SnapshotSummary],
+        reviewedID: SnapshotID?
+    ) async throws -> SnapshotDiffs? {
         guard !candidates.isEmpty else { return nil }
         var choices: [HistoryDomain: BaselineChoice] = [:]
         for domain in HistoryDomain.allCases {

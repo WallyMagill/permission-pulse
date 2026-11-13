@@ -150,6 +150,12 @@ import PermissionsUI
             body: "Test"
         )
         try await env.scheduler.scheduleOneShot(
+            identifier: ChangeAlertCoordinator.changesIdentifier,
+            after: 1,
+            title: "Changes",
+            body: "Changes"
+        )
+        try await env.scheduler.scheduleOneShot(
             identifier: "com.example.unrelated",
             after: 5,
             title: "Other",
@@ -222,6 +228,7 @@ import PermissionsUI
         #expect(trace.values == [
             "cancel:\(WeeklyDigestCoordinator.identifierPrefix)",
             "cancel:\(WeeklyDigestCoordinator.testIdentifierPrefix)",
+            "cancel:\(ChangeAlertCoordinator.identifierPrefix)",
             "release",
             "delete:snapshots.db",
             "delete:snapshots.db-wal",
