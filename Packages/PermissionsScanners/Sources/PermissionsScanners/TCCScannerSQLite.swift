@@ -54,7 +54,8 @@ public struct TCCScannerSQLite: TCCScanner, Sendable {
     }
 
     public func scan() async throws -> ScannerOutput<PermissionGrant> {
-        let results = await readAllDatabases()
+        let unexposed = databaseURLs.indices.filter { !Self.isExposed(databaseURLs[$0]) }
+        let results = await readAllDatabases(skipping: Set(unexposed))
 
         let failures = results.compactMap { index, url, result -> (Int, URL, any Error)? in
             switch result {
@@ -67,8 +68,10 @@ public struct TCCScannerSQLite: TCCScanner, Sendable {
             try? result.get()
         }
 
-        if successes.isEmpty, let firstFailure = failures.first {
-            throw firstFailure.2
+        if successes.isEmpty {
+            throw failures.first?.2 ?? ScannerError.unsupportedOnThisOS(
+                detail: String(localized: "This macOS version does not expose any permission database.")
+            )
         }
 
         for (_, url, error) in failures {
@@ -84,7 +87,24 @@ public struct TCCScannerSQLite: TCCScanner, Sendable {
         let warnings = failures.map { index, _, _ in
             ScannerWarning(source: Self.scannerSource(forDatabaseAt: index))
         }
-        return ScannerOutput(items: items, warnings: warnings)
+        return ScannerOutput(
+            items: items,
+            warnings: warnings,
+            unavailableSources: unexposed.map(Self.scannerSource(forDatabaseAt:))
+        )
+    }
+
+    /// macOS 27 moved the per-user TCC database out of
+    /// `~/Library/Application Support/com.apple.TCC/` into a protected system
+    /// container that Full Disk Access does not open (observed on 27.2,
+    /// build 26B123). The old directory no longer exists there, whereas on
+    /// earlier releases it exists even when FDA is missing — reading inside it
+    /// is what gets denied. A missing directory therefore means "not exposed
+    /// on this OS", not "permission denied".
+    private static func isExposed(_ databaseURL: URL) -> Bool {
+        FileManager.default.fileExists(
+            atPath: databaseURL.deletingLastPathComponent().path(percentEncoded: false)
+        )
     }
 
     // TCC.db produces duplicates in two common situations:
@@ -115,11 +135,13 @@ public struct TCCScannerSQLite: TCCScanner, Sendable {
         return Array(byKey.values)
     }
 
-    private func readAllDatabases() async -> [(Int, URL, Result<[TCCRow], any Error>)] {
+    private func readAllDatabases(
+        skipping skipped: Set<Int>
+    ) async -> [(Int, URL, Result<[TCCRow], any Error>)] {
         await withTaskGroup(
             of: (Int, URL, Result<[TCCRow], any Error>).self
         ) { group in
-            for (index, url) in databaseURLs.enumerated() {
+            for (index, url) in databaseURLs.enumerated() where !skipped.contains(index) {
                 group.addTask {
                     do {
                         let rows = try await Self.readRows(from: url)

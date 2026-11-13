@@ -96,6 +96,18 @@ import PermissionsCore
         #expect(never.accessibilityText.localizedCaseInsensitiveContains("not yet scanned"))
     }
 
+    @Test func bannerNamesSystemOnlyScopeInsteadOfClaimingCompleteData() {
+        let banner = ScanAvailabilityBanner(
+            availability: .complete(lastUpdated: Date(timeIntervalSince1970: 1_700_000_000)),
+            domainName: "Permissions",
+            unavailableSources: [.userTCCDatabase]
+        )
+
+        #expect(banner.headline == "System-level permissions only")
+        #expect(banner.accessibilityText.localizedCaseInsensitiveContains("system-level permissions only"))
+        #expect(!banner.accessibilityText.localizedCaseInsensitiveContains("scan complete"))
+    }
+
     @Test func multiWarningBannerAccessibilityDoesNotDoublePunctuation() {
         let banner = ScanAvailabilityBanner(
             availability: .degraded(

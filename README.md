@@ -11,7 +11,7 @@ macOS asks for powerful permissions (Screen Recording, Accessibility, Full Disk 
 
 Permission Pulse is a menu-bar app that gives you the missing view:
 
-- **Permission Inbox** — every app grouped by what it can do (Accessibility, Screen Recording, FDA, Mic, Camera, Automation, Files & Folders).
+- **Permission Inbox** — every app grouped by what it can do (Accessibility, Screen Recording, FDA, Mic, Camera, Automation, Files & Folders). On macOS 27 and later, Apple no longer exposes per-user permission records to any app, so the inbox covers the system-level permissions only: Accessibility, Full Disk Access, Input Monitoring, and Screen Recording.
 - **Background Items** — Launch Agents, Launch Daemons, and BTM-managed login items / helpers, including disabled ones.
 - **What Changed** — "Zoom added Screen Recording 3 days ago," "Foo.app added a login item yesterday." Daily and weekly diffs, with per-row dismiss/snooze. History records itself: the app rescans on wake, at the start of each day, and when you open it.
 - **Live Mic/Cam Indicator** — the menu-bar icon shows when something is using your microphone or camera right now.
@@ -44,7 +44,7 @@ Builds are **unsigned / ad-hoc-signed** — there is no paid Apple Developer ID 
 
 ## Requirements
 
-- macOS 14.6 or later (the app's deployment target). Developed and tested only on **macOS 26 (Tahoe), Apple Silicon** — earlier macOS versions are untested.
+- macOS 14.6 or later (the app's deployment target). Developed and tested on **macOS 26 (Tahoe) and macOS 27, Apple Silicon** — earlier macOS versions are untested. macOS 27 narrows what the Permission Inbox can show (see above); Background Items, Launch Agents, and the live mic/cam indicator are unaffected.
 - Shipped as a universal binary (Apple Silicon + Intel); the Intel slice is built, but execution and UI behavior remain explicitly unverified without real Intel hardware.
 - No runtime dependencies beyond macOS itself.
 

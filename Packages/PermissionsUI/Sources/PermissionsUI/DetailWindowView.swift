@@ -244,7 +244,8 @@ private struct PermissionsDetailPage: View {
         VStack(spacing: 0) {
             ScanAvailabilityBanner(
                 availability: viewModel.tccAvailability,
-                domainName: String(localized: "Permissions")
+                domainName: String(localized: "Permissions"),
+                unavailableSources: viewModel.tccUnavailableSources
             )
             .padding([.horizontal, .top], PPSpacing.lg)
             .padding(.bottom, PPSpacing.sm)

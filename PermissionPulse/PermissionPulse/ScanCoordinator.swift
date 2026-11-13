@@ -116,6 +116,7 @@ final class ScanCoordinator {
         switch result {
         case .output(let output):
             viewModel.grants = output.items
+            viewModel.tccUnavailableSources = output.unavailableSources
             viewModel.tccAvailability = availability(for: output.warnings, at: scanDate)
         case .failure(let error):
             viewModel.tccAvailability = .failed(

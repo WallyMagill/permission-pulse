@@ -9,8 +9,10 @@ Each scanner is documented as: **what it reads, which API, what permission is ne
 **Implementation:** `TCCScannerSQLite` in `PermissionsScanners`. Reads both user and system DBs in parallel via a task group, unions results.
 
 **Where:**
-- User TCC: `~/Library/Application Support/com.apple.TCC/TCC.db`
+- User TCC: `~/Library/Application Support/com.apple.TCC/TCC.db` — **macOS 26 and earlier only.**
 - System TCC: `/Library/Application Support/com.apple.TCC/TCC.db`
+
+**macOS 27 hides the per-user database.** Observed on macOS 27.2 (build 26B123): `~/Library/Application Support/com.apple.TCC/` no longer exists, and the per-user `tccd` keeps its database under `/private/var/containers/Data/ProtectedSystem/<UUID>/…/com.apple.TCC/TCC.db`, which a Full Disk Access process cannot list or open (`Operation not permitted`). There is no supported way to read it, and the hard rules forbid escalating. The scanner therefore reports the user database as an *unexposed source* (`ScannerOutput.unavailableSources`) when its directory is absent — not as a warning — and the scan is complete for the system database alone. On that Mac the system database held Accessibility, Full Disk Access, Input Monitoring, and Screen Recording; App Management, Automation, Bluetooth, Calendars, Camera, Contacts, Files and Folders, Media Library, Microphone, Photos, and Reminders had been in the per-user database and are no longer visible. The Permissions banner reads "System-level permissions only" and snapshots record `tcc_coverage = 'reduced'`.
 
 **API:** Direct SQLite read via GRDB.
 
@@ -72,11 +74,12 @@ Each scanner is documented as: **what it reads, which API, what permission is ne
 
 **What:** Apps registered with macOS's Background Task Management — the modern unified location for login items, agent daemons, and helper tools.
 
-**Implementation:** `BTMScannerDirect` in `PermissionsScanners`. Reads the highest-versioned `.btm` file on disk via `NSKeyedUnarchiver` (not `PropertyListDecoder` — the file is NSKeyedArchiver-encoded, not a plain plist). The private `ItemRecord` class is registered to a Swift shim (`BTMItemRecordShim`). See `docs/_btm-schema-dump-tahoe-26.md` for the full schema and `docs/13-btm-slice.md` for the slice writeup.
+**Implementation:** `BTMScannerDirect` in `PermissionsScanners`. Reads the highest-versioned `.btm` store on disk via `NSKeyedUnarchiver` (not `PropertyListDecoder` — the file is NSKeyedArchiver-encoded, not a plain plist). The private `ItemRecord` class is registered to a Swift shim (`BTMItemRecordShim`). See `docs/_btm-schema-dump-tahoe-26.md` for the full schema and `docs/13-btm-slice.md` for the slice writeup.
 
 **Where:**
 - `/private/var/db/com.apple.backgroundtaskmanagement/BackgroundItems-v*.btm`
 - Two versions coexist on Tahoe 26 (`v13`, `v16`). The scanner globs and picks the highest integer suffix.
+- **macOS 27 (store v18) splits the store per user.** `BackgroundItems-v18.btm` is an index (`$top`: `version`, `infoByUserIdentifier`, `mdmPayloadsByIdentifier`) with no items. Items live in `BackgroundItems-v18-<user UUID>.btm`, whose `$top.userStore` is a `BTMUserStore` (`userIdentifier`, `records`, `userSettings`, `lastUsedDate`); `records` is the `ItemRecord` list, unchanged apart from a new `lastUseDate`. When the newest version has per-user files the scanner reads all of them (shim: `BTMUserStoreShim`); otherwise it reads the single file. One unreadable per-user file fails the scan, because missing items would read as removals.
 
 **API:** Direct decode via `NSKeyedUnarchiver(forReadingFrom:)` with `requiresSecureCoding = false`.
 
@@ -149,14 +152,14 @@ Each scanner is documented as: **what it reads, which API, what permission is ne
 | Table | Cols | Notes |
 |---|---|---|
 | `schema_version` | `version: INTEGER` | Single row, currently `6`. |
-| `snapshots` | `id: INTEGER PK AUTO`, `created_at: DOUBLE`, `launch_agent_disabled_captured: INTEGER`, `tcc_coverage` / `btm_coverage` / `launch_agent_coverage: TEXT` | One row per write. Migrated v4 rows carry capture marker `0`; v5+ snapshots write `1`. v6 adds per-domain coverage (`complete` / `degraded` / `failed`); pre-v6 rows default to `complete`, which is true because v5 only wrote fully complete scans. |
+| `snapshots` | `id: INTEGER PK AUTO`, `created_at: DOUBLE`, `launch_agent_disabled_captured: INTEGER`, `tcc_coverage` / `btm_coverage` / `launch_agent_coverage: TEXT` | One row per write. Migrated v4 rows carry capture marker `0`; v5+ snapshots write `1`. v6 adds per-domain coverage (`complete` / `reduced` / `degraded` / `failed`; `reduced` means everything this macOS exposes was captured but that is less than `complete` covers); pre-v6 rows default to `complete`, which is true because v5 only wrote fully complete scans. |
 | `launch_agents` | snapshot_id FK CASCADE + label / source_directory / program_path / program_arguments_json / run_at_load / keep_alive / is_disabled | v2 table; v5 persists disabled state. Disabled-only comparison is enabled only when both snapshots carry the v5 marker. |
 | `tcc_grants` | snapshot_id FK CASCADE + service / bundle_id / display_name / bundle_path / last_modified / automation_target / auth_value | Created in v3; v4 adds persisted `auth_value` for authorization-transition diffs. |
 | `btm_items` | snapshot_id FK CASCADE + identifier / name / developer_name / bundle_identifier / team_identifier / type_kind + type_raw / disposition_kind + disposition_raw / scope_kind + scope_per_user_uuid / modification_date / parent_identifier | v3 migration. The `*_kind` TEXT + nullable `*_raw` INTEGER split round-trips associated-value enum cases. |
 
 **Where:** `~/Library/Application Support/com.wallymagill.permissionpulse/snapshots.db` via the `SnapshotPath` helper in the app target.
 
-**Write cadence:** Change-driven. After every scan `SnapshotCoordinator.onScanCompleted()` writes a snapshot when none exists, when any domain's coverage differs from the latest snapshot's, or when the store's own diff rules (`SnapshotStore.evidenceChanged`) find a difference in any domain that did not fail; an unchanged scan writes nothing, and a scan where every domain failed writes nothing. A `complete` or `degraded` domain stores the rows it returned; a `failed` domain stores none. Diffs compare a domain only when both endpoint snapshots are `complete` for it, so omitted evidence cannot become a false historical removal. `com.wallymagill.permissionpulse.lastSnapshotDate` is still written after each snapshot but no longer gates writes. Scans run at launch, on wake, on calendar-day change, and when the dropdown or detail window opens more than 60 seconds after the last scan (`ScanScheduler`).
+**Write cadence:** Change-driven. After every scan `SnapshotCoordinator.onScanCompleted()` writes a snapshot when none exists, when any domain's coverage differs from the latest snapshot's, or when the store's own diff rules (`SnapshotStore.evidenceChanged`) find a difference in any domain that did not fail; an unchanged scan writes nothing, and a scan where every domain failed writes nothing. A `complete` or `degraded` domain stores the rows it returned; a `failed` domain stores none. Diffs compare a domain only when both endpoint snapshots have the same full scope for it (`complete` with `complete`, or `reduced` with `reduced`), so omitted evidence cannot become a false historical removal. `com.wallymagill.permissionpulse.lastSnapshotDate` is still written after each snapshot but no longer gates writes. Scans run at launch, on wake, on calendar-day change, and when the dropdown or detail window opens more than 60 seconds after the last scan (`ScanScheduler`).
 
 **Retention:** Live user preference, 7–365 days (default 90). `SnapshotCoordinator` captures the current retention value once at each scan-completion boundary, so an edit applies to the next snapshot/prune pass and remains stable within that pass. `SnapshotStore.pruneSnapshots(olderThan:)` runs at each write and keeps the newest snapshot at or before the cutoff (the comparison baseline) plus the latest; FK CASCADE drops child rows.
 

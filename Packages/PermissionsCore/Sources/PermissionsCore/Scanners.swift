@@ -29,10 +29,19 @@ public struct ScannerWarning: Sendable, Equatable {
 public struct ScannerOutput<Item: Sendable>: Sendable {
     public let items: [Item]
     public let warnings: [ScannerWarning]
+    /// Sources this macOS version does not expose to any app. Unlike
+    /// `warnings` this is not a failed read and nothing the user can fix, so
+    /// it does not degrade the scan; it narrows what "complete" covers.
+    public let unavailableSources: [ScannerSource]
 
-    public init(items: [Item], warnings: [ScannerWarning] = []) {
+    public init(
+        items: [Item],
+        warnings: [ScannerWarning] = [],
+        unavailableSources: [ScannerSource] = []
+    ) {
         self.items = items
         self.warnings = warnings
+        self.unavailableSources = unavailableSources
     }
 }
 

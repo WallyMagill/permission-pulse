@@ -22,6 +22,10 @@ public final class AppViewModel {
     public var launchAgentsDataSource: DataSource
     public var btmDataSource: DataSource
     public var tccAvailability: ScanAvailability
+    /// Permission sources this macOS version does not expose (see
+    /// `ScannerOutput.unavailableSources`). Non-empty narrows what a complete
+    /// Permissions scan covers.
+    public var tccUnavailableSources: [ScannerSource] = []
     public var btmAvailability: ScanAvailability
     public var launchAgentAvailability: ScanAvailability
     public var micInUse: Bool

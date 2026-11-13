@@ -15,6 +15,16 @@ import PermissionsCore
         #expect(try await store.coverage(snapshotID: SnapshotV4Fixture.legacySnapshotID) == .allComplete)
     }
 
+    @Test func onlySnapshotsWithTheSameFullScopeAreComparable() {
+        #expect(SnapshotCoverage.complete.isComparable(with: .complete))
+        #expect(SnapshotCoverage.reduced.isComparable(with: .reduced))
+        // The OS-upgrade boundary: per-user records present before, hidden after.
+        #expect(!SnapshotCoverage.complete.isComparable(with: .reduced))
+        #expect(!SnapshotCoverage.reduced.isComparable(with: .complete))
+        #expect(!SnapshotCoverage.degraded.isComparable(with: .degraded))
+        #expect(!SnapshotCoverage.failed.isComparable(with: .failed))
+    }
+
     @Test func coverageRoundTrips() async throws {
         let store = try SnapshotStore.inMemory()
         let coverage = SnapshotDomainCoverage(tcc: .complete, btm: .failed, launchAgents: .degraded)

@@ -184,6 +184,43 @@ import PermissionsUI
         #expect(!diff.hasContent)
     }
 
+    @Test func hiddenPerUserPermissionsNeverReadAsRemovals() async throws {
+        // Before the macOS upgrade: a complete snapshot holding a per-user grant.
+        let env = try await Environment(now: fixedNow)
+        _ = try await env.store.writeFullSnapshot(
+            grants: [demoGrant(bundleID: "com.example.camera-app")],
+            launchAgents: [],
+            btmItems: [],
+            at: fixedNow().addingTimeInterval(-2 * 86_400)
+        )
+
+        // After it: the per-user database is no longer exposed, so that grant
+        // is simply invisible.
+        env.viewModel.grants = []
+        env.viewModel.tccUnavailableSources = [.userTCCDatabase]
+        await env.coordinator.onScanCompleted()
+
+        let boundaryID = try #require(env.viewModel.latestSnapshotID)
+        #expect(try await env.store.coverage(snapshotID: boundaryID).tcc == .reduced)
+        let boundary = try #require(env.viewModel.latestDiffYesterday)
+        #expect(boundary.tcc.removed.isEmpty)
+        #expect(boundary.uncomparedDomains == [.tcc])
+
+        // Two reduced snapshots cover the same scope and diff normally.
+        _ = try await env.store.writeSnapshot(
+            grants: [demoGrant(bundleID: "com.example.new-grant")],
+            launchAgents: [],
+            btmItems: [],
+            coverage: SnapshotDomainCoverage(tcc: .reduced, btm: .complete, launchAgents: .complete),
+            at: fixedNow().addingTimeInterval(86_400)
+        )
+        let reducedDiff = try await env.store.diffTCCGrants(
+            from: boundaryID,
+            to: try #require(try await env.store.latestSnapshotID())
+        )
+        #expect(reducedDiff.added.map(\.app.bundleID) == ["com.example.new-grant"])
+    }
+
     @Test func pushesDiffsAndStaleAppsToViewModelAfterWrite() async throws {
         // Seed an older snapshot (~36 hours ago) so the yesterday window has
         // something to diff against the new write.

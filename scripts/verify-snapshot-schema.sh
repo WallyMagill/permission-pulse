@@ -189,10 +189,10 @@ fi
     || fail_schema "schema version 6 requires snapshots.tcc_coverage, btm_coverage, and launch_agent_coverage; found $coverage_columns of 3"
 
 invalid_coverage=$(readonly_query \
-    "SELECT COUNT(*) FROM snapshots WHERE COALESCE(tcc_coverage, '') NOT IN ('complete', 'degraded', 'failed') OR COALESCE(btm_coverage, '') NOT IN ('complete', 'degraded', 'failed') OR COALESCE(launch_agent_coverage, '') NOT IN ('complete', 'degraded', 'failed');") \
+    "SELECT COUNT(*) FROM snapshots WHERE COALESCE(tcc_coverage, '') NOT IN ('complete', 'reduced', 'degraded', 'failed') OR COALESCE(btm_coverage, '') NOT IN ('complete', 'reduced', 'degraded', 'failed') OR COALESCE(launch_agent_coverage, '') NOT IN ('complete', 'reduced', 'degraded', 'failed');") \
     || fail_schema 'could not validate snapshot coverage values'
 [[ "$invalid_coverage" == '0' ]] \
-    || fail_schema "$invalid_coverage snapshot(s) with a coverage value outside complete/degraded/failed"
+    || fail_schema "$invalid_coverage snapshot(s) with a coverage value outside complete/reduced/degraded/failed"
 
 snapshot_count=$(readonly_query 'SELECT COUNT(*) FROM snapshots;') \
     || fail_schema 'could not count snapshots'

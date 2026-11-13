@@ -155,8 +155,9 @@ final class SnapshotCoordinator {
     )
 
     private func currentCoverage() -> SnapshotDomainCoverage {
-        SnapshotDomainCoverage(
-            tcc: Self.coverage(of: viewModel.tccAvailability),
+        let tcc = Self.coverage(of: viewModel.tccAvailability)
+        return SnapshotDomainCoverage(
+            tcc: tcc == .complete && !viewModel.tccUnavailableSources.isEmpty ? .reduced : tcc,
             btm: Self.coverage(of: viewModel.btmAvailability),
             launchAgents: Self.coverage(of: viewModel.launchAgentAvailability)
         )
@@ -248,19 +249,20 @@ final class SnapshotCoordinator {
 
     private static func incompleteDomains(_ coverage: SnapshotDomainCoverage) -> [HistoryDomain] {
         [
-            coverage.tcc == .complete ? nil : HistoryDomain.tcc,
-            coverage.btm == .complete ? nil : .btm,
-            coverage.launchAgents == .complete ? nil : .launchAgents,
+            coverage.tcc.capturedFullScope ? nil : HistoryDomain.tcc,
+            coverage.btm.capturedFullScope ? nil : .btm,
+            coverage.launchAgents.capturedFullScope ? nil : .launchAgents,
         ].compactMap { $0 }
     }
 
-    /// Compares a domain only when both endpoints captured it completely; a
-    /// partial endpoint would turn omitted items into false removals.
+    /// Compares a domain only when both endpoints captured the same full
+    /// scope; a partial or narrower endpoint would turn omitted items into
+    /// false removals.
     private func diffs(from fromID: SnapshotID, to toID: SnapshotID) async throws -> SnapshotDiffs {
         let before = try await store.coverage(snapshotID: fromID)
         let after = try await store.coverage(snapshotID: toID)
         let comparable: (KeyPath<SnapshotDomainCoverage, SnapshotCoverage>) -> Bool = {
-            before[keyPath: $0] == .complete && after[keyPath: $0] == .complete
+            before[keyPath: $0].isComparable(with: after[keyPath: $0])
         }
         let tcc = comparable(\.tcc)
             ? try await store.diffTCCGrants(from: fromID, to: toID)

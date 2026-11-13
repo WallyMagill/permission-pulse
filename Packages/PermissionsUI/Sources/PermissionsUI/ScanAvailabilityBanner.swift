@@ -4,10 +4,21 @@ import PermissionsCore
 public struct ScanAvailabilityBanner: View {
     public let availability: ScanAvailability
     public let domainName: String
+    /// Sources this macOS version does not expose; narrows a complete scan.
+    public let unavailableSources: [ScannerSource]
 
-    public init(availability: ScanAvailability, domainName: String) {
+    public init(
+        availability: ScanAvailability,
+        domainName: String,
+        unavailableSources: [ScannerSource] = []
+    ) {
         self.availability = availability
         self.domainName = domainName
+        self.unavailableSources = unavailableSources
+    }
+
+    private var isReducedScope: Bool {
+        availability.isComplete && unavailableSources.contains(.userTCCDatabase)
     }
 
     public var body: some View {
@@ -43,6 +54,9 @@ public struct ScanAvailabilityBanner: View {
         case .never:
             return String(localized: "\(domainName) not yet scanned. No scan results are available yet.")
         case .complete:
+            if isReducedScope {
+                return String(localized: "\(domainName) scan covers system-level permissions only. \(detailText)")
+            }
             return String(localized: "\(domainName) scan complete. \(detailText)")
         case .degraded(_, let warnings):
             let warningText = warnings.map(Self.warningText).joined(separator: " ")
@@ -81,7 +95,10 @@ public struct ScanAvailabilityBanner: View {
     var headline: String {
         switch availability {
         case .never: String(localized: "Not yet scanned")
-        case .complete: String(localized: "Complete data")
+        case .complete:
+            isReducedScope
+                ? String(localized: "System-level permissions only")
+                : String(localized: "Complete data")
         case .degraded: String(localized: "Degraded data")
         case .failed(let lastSuccessful, _):
             lastSuccessful == nil
@@ -95,6 +112,9 @@ public struct ScanAvailabilityBanner: View {
         case .never:
             return String(localized: "No scan results are available yet.")
         case .complete(let lastUpdated):
+            if isReducedScope {
+                return String(localized: "This version of macOS doesn't let apps read per-app records for Camera, Microphone, Files and Folders, Automation, and other per-user permissions. Updated \(formatted(lastUpdated)).")
+            }
             return String(localized: "Updated \(formatted(lastUpdated)).")
         case .degraded(let lastUpdated, _):
             return String(localized: "Some sources could not be read. Updated \(formatted(lastUpdated)).")
@@ -109,7 +129,7 @@ public struct ScanAvailabilityBanner: View {
     private var symbolName: String {
         switch availability {
         case .never: "clock"
-        case .complete: "checkmark.circle.fill"
+        case .complete: isReducedScope ? "info.circle.fill" : "checkmark.circle.fill"
         case .degraded: "exclamationmark.triangle.fill"
         case .failed: "clock.badge.exclamationmark.fill"
         }
@@ -118,7 +138,7 @@ public struct ScanAvailabilityBanner: View {
     private var symbolColor: Color {
         switch availability {
         case .never: .secondary
-        case .complete: PPColor.success
+        case .complete: isReducedScope ? .secondary : PPColor.success
         case .degraded, .failed: PPColor.warning
         }
     }

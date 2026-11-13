@@ -93,7 +93,7 @@ ALTER TABLE snapshots
     ADD COLUMN launch_agent_coverage TEXT NOT NULL DEFAULT 'complete';
 UPDATE schema_version SET version = 6;
 INSERT INTO grdb_migrations (identifier) VALUES ('v6');
-UPDATE snapshots SET launch_agent_coverage = 'degraded';
+UPDATE snapshots SET launch_agent_coverage = 'degraded', tcc_coverage = 'reduced';
 SQL
 }
 
@@ -222,9 +222,9 @@ expect_success 'preserved v5 is pending when no launch can migrate it' \
     "$verifier" --database "$v5_db" --allow-pending-migration
 expect_failure 'v5 is not v6-complete on a schema-expected path' \
     "$verifier" --database "$v5_db"
-expect_success 'valid v6 is complete, including a degraded coverage value' \
+expect_success 'valid v6 is complete, including degraded and reduced coverage values' \
     "$verifier" --database "$v6_db"
-expect_failure 'v6 rejects a coverage value outside complete/degraded/failed' \
+expect_failure 'v6 rejects a coverage value outside complete/reduced/degraded/failed' \
     "$verifier" --database "$invalid_coverage_db"
 expect_failure 'v6 requires all three coverage columns' \
     "$verifier" --database "$missing_coverage_column_db"
