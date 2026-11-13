@@ -5,6 +5,7 @@ import PermissionsCore
 struct OverviewPage: View {
     @Environment(AppViewModel.self) private var viewModel
     @Binding var section: SidebarItem?
+    @State private var isShowingCoverageInfo = false
 
     var body: some View {
         Form {
@@ -17,19 +18,22 @@ struct OverviewPage: View {
                 countRow(
                     title: String(localized: "Permissions"),
                     systemImage: "lock.shield",
-                    count: viewModel.grants.count,
+                    count: Self.countDisplay(viewModel.grants.count, availability: viewModel.tccAvailability),
                     target: .permissions
                 )
                 countRow(
                     title: String(localized: "Launch Agents"),
                     systemImage: "clock",
-                    count: viewModel.launchAgents.count,
+                    count: Self.countDisplay(
+                        viewModel.launchAgents.count,
+                        availability: viewModel.launchAgentAvailability
+                    ),
                     target: .launchAgents
                 )
                 countRow(
                     title: String(localized: "Background Items"),
                     systemImage: "square.stack.3d.up",
-                    count: viewModel.btmItems.count,
+                    count: Self.countDisplay(viewModel.btmItems.count, availability: viewModel.btmAvailability),
                     target: .backgroundItems
                 )
                 if let risk = PermissionRiskSummary.line(for: viewModel.grants) {
@@ -37,18 +41,57 @@ struct OverviewPage: View {
                         .foregroundStyle(.secondary)
                 }
             }
-            Section(String(localized: "Status")) {
-                LabeledContent(String(localized: "Last Scan")) {
-                    Text(lastScanText)
-                }
-                LabeledContent(String(localized: "Full Disk Access")) {
-                    Text(fdaStatusText)
-                        .foregroundStyle(fdaStatusColor)
-                }
-            }
+            statusSection
         }
         .formStyle(.grouped)
         .navigationTitle(String(localized: "Overview"))
+    }
+
+    private var statusSection: some View {
+        Section(String(localized: "Status")) {
+            LabeledContent(String(localized: "Last Scan")) {
+                Text(lastScanText)
+            }
+            LabeledContent(String(localized: "Full Disk Access")) {
+                Text(fdaStatusText)
+                    .foregroundStyle(fdaStatusColor)
+            }
+            LabeledContent(String(localized: "Permission coverage")) {
+                coverageValue
+            }
+        }
+    }
+
+    private var coverageValue: some View {
+        let scope = viewModel.permissionScope
+        return HStack(spacing: PPSpacing.xs) {
+            Text(scope.coverageText(hasData: viewModel.hasPermissionData))
+            if scope.isReduced {
+                Button {
+                    isShowingCoverageInfo.toggle()
+                } label: {
+                    Image(systemName: "info.circle")
+                }
+                .buttonStyle(.borderless)
+                .accessibilityLabel(String(localized: "About permission coverage"))
+                .popover(isPresented: $isShowingCoverageInfo, arrowEdge: .bottom) {
+                    Text(ScanAvailabilityBanner.reducedScopeExplanation)
+                        .ppFont(.metadata)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .frame(width: 280)
+                        .padding(PPSpacing.md)
+                }
+            }
+        }
+    }
+
+    /// A domain whose scan failed before it ever succeeded has no count to
+    /// show; "0" would claim the scan found nothing.
+    static func countDisplay(_ count: Int, availability: ScanAvailability) -> (value: String, note: String?) {
+        if case .failed(nil, _) = availability {
+            return ("—", String(localized: "Not readable"))
+        }
+        return ("\(count)", nil)
     }
 
     private var hasAttentionContent: Bool {
@@ -113,13 +156,23 @@ struct OverviewPage: View {
         .buttonStyle(.plain)
     }
 
-    private func countRow(title: String, systemImage: String, count: Int, target: SidebarItem) -> some View {
+    private func countRow(
+        title: String,
+        systemImage: String,
+        count: (value: String, note: String?),
+        target: SidebarItem
+    ) -> some View {
         Button { section = target } label: {
             HStack {
                 Label(title, systemImage: systemImage)
                     .foregroundStyle(.primary)
                 Spacer()
-                Text("\(count)")
+                if let note = count.note {
+                    Text(note)
+                        .ppFont(.metadata)
+                        .foregroundStyle(PPColor.warning)
+                }
+                Text(count.value)
                     .foregroundStyle(.secondary)
                     .monospacedDigit()
                 Image(systemName: "chevron.right")
