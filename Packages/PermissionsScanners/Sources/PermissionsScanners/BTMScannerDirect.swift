@@ -10,6 +10,8 @@ public struct BTMScannerDirect: BTMScanner, Sendable {
 
     static let topLevelStoreKey = "store"
     static let storageClassName = "Storage"
+    static let topLevelUserStoreKey = "userStore"
+    static let userStoreClassName = "BTMUserStore"
     static let itemRecordClassName = "ItemRecord"
     static let rootUserUUIDSentinel = "FFFFEEEE-DDDD-CCCC-BBBB-AAAAFFFFFFFE"
     static let systemUserUUIDSentinel = "FFFFEEEE-DDDD-CCCC-BBBB-AAAA00000000"
@@ -33,22 +35,13 @@ public struct BTMScannerDirect: BTMScanner, Sendable {
     }
 
     public func scan() async throws -> ScannerOutput<BTMItem> {
-        let fileURL = try locateLatestBTMFile()
-        let data: Data
-        do {
-            data = try Data(contentsOf: fileURL)
-        } catch {
-            Self.logger.error("BTM read failed: \(error.localizedDescription, privacy: .public)")
-            throw ScannerError.permissionDenied(reason: Self.permissionDeniedReason)
+        var entries: [Entry] = []
+        for fileURL in try locateLatestBTMFiles() {
+            entries.append(contentsOf: try Self.unarchiveEntries(
+                data: try readFile(at: fileURL),
+                fileName: fileURL.lastPathComponent
+            ))
         }
-
-        guard !data.isEmpty else {
-            throw ScannerError.schemaMismatch(
-                detail: String(localized: "Empty .btm file at \(fileURL.lastPathComponent).")
-            )
-        }
-
-        let entries = try Self.unarchiveEntries(data: data, fileName: fileURL.lastPathComponent)
         let items = entries
             .compactMap(Self.mapEntryToItem)
             .filter { $0.type != .developerGroup }
@@ -56,7 +49,30 @@ public struct BTMScannerDirect: BTMScanner, Sendable {
         return ScannerOutput(items: items)
     }
 
-    private func locateLatestBTMFile() throws -> URL {
+    private typealias Entry = (shim: BTMItemRecordShim, userUUID: String)
+
+    private func readFile(at fileURL: URL) throws -> Data {
+        let data: Data
+        do {
+            data = try Data(contentsOf: fileURL)
+        } catch {
+            Self.logger.error("BTM read failed: \(error.localizedDescription, privacy: .public)")
+            throw ScannerError.permissionDenied(reason: Self.permissionDeniedReason)
+        }
+        guard !data.isEmpty else {
+            throw ScannerError.schemaMismatch(
+                detail: String(localized: "Empty .btm file at \(fileURL.lastPathComponent).")
+            )
+        }
+        return data
+    }
+
+    /// The files holding the newest store version. Through v16 that is one
+    /// `BackgroundItems-v<N>.btm`. From v18 (macOS 27) the items live in
+    /// per-user `BackgroundItems-v<N>-<user UUID>.btm` files and the
+    /// unsuffixed file is an index with no items, so the per-user files win
+    /// whenever the newest version has any.
+    private func locateLatestBTMFiles() throws -> [URL] {
         let fm = FileManager.default
         let contents: [URL]
         do {
@@ -69,32 +85,43 @@ public struct BTMScannerDirect: BTMScanner, Sendable {
             throw ScannerError.permissionDenied(reason: Self.permissionDeniedReason)
         }
 
-        let candidates = contents.compactMap { url -> (URL, Int)? in
-            guard let version = Self.parseVersionSuffix(url.lastPathComponent) else { return nil }
-            return (url, version)
+        let candidates = contents.compactMap { url -> (url: URL, name: ParsedFileName)? in
+            guard let name = Self.parseFileName(url.lastPathComponent) else { return nil }
+            return (url, name)
         }
 
-        guard let latest = candidates.max(by: { $0.1 < $1.1 }) else {
+        guard let latestVersion = candidates.map(\.name.version).max() else {
             throw ScannerError.schemaMismatch(
                 detail: String(
                     localized: "No BackgroundItems-v*.btm file found in \(directoryURL.path)."
                 )
             )
         }
-        return latest.0
+        let latest = candidates.filter { $0.name.version == latestVersion }
+        let perUser = latest.filter { $0.name.userUUID != nil }
+        let chosen = perUser.isEmpty ? latest : perUser
+        return chosen.map(\.url).sorted { $0.lastPathComponent < $1.lastPathComponent }
     }
 
-    static func parseVersionSuffix(_ name: String) -> Int? {
+    struct ParsedFileName: Equatable {
+        var version: Int
+        var userUUID: String?
+    }
+
+    /// `BackgroundItems-v16.btm` → version 16; `BackgroundItems-v18-<UUID>.btm`
+    /// → version 18 for that user.
+    static func parseFileName(_ name: String) -> ParsedFileName? {
         guard name.hasPrefix(fileNamePrefix), name.hasSuffix(fileNameSuffix) else { return nil }
         let start = name.index(name.startIndex, offsetBy: fileNamePrefix.count)
         let end = name.index(name.endIndex, offsetBy: -fileNameSuffix.count)
-        return Int(name[start..<end])
+        let parts = name[start..<end].split(separator: "-", maxSplits: 1)
+        guard let first = parts.first, let version = Int(first) else { return nil }
+        guard parts.count == 2 else { return ParsedFileName(version: version, userUUID: nil) }
+        guard UUID(uuidString: String(parts[1])) != nil else { return nil }
+        return ParsedFileName(version: version, userUUID: String(parts[1]))
     }
 
-    private static func unarchiveEntries(
-        data: Data,
-        fileName: String
-    ) throws -> [(shim: BTMItemRecordShim, userUUID: String)] {
+    private static func unarchiveEntries(data: Data, fileName: String) throws -> [Entry] {
         let unarchiver: NSKeyedUnarchiver
         do {
             unarchiver = try NSKeyedUnarchiver(forReadingFrom: data)
@@ -107,8 +134,35 @@ public struct BTMScannerDirect: BTMScanner, Sendable {
         }
         unarchiver.requiresSecureCoding = false
         unarchiver.setClass(BTMStorageShim.self, forClassName: storageClassName)
+        unarchiver.setClass(BTMUserStoreShim.self, forClassName: userStoreClassName)
         unarchiver.setClass(BTMItemRecordShim.self, forClassName: itemRecordClassName)
 
+        if unarchiver.containsValue(forKey: topLevelUserStoreKey) {
+            return try userStoreEntries(from: unarchiver, fileName: fileName)
+        }
+        return try storageEntries(from: unarchiver, fileName: fileName)
+    }
+
+    private static func userStoreEntries(
+        from unarchiver: NSKeyedUnarchiver,
+        fileName: String
+    ) throws -> [Entry] {
+        guard let store = unarchiver.decodeObject(forKey: topLevelUserStoreKey) as? BTMUserStoreShim,
+              let userUUID = store.userIdentifier ?? parseFileName(fileName)?.userUUID,
+              let records = store.records as? [BTMItemRecordShim] else {
+            throw ScannerError.schemaMismatch(
+                detail: String(
+                    localized: "\(fileName) has no readable '\(topLevelUserStoreKey)' object of class '\(userStoreClassName)' with a 'records' list."
+                )
+            )
+        }
+        return records.map { ($0, userUUID) }
+    }
+
+    private static func storageEntries(
+        from unarchiver: NSKeyedUnarchiver,
+        fileName: String
+    ) throws -> [Entry] {
         guard let storage = unarchiver.decodeObject(forKey: topLevelStoreKey) as? BTMStorageShim else {
             throw ScannerError.schemaMismatch(
                 detail: String(
@@ -125,7 +179,7 @@ public struct BTMScannerDirect: BTMScanner, Sendable {
             )
         }
 
-        var collected: [(BTMItemRecordShim, String)] = []
+        var collected: [Entry] = []
         for (key, value) in items {
             guard let userUUID = key as? String else { continue }
             guard let bucket = value as? [BTMItemRecordShim] else { continue }
@@ -136,9 +190,7 @@ public struct BTMScannerDirect: BTMScanner, Sendable {
         return collected
     }
 
-    private static func mapEntryToItem(
-        _ entry: (shim: BTMItemRecordShim, userUUID: String)
-    ) -> BTMItem? {
+    private static func mapEntryToItem(_ entry: Entry) -> BTMItem? {
         guard let identifier = entry.shim.identifier, !identifier.isEmpty,
               let name = entry.shim.name, !name.isEmpty else {
             logger.debug("BTM row dropped — missing identifier or name")

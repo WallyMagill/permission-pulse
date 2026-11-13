@@ -70,6 +70,44 @@ import PermissionsCore
         #expect(items.first?.identifier == "1.test.item")
     }
 
+    @Test func scanReadsPerUserFilesOfTheNewestVersion() async throws {
+        let dir = try BTMTempDir()
+        // A leftover single-file store from before the OS upgrade must lose
+        // to the per-user files, and the v18 index file holds no items.
+        try BTMFixtures.makeSingleItemFixture(
+            at: dir.url,
+            fileName: "BackgroundItems-v16.btm",
+            type: BTMFixtures.ItemTypeRaw.app
+        )
+        try BTMFixtures.makeSplitLayoutFixture(at: dir.url, recordsByUser: [
+            BTMFixtures.systemUserUUID: [BTMFixtures.zoomDaemon],
+            BTMFixtures.perUserUUID: [BTMFixtures.zoomApp, BTMFixtures.dockerGroup],
+        ])
+
+        let output = try await BTMScannerDirect(directoryURL: dir.url).scan()
+
+        #expect(output.warnings.isEmpty)
+        #expect(output.items.map(\.identifier) == ["16.us.zoom.ZoomDaemon", "2.us.zoom.xos"])
+        #expect(output.items.map(\.scope) == [.system, .perUser(uuid: BTMFixtures.perUserUUID)])
+    }
+
+    @Test func scanThrowsSchemaMismatchWhenAPerUserFileIsUnreadable() async throws {
+        let dir = try BTMTempDir()
+        try BTMFixtures.makeSplitLayoutFixture(at: dir.url, recordsByUser: [
+            BTMFixtures.systemUserUUID: [BTMFixtures.zoomDaemon],
+            BTMFixtures.perUserUUID: [BTMFixtures.zoomApp],
+        ])
+        try Data("not an archive".utf8).write(
+            to: BTMFixtures.splitLayoutFileURL(in: dir.url, userUUID: BTMFixtures.perUserUUID)
+        )
+
+        // One user's items missing would read as removals, so the scan fails
+        // as a whole instead of returning the other users' items.
+        await #expect(throws: ScannerError.self) {
+            _ = try await BTMScannerDirect(directoryURL: dir.url).scan()
+        }
+    }
+
     @Test func scanThrowsSchemaMismatchOnMissingTopLevelKey() async throws {
         let dir = try BTMTempDir()
         try BTMFixtures.makeMissingTopLevelKeyFixture(at: dir.url)
