@@ -24,4 +24,14 @@ struct StaleAppsEmptyStateTests {
         let reduced = StaleAppsEmptyState.resolve(hasPermissionData: true, historyAvailable: true, systemLevelOnly: true)
         #expect(reduced.description == "Every app with a system-level permission has been used recently.")
     }
+
+    @Test("Skipped apps are counted and pointed to Settings, not called recently used")
+    func skippedAppsHidden() {
+        let one = StaleAppsEmptyState.resolve(hasPermissionData: true, historyAvailable: true, systemLevelOnly: false, skippedCount: 1)
+        #expect(one.description
+            == "Every other app with an active grant has been used recently. 1 skipped app is hidden. To show it again, use Settings → Data.")
+        let three = StaleAppsEmptyState.resolve(hasPermissionData: true, historyAvailable: true, systemLevelOnly: true, skippedCount: 3)
+        #expect(three.description
+            == "Every other app with a system-level permission has been used recently. 3 skipped apps are hidden. To show them again, use Settings → Data.")
+    }
 }

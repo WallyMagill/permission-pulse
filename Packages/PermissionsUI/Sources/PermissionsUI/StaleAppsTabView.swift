@@ -5,7 +5,7 @@ import PermissionsCore
 struct StaleAppsTabView: View {
     let staleApps: [StaleApp]
     var staleThresholdDays: Int = 90
-    var emptyState: StaleAppsEmptyState = .noneStale(systemLevelOnly: false)
+    var emptyState: StaleAppsEmptyState = .noneStale(systemLevelOnly: false, skippedCount: 0)
     @Environment(DismissedStaleAppStore.self) private var dismissedStore
     @Environment(AppViewModel.self) private var viewModel
 

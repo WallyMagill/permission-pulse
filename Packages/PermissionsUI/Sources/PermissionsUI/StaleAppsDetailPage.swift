@@ -3,6 +3,7 @@ import PermissionsCore
 
 struct StaleAppsDetailPage: View {
     @Environment(AppViewModel.self) private var viewModel
+    @Environment(DismissedStaleAppStore.self) private var dismissedStore
     let searchText: String
 
     var body: some View {
@@ -32,7 +33,8 @@ struct StaleAppsDetailPage: View {
         StaleAppsEmptyState.resolve(
             hasPermissionData: viewModel.hasPermissionData,
             historyAvailable: !viewModel.snapshotStoreUnavailable && viewModel.latestSnapshotID != nil,
-            systemLevelOnly: viewModel.permissionScope.isReduced
+            systemLevelOnly: viewModel.permissionScope.isReduced,
+            skippedCount: dismissedStore.allStableKeys().count
         )
     }
 
@@ -60,14 +62,20 @@ struct StaleAppsDetailPage: View {
 enum StaleAppsEmptyState: Equatable {
     case noPermissionData
     case historyUnavailable
-    case noneStale(systemLevelOnly: Bool)
+    /// `skippedCount` apps the user chose to skip are hidden from the list.
+    case noneStale(systemLevelOnly: Bool, skippedCount: Int)
 
     /// Stale apps are computed after a snapshot is stored, so without one
     /// (or without an open history database) nothing was checked.
-    static func resolve(hasPermissionData: Bool, historyAvailable: Bool, systemLevelOnly: Bool) -> Self {
+    static func resolve(
+        hasPermissionData: Bool,
+        historyAvailable: Bool,
+        systemLevelOnly: Bool,
+        skippedCount: Int = 0
+    ) -> Self {
         if !hasPermissionData { return .noPermissionData }
         if !historyAvailable { return .historyUnavailable }
-        return .noneStale(systemLevelOnly: systemLevelOnly)
+        return .noneStale(systemLevelOnly: systemLevelOnly, skippedCount: skippedCount)
     }
 
     var title: String {
@@ -84,11 +92,25 @@ enum StaleAppsEmptyState: Equatable {
             String(localized: "Stale Apps checks the apps that hold permissions. No permissions scan has succeeded, so there is nothing to check yet.")
         case .historyUnavailable:
             String(localized: "Stale Apps needs Permission Pulse's local history, which isn't available. Recent Changes says why.")
-        case .noneStale(systemLevelOnly: false):
+        case .noneStale(systemLevelOnly: false, skippedCount: 0):
             String(localized: "Every app with an active grant has been used recently.")
-        case .noneStale(systemLevelOnly: true):
+        case .noneStale(systemLevelOnly: true, skippedCount: 0):
             String(localized: "Every app with a system-level permission has been used recently.")
+        case .noneStale(let systemLevelOnly, let skipped):
+            Self.othersUsedRecently(systemLevelOnly: systemLevelOnly) + " " + Self.skippedHidden(skipped)
         }
+    }
+
+    private static func othersUsedRecently(systemLevelOnly: Bool) -> String {
+        systemLevelOnly
+            ? String(localized: "Every other app with a system-level permission has been used recently.")
+            : String(localized: "Every other app with an active grant has been used recently.")
+    }
+
+    private static func skippedHidden(_ count: Int) -> String {
+        count == 1
+            ? String(localized: "1 skipped app is hidden. To show it again, use Settings → Data.")
+            : String(localized: "\(count) skipped apps are hidden. To show them again, use Settings → Data.")
     }
 
     var systemImage: String {
