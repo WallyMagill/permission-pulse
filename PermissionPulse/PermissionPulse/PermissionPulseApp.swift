@@ -101,11 +101,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     )
 
     static let hasSeenWelcomeKey = "com.wallymagill.permissionpulse.hasSeenWelcome"
-    static let testDefaultsSuiteName =
+    static let testDefaultsSuitePrefix =
         "com.wallymagill.permissionpulse.test-host.\(ProcessInfo.processInfo.processIdentifier)"
 
     let runtimeEnvironment: AppRuntimeEnvironment
     let runtimeDefaults: UserDefaults
+    /// The isolated defaults suite in test mode, one per instance: test
+    /// suites interleave at awaits, so a shared one let one test wipe
+    /// another's keys. Nil in production, which uses `.standard`.
+    let runtimeDefaultsSuiteName: String?
     let appVersion: AppVersion
     let fullDiskAccessRecovery = FullDiskAccessRecovery()
     let viewModel: AppViewModel
@@ -190,9 +194,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         appVersion: AppVersion = .running,
         fullDiskAccessPromptPresenter: (@MainActor (FullDiskAccessLoss) -> Void)? = nil
     ) {
-        let defaults = Self.makeRuntimeDefaults(for: runtimeEnvironment)
+        let suiteName = runtimeEnvironment.isRunningTests
+            ? "\(Self.testDefaultsSuitePrefix).\(UUID().uuidString)"
+            : nil
+        let defaults = Self.makeRuntimeDefaults(suiteName: suiteName)
         self.runtimeEnvironment = runtimeEnvironment
         self.runtimeDefaults = defaults
+        self.runtimeDefaultsSuiteName = suiteName
         self.appVersion = appVersion
         self.fullDiskAccessPromptPresenter = fullDiskAccessPromptPresenter
         self.viewModel = AppViewModel()
@@ -221,12 +229,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
-    private static func makeRuntimeDefaults(
-        for runtimeEnvironment: AppRuntimeEnvironment
-    ) -> UserDefaults {
-        guard runtimeEnvironment.isRunningTests else { return .standard }
-
-        let suiteName = testDefaultsSuiteName
+    private static func makeRuntimeDefaults(suiteName: String?) -> UserDefaults {
+        guard let suiteName else { return .standard }
         guard let defaults = UserDefaults(suiteName: suiteName) else {
             preconditionFailure("Unable to create isolated test defaults")
         }

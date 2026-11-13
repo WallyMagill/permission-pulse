@@ -91,7 +91,9 @@ final class ScanEnvironment {
 
     func cleanUp() {
         try? FileManager.default.removeItem(at: directory)
-        UserDefaults().removePersistentDomain(forName: AppDelegate.testDefaultsSuiteName)
+        if let suiteName = delegate.runtimeDefaultsSuiteName {
+            UserDefaults().removePersistentDomain(forName: suiteName)
+        }
     }
 }
 
