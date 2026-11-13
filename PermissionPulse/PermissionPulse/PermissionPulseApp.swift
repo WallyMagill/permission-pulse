@@ -251,21 +251,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
 
         coordinator = ScanCoordinator(viewModel: viewModel)
-        viewModel.staleThresholdDays = preferencesStore.staleThresholdDays
-        Task { @MainActor in
-            viewModel.scanInProgress = true
-            await coordinator?.runScan()
-            await updateSnapshotHistoryAfterScan()
-            viewModel.lastScanDate = Date()
-            viewModel.scanInProgress = false
-            _ = await weeklyDigestCoordinator.reconcileSchedule()
-            scanScheduler = ScanScheduler(
+        Task { @MainActor [weak self] in
+            guard let self else { return }
+            await self.performRescanIfIdle()
+            self.scanScheduler = ScanScheduler(
                 lastScanDate: { [weak self] in self?.viewModel.lastScanDate },
                 requestScan: { [weak self] in
                     Task { await self?.rescan() }
                 }
             )
-            scanScheduler?.start()
+            self.scanScheduler?.start()
         }
 
         mediaCoordinator = MediaUseCoordinator(viewModel: viewModel)
@@ -284,8 +279,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         _ = await performRescanIfIdle()
     }
 
+    /// The one scan path: the launch scan, every scheduled or manual rescan,
+    /// and Reset's recovery scan all end here, so whatever depends on fresh
+    /// results (the digest body above all) is refreshed after each scan.
     @discardableResult
-    private func performRescanIfIdle() async -> Bool {
+    func performRescanIfIdle() async -> Bool {
         // Don't start a second scan while one is in flight (e.g. user hits
         // Refresh during the initial launch scan, or a wake and a menu open
         // land together). Concurrent scans could both see changed evidence
@@ -300,6 +298,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         await coordinator?.rescan()
         await updateSnapshotHistoryAfterScan()
         viewModel.lastScanDate = Date()
+        _ = await weeklyDigestCoordinator.reconcileSchedule()
         return true
     }
 

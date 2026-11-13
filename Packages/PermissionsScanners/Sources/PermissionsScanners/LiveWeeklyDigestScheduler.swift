@@ -45,9 +45,12 @@ public struct LiveWeeklyDigestScheduler: WeeklyDigestScheduler {
         components.hour = hour
         components.minute = minute
 
+        // Non-repeating: a repeating trigger would deliver the body composed
+        // at scheduling time every week, and keep firing while the app is not
+        // running. The coordinator re-arms the next occurrence after each scan.
         let trigger = UNCalendarNotificationTrigger(
             dateMatching: components,
-            repeats: true
+            repeats: false
         )
 
         let content = UNMutableNotificationContent()

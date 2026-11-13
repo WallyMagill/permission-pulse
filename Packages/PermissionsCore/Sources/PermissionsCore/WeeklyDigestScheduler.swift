@@ -18,6 +18,8 @@ public enum DigestAuthorizationStatus: Sendable, Equatable {
 public protocol WeeklyDigestScheduler: Sendable {
     func currentAuthorizationStatus() async -> DigestAuthorizationStatus
     func requestAuthorization() async throws -> DigestAuthorizationStatus
+    /// Schedules only the next occurrence of the weekday and time, without
+    /// repeating; callers re-arm it so each delivery carries a fresh body.
     func scheduleWeekly(
         identifier: String,
         weekday: Int,
