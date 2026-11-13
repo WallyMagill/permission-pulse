@@ -18,7 +18,22 @@ lock_owned=0
 final_zip=''
 final_checksum=''
 final_manifest=''
+temporary_zip=''
+temporary_manifest=''
+installed_zip=0
+installed_checksum=0
+installed_manifest=0
 complete=0
+
+# Removes a final output this run installed, but only while it is still our
+# hard link to the staged file, so a file another process put there survives.
+remove_installed_output() {
+    local target=$1
+    local source=$2
+    if [[ -n "$target" && -n "$source" && "$target" -ef "$source" ]]; then
+        /bin/rm -f "$target"
+    fi
+}
 
 cleanup() {
     local status=$?
@@ -26,6 +41,18 @@ cleanup() {
 
     if [[ $complete -ne 1 && $status -eq 0 ]]; then
         status=1
+    fi
+
+    if [[ $complete -ne 1 ]]; then
+        if [[ $installed_manifest -eq 1 ]]; then
+            remove_installed_output "$final_manifest" "$temporary_manifest"
+        fi
+        if [[ $installed_checksum -eq 1 ]]; then
+            remove_installed_output "$final_checksum" "$staging/final-checksum.txt"
+        fi
+        if [[ $installed_zip -eq 1 ]]; then
+            remove_installed_output "$final_zip" "$temporary_zip"
+        fi
     fi
 
     if [[ $lock_owned -eq 1 && -d "$lock_dir" ]]; then
@@ -101,6 +128,31 @@ esac
 if [[ $test_late_collision -eq 1 && $testing_dirty_tree -ne 1 ]]; then
     fail 'late-collision testing requires PERMISSION_PULSE_PACKAGE_TESTING=1'
 fi
+
+xcodebuild_output=$(/usr/bin/xcodebuild -version) \
+    || fail 'could not read the Xcode version (xcodebuild -version failed)'
+sdk_version=$(/usr/bin/xcrun --sdk macosx --show-sdk-version) \
+    || fail 'could not read the macOS SDK version (xcrun --sdk macosx --show-sdk-version failed)'
+swift_output=$(/usr/bin/xcrun swift --version 2>&1) \
+    || fail 'could not read the Swift version (xcrun swift --version failed)'
+printf 'Toolchain:\n%s\nmacOS SDK %s\n%s\n' \
+    "$xcodebuild_output" "$sdk_version" "$swift_output"
+
+xcode_version=$(printf '%s\n' "$xcodebuild_output" | /usr/bin/awk '
+    /^Xcode / { version = $2 }
+    /^Build version / { build = $3 }
+    END { if (version != "" && build != "") print version " (" build ")" }
+')
+swift_version=$(printf '%s\n' "$swift_output" \
+    | /usr/bin/awk 'match($0, /(Apple )?Swift version .*/) {
+        print substr($0, RSTART)
+        exit
+    }')
+[[ -n "$xcode_version" ]] \
+    || fail "could not parse the Xcode version from: $xcodebuild_output"
+[[ -n "$sdk_version" ]] || fail 'xcrun returned an empty macOS SDK version'
+[[ -n "$swift_version" ]] \
+    || fail "could not parse the Swift version from: $swift_output"
 
 cd "$repo_root"
 if [[ $testing_dirty_tree -ne 1 ]] \
@@ -222,6 +274,9 @@ printf '%s  %s\n' "$checksum" "$(basename "$temporary_zip")" \
     printf 'gitSHA=%s\n' "$git_sha"
     printf 'archive=%s\n' "$archive_basename"
     printf 'sha256=%s\n' "$checksum"
+    printf 'xcode=%s\n' "$xcode_version"
+    printf 'sdk=%s\n' "$sdk_version"
+    printf 'swift=%s\n' "$swift_version"
     if [[ $testing_dirty_tree -eq 1 ]]; then
         printf 'testingDirtyTree=true\n'
     fi
@@ -230,21 +285,27 @@ printf '%s  %s\n' "$checksum" "$(basename "$temporary_zip")" \
 printf '%s  %s\n' "$checksum" "$archive_basename" \
     >"$staging/final-checksum.txt"
 
+# Install the archive first and the manifest last. If any link fails, the
+# cleanup trap removes the outputs this run already installed, so a failed run
+# never leaves a checksum or manifest without its archive.
 if [[ $test_late_collision -eq 1 ]]; then
-    printf 'late-collision-sentinel\n' >"$final_zip"
-fi
-
-if ! /bin/ln "$staging/final-checksum.txt" "$final_checksum"; then
-    fail "output appeared before final installation: $final_checksum"
-fi
-
-if ! /bin/ln "$temporary_manifest" "$final_manifest"; then
-    fail "output appeared before final installation: $final_manifest"
+    printf 'late-collision-sentinel\n' >"$final_manifest"
 fi
 
 if ! /bin/ln "$temporary_zip" "$final_zip"; then
     fail "output appeared before final installation: $final_zip"
 fi
+installed_zip=1
+
+if ! /bin/ln "$staging/final-checksum.txt" "$final_checksum"; then
+    fail "output appeared before final installation: $final_checksum"
+fi
+installed_checksum=1
+
+if ! /bin/ln "$temporary_manifest" "$final_manifest"; then
+    fail "output appeared before final installation: $final_manifest"
+fi
+installed_manifest=1
 complete=1
 
 printf 'Release archive: %s\n' "$final_zip"
