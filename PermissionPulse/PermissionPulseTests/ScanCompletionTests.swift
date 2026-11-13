@@ -159,3 +159,29 @@ extension MockWeeklyDigestScheduler {
         #expect(NotificationDestination.forRequest("\(WeeklyDigestCoordinator.testIdentifierPrefix).ABC") == nil)
     }
 }
+
+@Suite @MainActor struct NotificationOpenGateTests {
+    private let identifier = ChangeAlertCoordinator.changesIdentifier
+
+    @Test func aClickBeforeTheRuntimeStartsIsHeldThenRoutedOnce() {
+        var gate = NotificationOpenGate()
+        #expect(gate.received(identifier) == nil)
+        #expect(gate.startRuntime() == identifier)
+        #expect(gate.held == nil)
+    }
+
+    @Test func aClickAfterTheRuntimeStartsRoutesAtOnce() {
+        var gate = NotificationOpenGate()
+        #expect(gate.startRuntime() == nil)
+        #expect(gate.received(identifier) == identifier)
+        #expect(gate.held == nil)
+    }
+
+    @Test func aCopyThatHandsOffDropsTheHeldClick() {
+        var gate = NotificationOpenGate()
+        _ = gate.received(identifier)
+        gate.handOff()
+        #expect(gate.held == nil)
+        #expect(!gate.runtimeStarted)
+    }
+}

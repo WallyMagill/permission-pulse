@@ -16,3 +16,31 @@ enum NotificationDestination: Equatable {
         return nil
     }
 }
+
+/// A notification click can arrive before the runtime exists: the system
+/// delivers the click that launched the app as soon as launch finishes,
+/// while this copy may still be waiting on the single-instance check. The
+/// click is held until the runtime starts, then routed; a copy that hands
+/// off to another instance drops it.
+struct NotificationOpenGate: Equatable {
+    private(set) var runtimeStarted = false
+    private(set) var held: String?
+
+    /// The identifier to route now, or nil when it is held.
+    mutating func received(_ identifier: String) -> String? {
+        if runtimeStarted { return identifier }
+        held = identifier
+        return nil
+    }
+
+    /// The held identifier, if any, to route now that the runtime runs.
+    mutating func startRuntime() -> String? {
+        runtimeStarted = true
+        defer { held = nil }
+        return held
+    }
+
+    mutating func handOff() {
+        held = nil
+    }
+}

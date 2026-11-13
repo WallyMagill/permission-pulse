@@ -116,8 +116,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     let preferencesStore: PreferencesStore
     // UNUserNotificationCenter.delegate is weak — must be retained here.
     private lazy var notificationPresentationDelegate = NotificationPresentationDelegate { [weak self] identifier in
-        self?.openNotification(identifier: identifier)
+        self?.receiveNotificationOpen(identifier: identifier)
     }
+    private var notificationOpenGate = NotificationOpenGate()
     let dismissedDiffEntries: DismissedDiffEntryStore
     let dismissedStaleApps: DismissedStaleAppStore
     lazy var weeklyDigestCoordinator = WeeklyDigestCoordinator(
@@ -263,22 +264,30 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
+    /// The delegate must be set before launch finishes, or the click that
+    /// launched the app is dropped. Without a willPresent delegate macOS
+    /// also suppresses banners while the app is frontmost, so the
+    /// Preferences test notification would never visibly fire.
+    func applicationWillFinishLaunching(_ notification: Notification) {
+        guard !runtimeEnvironment.isRunningTests else { return }
+        UNUserNotificationCenter.current().delegate = notificationPresentationDelegate
+    }
+
     func applicationDidFinishLaunching(_ notification: Notification) {
         guard !runtimeEnvironment.isRunningTests else {
             Self.logger.debug("Skipping production launch services in test mode")
             return
         }
         Task { @MainActor [weak self] in
-            guard await SingleInstanceGuard.resolve() else { return }
+            guard await SingleInstanceGuard.resolve() else {
+                self?.notificationOpenGate.handOff()
+                return
+            }
             self?.startRuntime()
         }
     }
 
     private func startRuntime() {
-        // Set before anything schedules: without a willPresent delegate,
-        // macOS suppresses banners while the app is frontmost, so the
-        // Preferences test notification never visibly fires.
-        UNUserNotificationCenter.current().delegate = notificationPresentationDelegate
         openSnapshotStore()
         viewModel.isTranslocated = AppLocation.isTranslocated(Bundle.main.bundlePath)
 
@@ -300,6 +309,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         if !runtimeDefaults.bool(forKey: Self.hasSeenWelcomeKey) {
             showWelcomeWindow()
+        }
+        if let identifier = notificationOpenGate.startRuntime() {
+            openNotification(identifier: identifier)
         }
     }
 
@@ -336,6 +348,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func showDetailWindow(route: AppRoute?) {
         viewModel.pendingRoute = route
         viewModel.windowToOpen = "detail"
+    }
+
+    private func receiveNotificationOpen(identifier: String) {
+        if let identifier = notificationOpenGate.received(identifier) {
+            openNotification(identifier: identifier)
+        }
     }
 
     func openNotification(identifier: String) {
