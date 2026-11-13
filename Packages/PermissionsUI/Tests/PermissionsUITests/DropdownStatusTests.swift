@@ -13,7 +13,7 @@ struct DropdownStatusTests {
         translocated: Bool = false
     ) -> [DropdownStatusRow] {
         DropdownStatusBuilder.rows(
-            attention: attention, micInUse: mic, cameraInUse: camera,
+            attention: attention.items, micInUse: mic, cameraInUse: camera,
             changeCount: changeCount, hasUnreviewedChanges: hasUnreviewed,
             staleCount: staleCount, appCount: appCount, systemLevelOnly: systemLevelOnly,
             isTranslocated: translocated
@@ -127,6 +127,33 @@ struct DropdownStatusTests {
 
         #expect(result.first?.route == .permissions(selectAppKey: nil))
         #expect(result.first?.title == "Permissions: scan failed — no results")
+    }
+
+    @Test("Each affected section gets its own row with its own state")
+    func oneRowPerSection() {
+        let failed = ScanAvailability.failed(lastSuccessful: nil, error: .temporarilyUnavailable(reason: "busy"))
+        let denied = ScanAvailability.failed(lastSuccessful: nil, error: .permissionDenied(reason: "FDA"))
+        let complete = ScanAvailability.complete(lastUpdated: Date(timeIntervalSince1970: 1_700_000_000))
+        let items = AttentionState.items(tccAvailability: denied, btmAvailability: failed, launchAgentAvailability: failed)
+        let result = DropdownStatusBuilder.rows(
+            attention: items, micInUse: false, cameraInUse: false,
+            changeCount: 0, hasUnreviewedChanges: false, staleCount: 0, appCount: nil
+        )
+
+        #expect(result.map(\.kind) == [
+            .attention(.fdaDenied, .permissions),
+            .attention(.launchAgentError, .launchAgents),
+            .attention(.scanFailed([.backgroundItems]), .backgroundItems),
+        ])
+        #expect(AttentionState.items(tccAvailability: complete, btmAvailability: failed, launchAgentAvailability: failed).count == 2)
+    }
+
+    @Test("History that isn't being recorded gets a row to Recent Changes and is never all clear")
+    func historyNotRecorded() {
+        let result = rows(attention: .historyNotRecorded)
+        #expect(result.first?.title == "History isn't being recorded")
+        #expect(result.first?.route == .recentChanges)
+        #expect(result.last?.kind == .summary(appCount: 42, systemLevelOnly: false, allClear: false))
     }
 
     @Test("Changes and stale rows appear only with content; order is attention, media, changes, stale, summary")

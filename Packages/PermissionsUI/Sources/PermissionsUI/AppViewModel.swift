@@ -160,11 +160,29 @@ public final class AppViewModel {
         staleApps.removeAll { $0.app.stableKey == stableKey }
     }
 
+    /// The history database is unavailable or the latest snapshot could
+    /// not be saved: Recent Changes has stopped moving.
+    public var historyNotRecorded: Bool {
+        snapshotStoreProblem != nil || snapshotWriteFailed
+    }
+
+    /// The most severe problem overall, for the menu-bar icon and its label.
     public var attentionState: AttentionState {
         AttentionState.evaluate(
             tccAvailability: tccAvailability,
             btmAvailability: btmAvailability,
-            launchAgentAvailability: launchAgentAvailability
+            launchAgentAvailability: launchAgentAvailability,
+            historyNotRecorded: historyNotRecorded
+        )
+    }
+
+    /// One entry per section that needs attention, most severe first.
+    public var attentionItems: [AttentionItem] {
+        AttentionState.items(
+            tccAvailability: tccAvailability,
+            btmAvailability: btmAvailability,
+            launchAgentAvailability: launchAgentAvailability,
+            historyNotRecorded: historyNotRecorded
         )
     }
 
@@ -202,10 +220,10 @@ public final class AppViewModel {
 
     // VoiceOver-readable mirror of `menuBarSymbolName` — the icon's state is
     // otherwise conveyed only by SF Symbol swap, which a VoiceOver user can't
-    // perceive. Names live media use and any warning together, since the
-    // symbol can show only one of them. (A1)
+    // perceive. Names live media use, any warning, and unreviewed changes
+    // together, since the symbol can show only one of them. (A1)
     public var menuBarAccessibilityLabel: String {
-        let parts = [mediaAccessibilityPart, attentionAccessibilityPart ?? unreviewedAccessibilityPart]
+        let parts = [mediaAccessibilityPart, attentionAccessibilityPart, unreviewedAccessibilityPart]
             .compactMap { $0 }
         guard !parts.isEmpty else { return String(localized: "Permission Pulse") }
         let details = parts.joined(separator: String(localized: "; "))
@@ -227,6 +245,7 @@ public final class AppViewModel {
         case .fdaDenied: String(localized: "Full Disk Access is off")
         case .btmOnlyFDADenied: String(localized: "Full Disk Access is off for background items")
         case .schemaMismatch, .launchAgentError: String(localized: "scan error, action needed")
+        case .historyNotRecorded: String(localized: "history isn't being recorded")
         case .clean: nil
         }
     }

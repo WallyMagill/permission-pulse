@@ -95,7 +95,7 @@ struct OverviewPage: View {
     }
 
     private var hasAttentionContent: Bool {
-        viewModel.attentionState != .clean || viewModel.hasUnreviewedChanges
+        !viewModel.attentionItems.isEmpty || viewModel.hasUnreviewedChanges
             || viewModel.isTranslocated
     }
 
@@ -107,11 +107,10 @@ struct OverviewPage: View {
                 systemImage: "folder.badge.questionmark"
             )
         }
-        let attention = viewModel.attentionState
-        ForEach(attention.domains, id: \.self) { domain in
+        ForEach(viewModel.attentionItems, id: \.domain) { item in
             attentionRow(
-                Self.attentionTitle(attention, domain: domain),
-                target: domain.route.sidebarItem
+                Self.attentionTitle(item.state, domain: item.domain),
+                target: item.domain.route.sidebarItem
             )
         }
         if viewModel.hasUnreviewedChanges {
@@ -134,6 +133,7 @@ struct OverviewPage: View {
         case .degradedData: String(localized: "\(name) scan is degraded — some sources are missing")
         case .staleData: String(localized: "\(name) scan is stale — showing last-known results")
         case .scanFailed: String(localized: "\(name) scan failed — no results are available")
+        case .historyNotRecorded: String(localized: "History isn't being recorded")
         case .clean: ""
         }
     }

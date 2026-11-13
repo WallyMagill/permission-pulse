@@ -91,7 +91,7 @@ public struct MenuBarContentView: View {
 
     private var currentRows: [DropdownStatusRow] {
         DropdownStatusBuilder.rows(
-            attention: viewModel.attentionState,
+            attention: viewModel.attentionItems,
             micInUse: viewModel.micInUse,
             cameraInUse: viewModel.cameraInUse,
             changeCount: viewModel.unreviewedChangeCount,

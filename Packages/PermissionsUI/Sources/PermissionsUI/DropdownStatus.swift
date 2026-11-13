@@ -12,7 +12,7 @@ public struct DropdownStatusRow: Equatable, Sendable, Identifiable {
     }
 
     public enum Kind: Equatable, Sendable {
-        /// One row per domain the attention state names.
+        /// One row per section that needs attention, with its own state.
         case attention(AttentionState, AttentionDomain)
         /// Running from a temporary App Translocation copy.
         case moveToApplications
@@ -94,6 +94,7 @@ public struct DropdownStatusRow: Equatable, Sendable, Identifiable {
         case .scanFailed: String(localized: "\(name): scan failed — no results")
         case .degradedData: String(localized: "\(name): some sources couldn't be read")
         case .staleData: String(localized: "\(name): showing last-known data")
+        case .historyNotRecorded: String(localized: "History isn't being recorded")
         case .clean: "" // builder never emits this
         }
     }
@@ -106,7 +107,7 @@ public struct DropdownStatusRow: Equatable, Sendable, Identifiable {
 /// never reads as "0 apps with permissions".
 public enum DropdownStatusBuilder {
     public static func rows(
-        attention: AttentionState,
+        attention: [AttentionItem],
         micInUse: Bool,
         cameraInUse: Bool,
         changeCount: Int,
@@ -116,8 +117,8 @@ public enum DropdownStatusBuilder {
         systemLevelOnly: Bool = false,
         isTranslocated: Bool = false
     ) -> [DropdownStatusRow] {
-        var result = attention.domains.map { domain in
-            DropdownStatusRow(kind: .attention(attention, domain), route: domain.route)
+        var result = attention.map { item in
+            DropdownStatusRow(kind: .attention(item.state, item.domain), route: item.domain.route)
         }
         if isTranslocated {
             result.append(.init(kind: .moveToApplications, route: .overview))

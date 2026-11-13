@@ -127,6 +127,34 @@ struct AttentionStateTests {
         #expect(evaluate(tcc: degraded, btm: failed) == .scanFailed([.backgroundItems]))
     }
 
+    @Test("A history problem needs attention, below scan failures")
+    func historyNotRecorded() {
+        #expect(AttentionState.evaluate(
+            tccAvailability: complete, btmAvailability: complete, launchAgentAvailability: complete,
+            historyNotRecorded: true
+        ) == .historyNotRecorded)
+        let failed = ScanAvailability.failed(lastSuccessful: nil, error: .temporarilyUnavailable(reason: "busy"))
+        let items = AttentionState.items(
+            tccAvailability: failed, btmAvailability: complete, launchAgentAvailability: complete,
+            historyNotRecorded: true
+        )
+        #expect(items == [
+            AttentionItem(state: .scanFailed([.permissions]), domain: .permissions),
+            AttentionItem(state: .historyNotRecorded, domain: .history),
+        ])
+    }
+
+    @Test("Full Disk Access off doesn't hide a Launch Agents error")
+    func fdaOffKeepsOtherSections() {
+        let denied = ScanAvailability.failed(lastSuccessful: nil, error: .permissionDenied(reason: "FDA"))
+        let failed = ScanAvailability.failed(lastSuccessful: nil, error: .temporarilyUnavailable(reason: "busy"))
+        let items = AttentionState.items(
+            tccAvailability: denied, btmAvailability: complete, launchAgentAvailability: failed
+        )
+        #expect(items.map(\.domain) == [.permissions, .launchAgents])
+        #expect(items.map(\.state) == [.fdaDenied, .launchAgentError])
+    }
+
     private func evaluate(
         tcc: ScanAvailability? = nil,
         btm: ScanAvailability? = nil,

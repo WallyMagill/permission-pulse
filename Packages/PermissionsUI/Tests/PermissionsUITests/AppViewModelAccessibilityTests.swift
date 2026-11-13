@@ -104,4 +104,35 @@ import PermissionsStore
         )
         #expect(vm.menuBarAccessibilityLabel.contains("unreviewed"))
     }
+
+    @Test func mediaAWarningAndUnreviewedChangesAreAllRead() {
+        let latest = SnapshotID(rawValue: 99)
+        let vm = AppViewModel(
+            tccScanError: .permissionDenied(reason: "x"),
+            micInUse: true,
+            latestSnapshotID: latest,
+            latestDiffSinceReview: SnapshotDiffs(
+                toID: latest,
+                tcc: TCCGrantsDiff(added: [], removed: []),
+                btm: BTMItemsDiff(added: [], removed: []),
+                launchAgents: LaunchAgentsDiff(
+                    added: [LaunchAgentItem(
+                        label: "com.example.new", sourceDirectory: .userLaunchAgents,
+                        programPath: "/bin/new", programArguments: [], runAtLoad: true, keepAlive: false
+                    )],
+                    removed: []
+                )
+            )
+        )
+        #expect(vm.menuBarAccessibilityLabel
+            == "Permission Pulse — microphone in use; Full Disk Access is off; unreviewed changes")
+    }
+
+    @Test func historyThatIsNotRecordedIsAnnouncedAndNotAllClear() {
+        let vm = AppViewModel()
+        vm.snapshotWriteFailed = true
+        #expect(vm.menuBarAccessibilityLabel == "Permission Pulse — history isn't being recorded")
+        #expect(vm.menuBarSymbolName == "exclamationmark.shield.fill")
+        #expect(vm.attentionItems.map(\.domain) == [.history])
+    }
 }
