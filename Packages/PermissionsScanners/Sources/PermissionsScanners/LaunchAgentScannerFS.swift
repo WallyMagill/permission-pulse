@@ -14,13 +14,20 @@ public struct LaunchAgentScannerFS: LaunchAgentScanner, Sendable {
     )
 
     private let sources: [Source]
+    private let overrideDirectory: URL?
+    private let userID: uid_t
 
     public init() {
         self.sources = Self.defaultSources()
+        self.overrideDirectory = LaunchdDisabledOverrides.defaultDirectory
+        self.userID = getuid()
     }
 
-    init(sources: [Source]) {
+    /// `overrideDirectory: nil` ignores launchd's disabled-override database.
+    init(sources: [Source], overrideDirectory: URL? = nil, userID: uid_t = getuid()) {
         self.sources = sources
+        self.overrideDirectory = overrideDirectory
+        self.userID = userID
     }
 
     public func scan() async throws -> ScannerOutput<LaunchAgentItem> {
@@ -29,9 +36,10 @@ public struct LaunchAgentScannerFS: LaunchAgentScanner, Sendable {
         var warnings: [ScannerWarning] = []
         var omittedEntryCount = 0
         var anyExistingSourceSucceeded = false
+        let overrides = LaunchdDisabledOverrides.load(from: overrideDirectory, userID: userID)
         for source in sources {
             do {
-                switch try scanDirectory(source) {
+                switch try scanDirectory(source, overrides: overrides) {
                 case .absent:
                     break
                 case .scanned(let sourceItems, let sourceOmittedEntryCount):
@@ -77,7 +85,10 @@ public struct LaunchAgentScannerFS: LaunchAgentScanner, Sendable {
         ]
     }
 
-    private func scanDirectory(_ source: Source) throws -> DirectoryScan {
+    private func scanDirectory(
+        _ source: Source,
+        overrides: LaunchdDisabledOverrides
+    ) throws -> DirectoryScan {
         let fm = FileManager.default
         let contents: [URL]
         do {
@@ -103,7 +114,7 @@ public struct LaunchAgentScannerFS: LaunchAgentScanner, Sendable {
         var items: [LaunchAgentItem] = []
         var omittedEntryCount = 0
         for fileURL in contents where fileURL.pathExtension.lowercased() == "plist" {
-            switch decodePlist(at: fileURL, category: source.category) {
+            switch decodePlist(at: fileURL, category: source.category, overrides: overrides) {
             case .item(let item): items.append(item)
             case .inert: break
             case .omitted: omittedEntryCount += 1
@@ -124,39 +135,94 @@ public struct LaunchAgentScannerFS: LaunchAgentScanner, Sendable {
 
     private func decodePlist(
         at url: URL,
-        category: LaunchAgentItem.SourceDirectory
+        category: LaunchAgentItem.SourceDirectory,
+        overrides: LaunchdDisabledOverrides
     ) -> PlistDecodeResult {
         let data: Data
         do {
             data = try Data(contentsOf: url)
         } catch {
+            if Self.isPermissionDenied(error) {
+                Self.logger.debug("Plist not readable \(url.lastPathComponent, privacy: .public); listing without details")
+                return .item(unreadableItem(at: url, category: category, overrides: overrides))
+            }
+            if Self.isDanglingSymlink(url) {
+                Self.logger.debug("Skip dangling symlink \(url.lastPathComponent, privacy: .public)")
+                return .inert
+            }
             Self.logger.debug("Skip unreadable plist \(url.lastPathComponent, privacy: .public): \(error.localizedDescription, privacy: .public)")
             return .omitted
         }
 
+        guard let plist = try? PropertyListSerialization.propertyList(from: data, format: nil) else {
+            Self.logger.debug("Plist not parseable \(url.lastPathComponent, privacy: .public); listing without details")
+            return .item(unreadableItem(at: url, category: category, overrides: overrides))
+        }
+        guard let dict = plist as? [String: Any] else {
+            Self.logger.debug("Skip non-dictionary plist \(url.lastPathComponent, privacy: .public)")
+            return .omitted
+        }
         // launchd refuses a job without a Label, so a well-formed label-less
         // dictionary (e.g. Google Keystone's empty leftovers) is not an agent.
-        if let dict = try? PropertyListSerialization.propertyList(from: data, format: nil) as? [String: Any],
-           dict["Label"] == nil {
+        guard let rawLabel = dict["Label"] else {
             Self.logger.debug("Skip label-less plist \(url.lastPathComponent, privacy: .public)")
             return .inert
         }
-
-        do {
-            let decoded = try PropertyListDecoder().decode(DecodedPlist.self, from: data)
-            return .item(LaunchAgentItem(
-                label: decoded.label,
-                sourceDirectory: category,
-                programPath: decoded.program,
-                programArguments: decoded.programArguments,
-                runAtLoad: decoded.runAtLoad,
-                keepAlive: decoded.keepAlive,
-                isDisabled: decoded.isDisabled
-            ))
-        } catch {
-            Self.logger.debug("Skip malformed plist \(url.lastPathComponent, privacy: .public): \(error.localizedDescription, privacy: .public)")
+        guard let label = rawLabel as? String else {
+            Self.logger.debug("Skip plist with non-string Label \(url.lastPathComponent, privacy: .public)")
             return .omitted
         }
+        let job = LaunchJobFields(dict)
+        return .item(LaunchAgentItem(
+            label: label,
+            sourceDirectory: category,
+            programPath: job.program,
+            programArguments: job.programArguments,
+            runAtLoad: job.runAtLoad,
+            keepAlive: job.keepAlive,
+            isDisabled: overrides.isDisabled(label: label, category: category, plistDisabled: job.disabled),
+            fileName: url.lastPathComponent
+        ))
+    }
+
+    private func unreadableItem(
+        at url: URL,
+        category: LaunchAgentItem.SourceDirectory,
+        overrides: LaunchdDisabledOverrides
+    ) -> LaunchAgentItem {
+        let label = url.deletingPathExtension().lastPathComponent
+        return LaunchAgentItem(
+            label: label,
+            sourceDirectory: category,
+            programPath: nil,
+            programArguments: [],
+            runAtLoad: false,
+            keepAlive: false,
+            isDisabled: overrides.isDisabled(label: label, category: category, plistDisabled: false),
+            detailsReadable: false,
+            fileName: url.lastPathComponent
+        )
+    }
+
+    static func isPermissionDenied(_ error: any Error) -> Bool {
+        let nsError = error as NSError
+        if nsError.domain == NSCocoaErrorDomain,
+           nsError.code == CocoaError.fileReadNoPermission.rawValue {
+            return true
+        }
+        if nsError.domain == NSPOSIXErrorDomain,
+           nsError.code == Int(EACCES) || nsError.code == Int(EPERM) {
+            return true
+        }
+        if let underlying = nsError.userInfo[NSUnderlyingErrorKey] as? NSError {
+            return isPermissionDenied(underlying)
+        }
+        return false
+    }
+
+    private static func isDanglingSymlink(_ url: URL) -> Bool {
+        let isLink = (try? url.resourceValues(forKeys: [.isSymbolicLinkKey]))?.isSymbolicLink ?? false
+        return isLink && !FileManager.default.fileExists(atPath: url.path(percentEncoded: false))
     }
 }
 
@@ -171,37 +237,27 @@ private enum DirectoryScan {
     case scanned(items: [LaunchAgentItem], omittedEntryCount: Int)
 }
 
-private struct DecodedPlist: Decodable {
-    let label: String
+/// Lenient read of the job keys we report. A key of the wrong type reads as
+/// absent instead of discarding the whole job.
+private struct LaunchJobFields {
     let program: String?
     let programArguments: [String]
     let runAtLoad: Bool
     let keepAlive: Bool
-    let isDisabled: Bool
+    let disabled: Bool
 
-    enum CodingKeys: String, CodingKey {
-        case label = "Label"
-        case program = "Program"
-        case programArguments = "ProgramArguments"
-        case runAtLoad = "RunAtLoad"
-        case keepAlive = "KeepAlive"
-        case disabled = "Disabled"
-    }
-
-    init(from decoder: Decoder) throws {
-        let container = try decoder.container(keyedBy: CodingKeys.self)
-        self.label = try container.decode(String.self, forKey: .label)
-        self.program = try container.decodeIfPresent(String.self, forKey: .program)
-        self.programArguments = (try? container.decode([String].self, forKey: .programArguments)) ?? []
-        self.runAtLoad = (try? container.decode(Bool.self, forKey: .runAtLoad)) ?? false
+    init(_ dict: [String: Any]) {
+        program = dict["Program"] as? String
+        programArguments = (dict["ProgramArguments"] as? [Any])?.compactMap { $0 as? String } ?? []
+        runAtLoad = dict["RunAtLoad"] as? Bool ?? false
         // KeepAlive is often a dictionary ({SuccessfulExit=false}, {Crashed=true}).
-        // A Bool decode fails on a dict; treat any present non-bool form as an
-        // active keep-alive policy rather than silently false. (D4)
-        if let b = try? container.decode(Bool.self, forKey: .keepAlive) {
-            self.keepAlive = b
+        // Treat any present non-bool form as an active keep-alive policy rather
+        // than silently false. (D4)
+        if let flag = dict["KeepAlive"] as? Bool {
+            keepAlive = flag
         } else {
-            self.keepAlive = container.contains(.keepAlive)
+            keepAlive = dict["KeepAlive"] != nil
         }
-        self.isDisabled = (try? container.decode(Bool.self, forKey: .disabled)) ?? false
+        disabled = dict["Disabled"] as? Bool ?? false
     }
 }

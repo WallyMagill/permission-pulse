@@ -18,19 +18,154 @@ import PermissionsCore
         #expect(labels == ["com.test.one", "com.test.two", "com.test.three"])
     }
 
-    @Test func scanSkipsMalformedPlist() async throws {
+    @Test func unparseablePlistIsListedWithoutDetails() async throws {
         let dir = try TempDir()
         try dir.write(filename: "good1.plist", contents: PlistFixtures.runAtLoad(label: "com.test.alpha"))
-        try dir.write(filename: "good2.plist", contents: PlistFixtures.runAtLoad(label: "com.test.beta"))
-        try dir.write(filename: "good3.plist", contents: PlistFixtures.runAtLoad(label: "com.test.gamma"))
-        try dir.write(filename: "bad.plist", contents: Data("not a plist".utf8))
+        try dir.write(filename: "com.test.bad.plist", contents: Data("not a plist".utf8))
 
         let scanner = LaunchAgentScannerFS(sources: [dir.asSource(.userLaunchAgents)])
         let output = try await scanner.scan()
 
-        #expect(output.items.count == 3)
-        #expect(!output.items.contains { $0.label.contains("bad") })
+        #expect(output.warnings.isEmpty)
+        let bad = try #require(output.items.first { $0.label == "com.test.bad" })
+        #expect(bad.detailsReadable == false)
+        #expect(bad.fileName == "com.test.bad.plist")
+        #expect(bad.programPath == nil && bad.programArguments.isEmpty)
+        #expect(bad.runAtLoad == false && bad.keepAlive == false)
+        #expect(output.items.first { $0.label == "com.test.alpha" }?.detailsReadable == true)
+    }
+
+    // A root-only 0700 daemon plist (NordVPN's helper) must not degrade the
+    // domain forever; it is listed by file name with details unknown.
+    @Test(.disabled(if: ProcessInfo.processInfo.environment["CI"] != nil))
+    func permissionDeniedPlistIsListedWithoutDetails() async throws {
+        let dir = try TempDir()
+        try dir.write(filename: "com.test.locked.plist", contents: PlistFixtures.runAtLoad(label: "com.test.inner"))
+        let locked = dir.url.appendingPathComponent("com.test.locked.plist")
+        try FileManager.default.setAttributes([.posixPermissions: 0o000], ofItemAtPath: locked.path)
+
+        let scanner = LaunchAgentScannerFS(sources: [dir.asSource(.libraryLaunchDaemons)])
+        let output = try await scanner.scan()
+
+        #expect(output.warnings.isEmpty)
+        let item = try #require(output.items.first)
+        #expect(output.items.count == 1)
+        #expect(item.label == "com.test.locked")
+        #expect(item.detailsReadable == false)
+    }
+
+    @Test func permissionDeniedClassificationFollowsUnderlyingPOSIXError() {
+        let posix = NSError(domain: NSPOSIXErrorDomain, code: Int(EACCES))
+        let wrapped = NSError(
+            domain: NSCocoaErrorDomain,
+            code: CocoaError.fileReadUnknown.rawValue,
+            userInfo: [NSUnderlyingErrorKey: posix]
+        )
+        #expect(LaunchAgentScannerFS.isPermissionDenied(CocoaError(.fileReadNoPermission)))
+        #expect(LaunchAgentScannerFS.isPermissionDenied(wrapped))
+        #expect(!LaunchAgentScannerFS.isPermissionDenied(CocoaError(.fileReadNoSuchFile)))
+        #expect(!LaunchAgentScannerFS.isPermissionDenied(NSError(domain: NSPOSIXErrorDomain, code: Int(EIO))))
+    }
+
+    @Test func danglingSymlinkIsInert() async throws {
+        let dir = try TempDir()
+        try dir.write(filename: "good.plist", contents: PlistFixtures.runAtLoad(label: "com.test.alpha"))
+        try FileManager.default.createSymbolicLink(
+            at: dir.url.appendingPathComponent("gone.plist"),
+            withDestinationURL: dir.url.appendingPathComponent("missing-target.plist")
+        )
+
+        let scanner = LaunchAgentScannerFS(sources: [dir.asSource(.userLaunchAgents)])
+        let output = try await scanner.scan()
+
+        #expect(output.items.map(\.label) == ["com.test.alpha"])
+        #expect(output.warnings.isEmpty)
+    }
+
+    @Test func otherReadErrorsStillOmitWithWarning() async throws {
+        let dir = try TempDir()
+        try FileManager.default.createDirectory(
+            at: dir.url.appendingPathComponent("folder.plist"),
+            withIntermediateDirectories: false
+        )
+
+        let scanner = LaunchAgentScannerFS(sources: [dir.asSource(.userLaunchAgents)])
+        let output = try await scanner.scan()
+
+        #expect(output.items.isEmpty)
         #expect(output.warnings == [ScannerWarning(source: .entries, omittedCount: 1)])
+    }
+
+    @Test func wrongTypedOptionalKeyDoesNotDropTheJob() async throws {
+        let dir = try TempDir()
+        try dir.write(filename: "odd.plist", contents: PlistFixtures.integerProgram(label: "com.test.odd"))
+
+        let scanner = LaunchAgentScannerFS(sources: [dir.asSource(.userLaunchAgents)])
+        let output = try await scanner.scan()
+
+        #expect(output.warnings.isEmpty)
+        let item = try #require(output.items.first)
+        #expect(item.label == "com.test.odd")
+        #expect(item.detailsReadable)
+        #expect(item.programPath == nil)
+        #expect(item.programArguments == ["/usr/local/bin/odd", "--run"])
+        #expect(item.runAtLoad == true)
+    }
+
+    @Test func fileNameIsTheNameOnDisk() async throws {
+        let dir = try TempDir()
+        try dir.write(filename: "Renamed Helper.plist", contents: PlistFixtures.runAtLoad(label: "com.test.helper"))
+
+        let scanner = LaunchAgentScannerFS(sources: [dir.asSource(.userLaunchAgents)])
+        let item = try #require(try await scanner.scan().items.first)
+
+        #expect(item.label == "com.test.helper")
+        #expect(item.fileName == "Renamed Helper.plist")
+        #expect(item.id == "userLaunchAgents|com.test.helper")
+    }
+
+    // Verified on a real Mac: com.logitech.LogiRightSight.Agent has no
+    // Disabled key but is `true` in disabled.501.plist.
+    @Test func launchdOverrideDatabaseDecidesDisabledPerDomain() async throws {
+        let agents = try TempDir()
+        let daemons = try TempDir()
+        let overrides = try TempDir()
+        try agents.write(filename: "a.plist", contents: PlistFixtures.runAtLoad(label: "com.test.agent"))
+        try agents.write(filename: "b.plist", contents: PlistFixtures.disabled(label: "com.test.reenabled"))
+        try daemons.write(filename: "d.plist", contents: PlistFixtures.disabled(label: "com.test.daemon"))
+        try overrides.write(filename: "disabled.501.plist", contents: PlistFixtures.overrides([
+            "com.test.agent": true,
+            "com.test.reenabled": false,
+            "com.test.daemon": false,
+        ]))
+
+        let scanner = LaunchAgentScannerFS(
+            sources: [agents.asSource(.userLaunchAgents), daemons.asSource(.libraryLaunchDaemons)],
+            overrideDirectory: overrides.url,
+            userID: 501
+        )
+        let items = try await scanner.scan().items
+        let disabled = Dictionary(uniqueKeysWithValues: items.map { ($0.label, $0.isDisabled) })
+
+        #expect(disabled["com.test.agent"] == true)
+        #expect(disabled["com.test.reenabled"] == false)
+        // No system-domain file exists, so the daemon falls back to its plist key.
+        #expect(disabled["com.test.daemon"] == true)
+    }
+
+    @Test func systemOverrideAppliesToLaunchDaemons() async throws {
+        let daemons = try TempDir()
+        let overrides = try TempDir()
+        try daemons.write(filename: "d.plist", contents: PlistFixtures.runAtLoad(label: "com.test.daemon"))
+        try overrides.write(filename: "disabled.plist", contents: PlistFixtures.overrides(["com.test.daemon": true]))
+
+        let scanner = LaunchAgentScannerFS(
+            sources: [daemons.asSource(.libraryLaunchDaemons)],
+            overrideDirectory: overrides.url,
+            userID: 501
+        )
+        let item = try #require(try await scanner.scan().items.first)
+        #expect(item.isDisabled == true)
     }
 
     // Google Keystone leaves empty `{}` plists behind; launchd won't load a
@@ -289,6 +424,29 @@ private enum PlistFixtures {
         </dict>
         </plist>
         """.utf8)
+    }
+
+    static func integerProgram(label: String) -> Data {
+        Data("""
+        <?xml version="1.0" encoding="UTF-8"?>
+        <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+        <plist version="1.0">
+        <dict>
+            <key>Label</key><string>\(label)</string>
+            <key>Program</key><integer>42</integer>
+            <key>ProgramArguments</key>
+            <array>
+                <string>/usr/local/bin/odd</string>
+                <string>--run</string>
+            </array>
+            <key>RunAtLoad</key><true/>
+        </dict>
+        </plist>
+        """.utf8)
+    }
+
+    static func overrides(_ table: [String: Bool]) throws -> Data {
+        try PropertyListSerialization.data(fromPropertyList: table, format: .xml, options: 0)
     }
 
     static func minimal(label: String) -> Data {
