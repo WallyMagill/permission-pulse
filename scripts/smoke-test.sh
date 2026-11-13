@@ -250,7 +250,7 @@ fi
 section "5. On-disk state checks"
 
 # Snapshots DB will only exist if the app was launched and FDA granted.
-# The helper opens it read-only. A preserved v4 database is pending, not failed,
+# The helper opens it read-only. A preserved v4 or v5 database is pending, not failed,
 # only when --keep --no-launch gives the app no opportunity to migrate it.
 verify_snapshot_schema
 
@@ -465,6 +465,23 @@ passed --no-launch). Run through them and report any deviations.
       release artifact are run on real Intel hardware. A universal x86_64 slice
       proves packaging only, not runtime/UI behavior.
 
+
+  # Core loop — scheduled scans and coverage-aware history
+  W1. Scan on wake. Sleep the Mac, wake it, then run:
+        log show --last 5m --info --predicate \
+          'subsystem == "com.wallymagill.permissionpulse"'
+      A scan-scheduler line names the wake trigger and a scan-coordinator
+      line reports the scan duration.
+  W2. Scan on day change. Leave the app running across midnight; the same log
+      query the next morning shows a day-change scan with no window opened.
+  W3. Stale open. Open the dropdown more than 60 seconds after the last scan:
+      Overview "Last Scan" moves to now. Reopen within 60 seconds: it does not.
+  W4. Same-day change. Grant or revoke one permission in System Settings, open
+      the dropdown, and confirm the change is in Recent Changes without a
+      manual Rescan and without waiting for tomorrow.
+  W5. History status. Recent Changes shows "History updated <date>". If a
+      scanner banner reads degraded or failed, that section is named as not
+      compared instead of showing removals.
 EOF
 
 if [[ ${#FAILED[@]} -gt 0 ]]; then

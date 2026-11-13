@@ -148,17 +148,17 @@ Each scanner is documented as: **what it reads, which API, what permission is ne
 
 | Table | Cols | Notes |
 |---|---|---|
-| `schema_version` | `version: INTEGER` | Single row, currently `5`. |
-| `snapshots` | `id: INTEGER PK AUTO`, `created_at: DOUBLE`, `launch_agent_disabled_captured: INTEGER` | One row per write. Migrated v4 rows carry capture marker `0`; new v5 snapshots write `1`. |
+| `schema_version` | `version: INTEGER` | Single row, currently `6`. |
+| `snapshots` | `id: INTEGER PK AUTO`, `created_at: DOUBLE`, `launch_agent_disabled_captured: INTEGER`, `tcc_coverage` / `btm_coverage` / `launch_agent_coverage: TEXT` | One row per write. Migrated v4 rows carry capture marker `0`; v5+ snapshots write `1`. v6 adds per-domain coverage (`complete` / `degraded` / `failed`); pre-v6 rows default to `complete`, which is true because v5 only wrote fully complete scans. |
 | `launch_agents` | snapshot_id FK CASCADE + label / source_directory / program_path / program_arguments_json / run_at_load / keep_alive / is_disabled | v2 table; v5 persists disabled state. Disabled-only comparison is enabled only when both snapshots carry the v5 marker. |
 | `tcc_grants` | snapshot_id FK CASCADE + service / bundle_id / display_name / bundle_path / last_modified / automation_target / auth_value | Created in v3; v4 adds persisted `auth_value` for authorization-transition diffs. |
 | `btm_items` | snapshot_id FK CASCADE + identifier / name / developer_name / bundle_identifier / team_identifier / type_kind + type_raw / disposition_kind + disposition_raw / scope_kind + scope_per_user_uuid / modification_date / parent_identifier | v3 migration. The `*_kind` TEXT + nullable `*_raw` INTEGER split round-trips associated-value enum cases. |
 
 **Where:** `~/Library/Application Support/com.wallymagill.permissionpulse/snapshots.db` via the `SnapshotPath` helper in the app target.
 
-**Write cadence:** Once per calendar day, gated by `UserDefaults` key `com.wallymagill.permissionpulse.lastSnapshotDate` (ISO string). Driven by `SnapshotCoordinator.onScanCompleted()` only when TCC, BTM, and LaunchAgent availability are all complete. Any degraded partial output or failed domain suppresses the whole write, so omitted evidence cannot become a false historical removal.
+**Write cadence:** Change-driven. After every scan `SnapshotCoordinator.onScanCompleted()` writes a snapshot when none exists, when any domain's coverage differs from the latest snapshot's, or when the store's own diff rules (`SnapshotStore.evidenceChanged`) find a difference in any domain that did not fail; an unchanged scan writes nothing, and a scan where every domain failed writes nothing. A `complete` or `degraded` domain stores the rows it returned; a `failed` domain stores none. Diffs compare a domain only when both endpoint snapshots are `complete` for it, so omitted evidence cannot become a false historical removal. `com.wallymagill.permissionpulse.lastSnapshotDate` is still written after each snapshot but no longer gates writes. Scans run at launch, on wake, on calendar-day change, and when the dropdown or detail window opens more than 60 seconds after the last scan (`ScanScheduler`).
 
-**Retention:** Live user preference, 7–365 days (default 90). `SnapshotCoordinator` captures the current retention value once at each scan-completion boundary, so an edit applies to the next snapshot/prune pass and remains stable within that pass. `SnapshotStore.pruneSnapshots(olderThan:)` runs at each write; FK CASCADE drops child rows.
+**Retention:** Live user preference, 7–365 days (default 90). `SnapshotCoordinator` captures the current retention value once at each scan-completion boundary, so an edit applies to the next snapshot/prune pass and remains stable within that pass. `SnapshotStore.pruneSnapshots(olderThan:)` runs at each write and keeps the newest snapshot at or before the cutoff (the comparison baseline) plus the latest; FK CASCADE drops child rows.
 
 **Fragility:** Low. GRDB v7.x is locked; migrations are additive.
 

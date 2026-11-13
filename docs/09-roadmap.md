@@ -116,6 +116,7 @@ Landed after the v0.7.1 tag; ships in the next release:
 - Snapshot schema v5 persists LaunchAgent disabled state with a compatibility marker that preserves v4 history and suppresses false upgrade transitions. ✅
 - Section-aware search: Overview has no false affordance; Recent Changes searches every rendered TCC/BTM/LaunchAgent row kind. ✅
 - Notification banners present while the app is frontmost (`NotificationPresentationDelegate`). ✅
+- Core loop: scans run at launch, on wake, on calendar-day change, and on a stale open (`ScanScheduler`); snapshots are written when the evidence changes instead of once per day; snapshot schema v6 records per-domain coverage so one degraded or failed scanner no longer blocks history for the others; Recent Changes shows when history was last updated and names domains it could not compare; label-less launchd plists are treated as inert instead of malformed. See `docs/superpowers/specs/2026-10-10-core-loop-design.md`. ✅
 
 ## v0.8.x — Remaining model fidelity (planned, deferred from v0.7.0)
 

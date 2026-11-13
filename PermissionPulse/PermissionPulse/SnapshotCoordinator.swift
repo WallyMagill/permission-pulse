@@ -199,10 +199,10 @@ final class SnapshotCoordinator {
 
         let nowDate = now()
         // Anchor diff baselines to calendar-day boundaries, not a rolling
-        // window, because snapshots are written at most once per calendar day.
-        // `latestSnapshotID(atOrBefore:)` is inclusive (<=): today's snapshot
-        // has a timestamp after startOfToday and is excluded; the most recent
-        // prior-day snapshot is <= startOfToday and is selected. (C1)
+        // window: "Yesterday" means the state at the start of today.
+        // `latestSnapshotID(atOrBefore:)` is inclusive (<=): snapshots written
+        // today have timestamps after startOfToday and are excluded; the most
+        // recent prior-day snapshot is <= startOfToday and is selected. (C1)
         let startOfToday = calendar.startOfDay(for: nowDate)
         let weekCutoff = calendar.date(byAdding: .day, value: -7, to: startOfToday)
             ?? startOfToday.addingTimeInterval(-Self.weekWindowSeconds)

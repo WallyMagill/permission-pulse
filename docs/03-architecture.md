@@ -11,7 +11,7 @@ permission-pulse/                       (repo root)
 │   ├── PermissionPulse/                (app target sources)
 │   │   ├── PermissionPulseApp.swift    (the @main App + AppDelegate, owns all coordinators)
 │   │   ├── ScanCoordinator.swift       (runs the three scanners in parallel → viewModel)
-│   │   ├── SnapshotCoordinator.swift   (daily snapshot write, diff refresh, stale apps)
+│   │   ├── SnapshotCoordinator.swift   (change-driven snapshot write, diff refresh, stale apps)
 │   │   ├── MediaUseCoordinator.swift   (mic/cam observation loop → viewModel)
 │   │   ├── WeeklyDigestCoordinator.swift (digest schedule lifecycle + compose)
 │   │   ├── ResetAllDataService.swift   (ordered, result-bearing reset lifecycle)
@@ -50,8 +50,8 @@ The app target uses Xcode 26's `PBXFileSystemSynchronizedRootGroup`, so any `.sw
 ### `PermissionsStore`
 
 - GRDB.swift-backed SQLite store at `~/Library/Application Support/com.wallymagill.permissionpulse/snapshots.db`.
-- Daily snapshot writes (`writeFullSnapshot`), per-domain diff engine (`TCCGrantsDiff` / `BTMItemsDiff` / `LaunchAgentsDiff` via `DomainChange<T>`), snapshot discovery (`latestSnapshotID(atOrBefore:)`), and retention pruning (`pruneSnapshots(olderThan:)`). Retention is configurable (7–365 days, default 90) — injected from the app, not a fixed constant.
-- Five GRDB migrations: v1 `schema_version`, v2 `snapshots` + `launch_agents`, v3 `tcc_grants` + `btm_items`, v4 persisted TCC `auth_value`, and v5 LaunchAgent `is_disabled` plus `snapshots.launch_agent_disabled_captured`. Existing v4 rows migrate transactionally with the capture marker false; new snapshots set it true. Disabled state participates in a LaunchAgent diff only when both snapshots carry the marker, preventing a false upgrade transition while preserving real v5-to-v5 changes. The `*_kind` TEXT + nullable `*_raw` INTEGER pattern preserves unknown BTM enum values losslessly. Defines `StoreError`.
+- Change-driven snapshot writes (`writeFullSnapshot`), per-domain diff engine (`TCCGrantsDiff` / `BTMItemsDiff` / `LaunchAgentsDiff` via `DomainChange<T>`), snapshot discovery (`latestSnapshotID(atOrBefore:)`), and retention pruning (`pruneSnapshots(olderThan:)`). Retention is configurable (7–365 days, default 90) — injected from the app, not a fixed constant.
+- Six GRDB migrations: v1 `schema_version`, v2 `snapshots` + `launch_agents`, v3 `tcc_grants` + `btm_items`, v4 persisted TCC `auth_value`, v5 LaunchAgent `is_disabled` plus `snapshots.launch_agent_disabled_captured`, and v6 per-domain `tcc_coverage` / `btm_coverage` / `launch_agent_coverage` on `snapshots`. Existing v4 rows migrate transactionally with the capture marker false; new snapshots set it true. Disabled state participates in a LaunchAgent diff only when both snapshots carry the marker, preventing a false upgrade transition while preserving real v5-to-v5 changes. The `*_kind` TEXT + nullable `*_raw` INTEGER pattern preserves unknown BTM enum values losslessly. Defines `StoreError`.
 - Depends on `PermissionsCore` + GRDB. No UI, no scanning.
 
 ### `PermissionsUI`
