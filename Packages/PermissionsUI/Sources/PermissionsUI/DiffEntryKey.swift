@@ -2,7 +2,7 @@ import Foundation
 import PermissionsCore
 import PermissionsStore
 
-/// Pure mapper from a `ChangeRow.Kind` to a stable string key used by the
+/// Pure mapper from a `DiffEntry` to a stable string key used by the
 /// `DismissedDiffEntryStore`. Keys deliberately omit the snapshot ID so a
 /// dismissal carries across future snapshots — a user who hides a TCC
 /// grant doesn't want it to reappear when tomorrow's snapshot rolls in.
@@ -14,7 +14,7 @@ import PermissionsStore
 /// before→after states, so dismissing one transition does not hide the
 /// opposite one later.
 enum DiffEntryKey {
-    static func key(for kind: ChangeRow.Kind) -> String {
+    static func key(for kind: DiffEntry) -> String {
         switch kind {
         case .granted(let g):
             return "tcc-granted|\(g.identityKey)"
@@ -40,7 +40,7 @@ enum DiffEntryKey {
 
     /// Every key whose dismissal hides this row: the current key plus any
     /// pre-v0.7.2 form still stored in UserDefaults.
-    static func lookupKeys(for kind: ChangeRow.Kind) -> [String] {
+    static func lookupKeys(for kind: DiffEntry) -> [String] {
         guard let legacy = legacyKey(for: kind) else { return [key(for: kind)] }
         return [key(for: kind), legacy]
     }
@@ -48,7 +48,7 @@ enum DiffEntryKey {
     /// The pre-v0.7.2 key for a row. Those keys named only the agent or the
     /// bare BTM identifier, with no scope or direction, so an old dismissal
     /// keeps hiding every matching row, as it did when stored.
-    private static func legacyKey(for kind: ChangeRow.Kind) -> String? {
+    private static func legacyKey(for kind: DiffEntry) -> String? {
         switch kind {
         case .launchAgentFlipped(let change): legacyLaunchAgentFlipKey(change)
         case .btmAdded(let item): "btm-added|\(item.identifier)"

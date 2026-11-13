@@ -219,7 +219,7 @@ final class ResetAllDataService {
         viewModel.launchAgentAvailability = .never
         viewModel.latestSnapshotID = nil
         viewModel.lastReviewedSnapshotID = nil
-        viewModel.latestDiffYesterday = nil
+        viewModel.latestDiffSinceReview = nil
         viewModel.latestDiffWeek = nil
         viewModel.latestSnapshotDate = nil
         viewModel.staleApps.removeAll()
@@ -228,5 +228,6 @@ final class ResetAllDataService {
         viewModel.staleThresholdDays = preferencesStore.staleThresholdDays
         viewModel.snapshotStoreUnavailable = false
         viewModel.diffUnavailable = false
+        viewModel.snapshotWriteFailed = false
     }
 }

@@ -5,7 +5,7 @@ import PermissionsStore
 @testable import PermissionsUI
 
 @Suite @MainActor struct WhatChangedViewModelTests {
-    @Test func recentChangeEventCountIncludesTCCAuthorizationChange() {
+    @Test func unreviewedChangeCountIncludesTCCAuthorizationChange() {
         let before = PermissionGrant(
             service: .photos,
             app: AppIdentity(bundleID: "com.example.photos", displayName: "Photos"),
@@ -19,7 +19,6 @@ import PermissionsStore
             authValue: 3
         )
         let diff = SnapshotDiffs(
-            fromID: SnapshotID(rawValue: 1),
             toID: SnapshotID(rawValue: 2),
             tcc: TCCGrantsDiff(
                 added: [],
@@ -30,7 +29,10 @@ import PermissionsStore
             launchAgents: LaunchAgentsDiff(added: [], removed: [], changed: [])
         )
 
-        #expect(AppViewModel(latestDiffYesterday: diff).recentChangeEventCount == 1)
+        #expect(AppViewModel(
+            latestSnapshotID: SnapshotID(rawValue: 2),
+            latestDiffSinceReview: diff
+        ).unreviewedChangeCount == 1)
     }
 
     @Test func hasUnreviewedChangesFalseWhenNoSnapshotYet() {
@@ -41,7 +43,6 @@ import PermissionsStore
     @Test func hasUnreviewedChangesTrueWhenLatestUnreviewedWithContent() {
         let latest = SnapshotID(rawValue: 42)
         let yesterdayDiff = SnapshotDiffs(
-            fromID: SnapshotID(rawValue: 41),
             toID: latest,
             tcc: TCCGrantsDiff(added: [], removed: []),
             btm: BTMItemsDiff(added: [], removed: []),
@@ -63,7 +64,7 @@ import PermissionsStore
         let vm = AppViewModel(
             latestSnapshotID: latest,
             lastReviewedSnapshotID: SnapshotID(rawValue: 40),
-            latestDiffYesterday: yesterdayDiff
+            latestDiffSinceReview: yesterdayDiff
         )
         #expect(vm.hasUnreviewedChanges)
 

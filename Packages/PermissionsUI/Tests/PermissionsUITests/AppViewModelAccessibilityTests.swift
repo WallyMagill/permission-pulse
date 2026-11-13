@@ -75,7 +75,6 @@ import PermissionsStore
     @Test func unreviewedChangesAnnounced() {
         let latest = SnapshotID(rawValue: 99)
         let diff = SnapshotDiffs(
-            fromID: SnapshotID(rawValue: 98),
             toID: latest,
             tcc: TCCGrantsDiff(added: [], removed: []),
             btm: BTMItemsDiff(added: [], removed: []),
@@ -96,7 +95,7 @@ import PermissionsStore
         let vm = AppViewModel(
             latestSnapshotID: latest,
             lastReviewedSnapshotID: nil,
-            latestDiffYesterday: diff
+            latestDiffSinceReview: diff
         )
         #expect(vm.menuBarAccessibilityLabel.contains("unreviewed"))
     }

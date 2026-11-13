@@ -52,13 +52,7 @@ struct OverviewPage: View {
     }
 
     private var hasAttentionContent: Bool {
-        viewModel.attentionState != .clean || hasCountedUnreviewedChanges
-    }
-
-    // Matches the dropdown's gate: a TCC-only auth flip sets hasUnreviewedChanges
-    // but contributes no rendered change rows, so suppress the row at count 0.
-    private var hasCountedUnreviewedChanges: Bool {
-        viewModel.hasUnreviewedChanges && viewModel.recentChangeEventCount > 0
+        viewModel.attentionState != .clean || viewModel.hasUnreviewedChanges
     }
 
     @ViewBuilder
@@ -102,18 +96,21 @@ struct OverviewPage: View {
         case .clean:
             EmptyView()
         }
-        if hasCountedUnreviewedChanges {
+        if viewModel.hasUnreviewedChanges {
             attentionRow(
-                viewModel.recentChangeEventCount == 1
+                viewModel.unreviewedChangeCount == 1
                     ? String(localized: "1 unreviewed change")
-                    : String(localized: "\(viewModel.recentChangeEventCount) unreviewed changes"),
+                    : String(localized: "\(viewModel.unreviewedChangeCount) unreviewed changes"),
                 target: .recentChanges
             )
         }
     }
 
     private func attentionRow(_ title: String, target: SidebarItem) -> some View {
-        Button { section = target } label: {
+        Button {
+            if target == .recentChanges { viewModel.recentChangesWindow = .sinceLastReview }
+            section = target
+        } label: {
             HStack {
                 Label(title, systemImage: "exclamationmark.triangle.fill")
                     .foregroundStyle(.primary)

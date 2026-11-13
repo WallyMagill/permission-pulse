@@ -5,19 +5,7 @@ import PermissionsStore
 // One row in a diff sub-section. The kind enum tells the row what to render
 // (indicator color + description string); the actual layout is uniform.
 struct ChangeRow: View {
-    enum Kind: Identifiable {
-        case granted(PermissionGrant)
-        case revoked(PermissionGrant)
-        case permissionChanged(DomainChange<PermissionGrant>)
-        case btmAdded(BTMItem)
-        case btmRemoved(BTMItem)
-        case btmDispositionFlipped(DomainChange<BTMItem>)
-        case launchAgentAdded(LaunchAgentItem)
-        case launchAgentRemoved(LaunchAgentItem)
-        case launchAgentFlipped(DomainChange<LaunchAgentItem>)
-
-        var id: String { DiffEntryKey.key(for: self) }
-    }
+    typealias Kind = DiffEntry
 
     let kind: Kind
     /// BTM identifiers registered in more than one scope; their rows name the scope.

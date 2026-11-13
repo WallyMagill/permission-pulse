@@ -81,7 +81,6 @@ import PermissionsStore
     ) -> AppViewModel {
         let latest = SnapshotID(rawValue: 99)
         let diff = SnapshotDiffs(
-            fromID: SnapshotID(rawValue: 98),
             toID: latest,
             tcc: TCCGrantsDiff(added: [], removed: []),
             btm: BTMItemsDiff(added: [], removed: []),
@@ -104,7 +103,7 @@ import PermissionsStore
             cameraInUse: cameraInUse,
             latestSnapshotID: latest,
             lastReviewedSnapshotID: nil,
-            latestDiffYesterday: diff
+            latestDiffSinceReview: diff
         )
     }
 }

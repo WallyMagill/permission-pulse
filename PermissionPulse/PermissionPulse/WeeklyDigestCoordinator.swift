@@ -210,32 +210,37 @@ final class WeeklyDigestCoordinator {
         return await scheduler.nextFireDate(for: Self.weeklyIdentifier)
     }
 
-    /// Pure, testable. Composes title + body from the week-long diff.
-    /// All strings go through `String(localized:)` per project rules.
-    /// Empty-week deliberately ships a heartbeat ("No changes") rather
-    /// than suppressing the notification — silence would be misread.
+    /// Composes title + body from the week-long diff's visible changes, the
+    /// same ones Recent Changes lists. All strings go through
+    /// `String(localized:)` per project rules. Empty-week deliberately ships
+    /// a heartbeat ("No changes") rather than suppressing the notification —
+    /// silence would be misread — but never claims it for data that wasn't
+    /// compared.
     func composeDigestBody(
         diff: SnapshotDiffs?
     ) -> (title: String, body: String) {
         let title = String(localized: "Permission Pulse · Weekly digest")
 
         guard let diff else {
-            return (title, String(localized: "No changes in the last week."))
+            return (title, String(localized: "History is less than a week old, so there's nothing to compare yet."))
         }
-        // "No changes" must not be claimed for a domain that wasn't compared.
+        guard !diff.comparedDomains.isEmpty else {
+            return (title, String(localized: "This week's history couldn't be compared."))
+        }
         let uncompared = ListFormatter.localizedString(
             byJoining: diff.uncomparedDomains.map(\.displayName)
         )
-        guard diff.hasContent else {
+        let entries = viewModel.visibleEntries(of: diff, asOf: now())
+        guard !entries.isEmpty else {
             let body = diff.uncomparedDomains.isEmpty
                 ? String(localized: "No changes in the last week.")
                 : String(localized: "No changes found in compared data; \(uncompared) couldn't be compared this week.")
             return (title, body)
         }
 
-        let added = diff.tcc.added.count + diff.btm.added.count + diff.launchAgents.added.count
-        let removed = diff.tcc.removed.count + diff.btm.removed.count + diff.launchAgents.removed.count
-        let changed = diff.tcc.changed.count + diff.btm.changed.count + diff.launchAgents.changed.count
+        let added = entries.filter { $0.change == .added }.count
+        let removed = entries.filter { $0.change == .removed }.count
+        let changed = entries.filter { $0.change == .changed }.count
 
         var fragments: [String] = []
         if added > 0 { fragments.append(String(localized: "\(added) added")) }

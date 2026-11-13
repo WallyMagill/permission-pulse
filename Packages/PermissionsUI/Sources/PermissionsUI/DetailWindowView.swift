@@ -7,7 +7,7 @@ public struct DetailWindowView: View {
     @Environment(AppViewModel.self) private var viewModel
     @Environment(\.openWindow) private var openWindow
     private let onRefresh: (() async -> Void)?
-    private let onWhatChangedSelected: (() -> Void)?
+    private let onRecentChangesReviewed: (() -> Void)?
     private let onBecameVisible: (() -> Void)?
 
     @State private var section: SidebarItem? = .overview
@@ -17,13 +17,15 @@ public struct DetailWindowView: View {
     @State private var isRefreshing = false
     @State private var isApplyingRoute = false
 
+    /// `onRecentChangesReviewed` runs when the user leaves Recent Changes
+    /// (another section or closing the window) or chooses Mark All Reviewed.
     public init(
         onRefresh: (() async -> Void)? = nil,
-        onWhatChangedSelected: (() -> Void)? = nil,
+        onRecentChangesReviewed: (() -> Void)? = nil,
         onBecameVisible: (() -> Void)? = nil
     ) {
         self.onRefresh = onRefresh
-        self.onWhatChangedSelected = onWhatChangedSelected
+        self.onRecentChangesReviewed = onRecentChangesReviewed
         self.onBecameVisible = onBecameVisible
     }
 
@@ -50,13 +52,22 @@ public struct DetailWindowView: View {
         .background(windowShortcuts)
         .onAppear {
             applyPendingRouteIfAny()
+            viewModel.isViewingRecentChanges = section == .recentChanges
             onBecameVisible?()
         }
+        .onDisappear {
+            guard section == .recentChanges else { return }
+            onRecentChangesReviewed?()
+            viewModel.isViewingRecentChanges = false
+        }
         .onChange(of: viewModel.pendingRoute) { _, _ in applyPendingRouteIfAny() }
-        .onChange(of: section) { _, newSection in
-            // Landing on Recent Changes — via sidebar or a menu-bar route —
-            // marks the latest snapshot reviewed so the unreviewed badge clears.
-            if newSection == .recentChanges { onWhatChangedSelected?() }
+        .onChange(of: section) { oldSection, newSection in
+            // Rows stay on screen for the whole visit; leaving marks them
+            // reviewed so the next visit starts clean.
+            if oldSection == .recentChanges, newSection != .recentChanges {
+                onRecentChangesReviewed?()
+            }
+            viewModel.isViewingRecentChanges = newSection == .recentChanges
             // Reset per-context state: the search field and any inspector
             // selection would otherwise dangle into a section that can't show them.
             searchText = ""
@@ -139,7 +150,8 @@ public struct DetailWindowView: View {
         case .permissions: PermissionsDetailPage(searchText: searchText, selection: $inspectorSelection)
         case .launchAgents: LaunchAgentsDetailPage(searchText: searchText, selection: $inspectorSelection)
         case .backgroundItems: BackgroundItemsDetailPage(searchText: searchText, selection: $inspectorSelection)
-        case .recentChanges: RecentChangesDetailPage(searchText: searchText)
+        case .recentChanges:
+            RecentChangesDetailPage(searchText: searchText, onMarkAllReviewed: onRecentChangesReviewed)
         case .staleApps: StaleAppsDetailPage(searchText: searchText)
         }
     }
@@ -159,6 +171,7 @@ public struct DetailWindowView: View {
         // Suppress the section-change reset only when the section actually
         // changes (onChange won't fire otherwise, so the flag must not stick).
         isApplyingRoute = section != route.sidebarItem
+        if route == .recentChanges { viewModel.recentChangesWindow = .sinceLastReview }
         section = route.sidebarItem
         if let preselect = route.inspectorSelection {
             inspectorSelection = preselect
@@ -180,7 +193,7 @@ private struct DetailSidebar: View {
     @Binding var selection: SidebarItem?
 
     var body: some View {
-        let changeCount = viewModel.hasUnreviewedChanges ? viewModel.recentChangeEventCount : 0
+        let changeCount = viewModel.unreviewedChangeCount
         let staleCount = viewModel.staleApps.count
 
         List(selection: $selection) {
@@ -572,80 +585,6 @@ private struct BTMListRow: View {
         ]
         return parts.joined(separator: " · ")
     }
-}
-
-// MARK: - Recent Changes page
-
-private struct RecentChangesDetailPage: View {
-    @Environment(AppViewModel.self) private var viewModel
-    @State private var window: RecentWindow = .yesterday
-    let searchText: String
-
-    var body: some View {
-        // The diff content (a List or ContentUnavailableView) is the detail-pane
-        // root, matching every other section. A bare VStack root here let the
-        // pane size to its content instead of filling, which made
-        // NavigationSplitView mis-lay-out its sidebar column. The window picker
-        // rides in a top safe-area inset — pinned without distorting the pane,
-        // and it also keeps the picker steady across populated/empty windows.
-        diffContent
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .safeAreaInset(edge: .top, spacing: 0) {
-                VStack(spacing: PPSpacing.sm) {
-                    Picker("", selection: $window) {
-                        Text(String(localized: "Yesterday")).tag(RecentWindow.yesterday)
-                        Text(String(localized: "Last 7 days")).tag(RecentWindow.week)
-                    }
-                    .pickerStyle(.segmented)
-                    .labelsHidden()
-                    .accessibilityLabel(String(localized: "Change window"))
-                    ForEach(statusLines, id: \.self) { line in
-                        Text(line)
-                            .ppFont(.metadata)
-                            .foregroundStyle(.secondary)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                    }
-                }
-                .padding(PPSpacing.lg)
-                .background(.windowBackground)
-            }
-            .navigationTitle(String(localized: "Recent Changes"))
-    }
-
-    private var statusLines: [String] {
-        let diff = window == .yesterday ? viewModel.latestDiffYesterday : viewModel.latestDiffWeek
-        return RecentChangesStatus.lines(
-            latestSnapshotDate: viewModel.latestSnapshotDate,
-            uncompared: diff?.uncomparedDomains ?? []
-        )
-    }
-
-    @ViewBuilder
-    private var diffContent: some View {
-        switch window {
-        case .yesterday:
-            DiffTabView(
-                diff: viewModel.latestDiffYesterday,
-                windowLabel: .yesterday,
-                searchText: searchText,
-                snapshotStoreUnavailable: viewModel.snapshotStoreUnavailable,
-                diffUnavailable: viewModel.diffUnavailable
-            )
-        case .week:
-            DiffTabView(
-                diff: viewModel.latestDiffWeek,
-                windowLabel: .lastWeek,
-                searchText: searchText,
-                snapshotStoreUnavailable: viewModel.snapshotStoreUnavailable,
-                diffUnavailable: viewModel.diffUnavailable
-            )
-        }
-    }
-}
-
-private enum RecentWindow: Hashable {
-    case yesterday
-    case week
 }
 
 // MARK: - Stale Apps page

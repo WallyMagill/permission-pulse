@@ -680,13 +680,12 @@ private func seedPresentationState(_ viewModel: AppViewModel) async throws {
     viewModel.latestSnapshotID = SnapshotID(rawValue: 2)
     viewModel.lastReviewedSnapshotID = SnapshotID(rawValue: 1)
     let diff = SnapshotDiffs(
-        fromID: SnapshotID(rawValue: 1),
         toID: SnapshotID(rawValue: 2),
         tcc: TCCGrantsDiff(added: grants, removed: []),
         btm: BTMItemsDiff(added: btmItems, removed: []),
         launchAgents: LaunchAgentsDiff(added: launchAgents, removed: [])
     )
-    viewModel.latestDiffYesterday = diff
+    viewModel.latestDiffSinceReview = diff
     viewModel.latestDiffWeek = diff
     viewModel.staleApps = [StaleApp(
         app: grants[0].app,
@@ -712,7 +711,7 @@ private func expectPresentationStateCleared(_ viewModel: AppViewModel) {
     #expect(viewModel.launchAgentScanError == nil)
     #expect(viewModel.latestSnapshotID == nil)
     #expect(viewModel.lastReviewedSnapshotID == nil)
-    #expect(viewModel.latestDiffYesterday == nil)
+    #expect(viewModel.latestDiffSinceReview == nil)
     #expect(viewModel.latestDiffWeek == nil)
     #expect(viewModel.staleApps.isEmpty)
     #expect(viewModel.pendingRoute == nil)

@@ -35,6 +35,17 @@ public final class DismissedDiffEntryStore {
         return expiry > date
     }
 
+    /// The entries not dismissed or snoozed at `date`, in their given order.
+    public func visibleEntries(_ entries: [DiffEntry], asOf date: Date) -> [DiffEntry] {
+        entries.filter { entry in
+            !DiffEntryKey.lookupKeys(for: entry).contains { isDismissed(key: $0, asOf: date) }
+        }
+    }
+
+    public func visibleEntries(in diff: SnapshotDiffs, asOf date: Date) -> [DiffEntry] {
+        visibleEntries(diff.entries, asOf: date)
+    }
+
     public func dismissForever(key: String) {
         entries[key] = .distantFuture
         persist()
@@ -50,8 +61,8 @@ public final class DismissedDiffEntryStore {
         persist()
     }
 
-    /// Drops entries whose expiry has passed. Cheap; safe to call every
-    /// time the Recent Changes page appears.
+    /// Drops entries whose expiry has passed. Cheap; called on every history
+    /// refresh.
     public func pruneExpired(asOf date: Date) {
         let before = entries.count
         entries = entries.filter { _, expiry in expiry > date }

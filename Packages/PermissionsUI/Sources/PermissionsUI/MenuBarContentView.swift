@@ -83,7 +83,7 @@ public struct MenuBarContentView: View {
             attention: viewModel.attentionState,
             micInUse: viewModel.micInUse,
             cameraInUse: viewModel.cameraInUse,
-            changeCount: viewModel.recentChangeEventCount,
+            changeCount: viewModel.unreviewedChangeCount,
             hasUnreviewedChanges: viewModel.hasUnreviewedChanges,
             staleCount: viewModel.staleApps.count,
             appCount: Set(viewModel.grants.map(\.appKey)).count

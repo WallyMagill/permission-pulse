@@ -35,7 +35,7 @@ public final class AppViewModel {
     // v0.5.0 snapshot/diff/stale state.
     public var latestSnapshotID: SnapshotID?
     public var lastReviewedSnapshotID: SnapshotID?
-    public var latestDiffYesterday: SnapshotDiffs?
+    public var latestDiffSinceReview: SnapshotDiffs?
     /// When the latest stored snapshot was taken; nil until history exists.
     public var latestSnapshotDate: Date?
     public var latestDiffWeek: SnapshotDiffs?
@@ -58,11 +58,25 @@ public final class AppViewModel {
     // scan, matching when the stale filter itself changes. (C7)
     public var staleThresholdDays: Int = 90
 
-    // True when the snapshot store could not be opened — diff/stale history is
-    // unavailable, which is NOT the same as "no changes yet." (C2)
-    public var snapshotStoreUnavailable: Bool = false
+    /// Why the snapshot store could not be opened; nil when it is open.
+    /// History is unavailable, which is NOT the same as "no changes yet." (C2)
+    public var snapshotStoreProblem: SnapshotStoreProblem?
+    public var snapshotStoreUnavailable: Bool {
+        get { snapshotStoreProblem != nil }
+        set { snapshotStoreProblem = newValue ? (snapshotStoreProblem ?? .unavailable) : nil }
+    }
     // True when a diff query errored (vs. genuinely having no prior snapshot). (C2)
     public var diffUnavailable: Bool = false
+    /// True when the latest scan's snapshot could not be saved, so the diffs
+    /// shown stop at the previous snapshot.
+    public var snapshotWriteFailed: Bool = false
+
+    /// Applies Recent Changes dismissals and snoozes to every count.
+    public var dismissedDiffEntries: DismissedDiffEntryStore?
+    /// True while the detail window shows Recent Changes.
+    public var isViewingRecentChanges: Bool = false
+    /// The Recent Changes window picker's selection.
+    public var recentChangesWindow: RecentChangesWindow = .sinceLastReview
 
     public init(
         grants: [PermissionGrant] = [],
@@ -82,7 +96,7 @@ public final class AppViewModel {
         mediaDataSource: DataSource = .mock,
         latestSnapshotID: SnapshotID? = nil,
         lastReviewedSnapshotID: SnapshotID? = nil,
-        latestDiffYesterday: SnapshotDiffs? = nil,
+        latestDiffSinceReview: SnapshotDiffs? = nil,
         latestDiffWeek: SnapshotDiffs? = nil,
         staleApps: [StaleApp] = [],
         staleThresholdDays: Int = 90
@@ -104,35 +118,37 @@ public final class AppViewModel {
         self.mediaDataSource = mediaDataSource
         self.latestSnapshotID = latestSnapshotID
         self.lastReviewedSnapshotID = lastReviewedSnapshotID
-        self.latestDiffYesterday = latestDiffYesterday
+        self.latestDiffSinceReview = latestDiffSinceReview
         self.latestDiffWeek = latestDiffWeek
         self.staleApps = staleApps
         self.staleThresholdDays = staleThresholdDays
     }
 
+    /// The changes in `diff` the user has not dismissed or snoozed — what
+    /// Recent Changes lists, the badge counts, and the digest reports.
+    public func visibleEntries(of diff: SnapshotDiffs?, asOf date: Date = Date()) -> [DiffEntry] {
+        guard let diff else { return [] }
+        return dismissedDiffEntries?.visibleEntries(in: diff, asOf: date) ?? diff.entries
+    }
+
+    /// Visible changes since the last review. Zero while the user is on
+    /// Recent Changes: nothing there is unreviewed until they leave.
+    public var unreviewedChangeCount: Int {
+        guard !isViewingRecentChanges,
+              let latest = latestSnapshotID,
+              lastReviewedSnapshotID != latest else { return 0 }
+        return visibleEntries(of: latestDiffSinceReview).count
+    }
+
     public var hasUnreviewedChanges: Bool {
-        guard let latest = latestSnapshotID else { return false }
-        let unreviewed = lastReviewedSnapshotID != latest
-        let anyContent = (latestDiffYesterday?.hasContent ?? false)
-            || (latestDiffWeek?.hasContent ?? false)
-        return unreviewed && anyContent
+        unreviewedChangeCount > 0
     }
 
-    /// The diff window glance surfaces summarize: yesterday when it has
-    /// content, otherwise the 7-day fallback. (Single source of truth — the
-    /// dropdown and sidebar previously each re-derived this.)
-    public var activeDiff: SnapshotDiffs? {
-        if let primary = latestDiffYesterday, primary.hasContent { return primary }
-        return latestDiffWeek
-    }
-
-    // Counts the same event categories rendered by DiffTabView so a changes-only
-    // diff never produces a zero badge beside a populated Recent Changes page.
-    public var recentChangeEventCount: Int {
-        guard let diff = activeDiff else { return 0 }
-        return diff.tcc.added.count + diff.tcc.removed.count + diff.tcc.changed.count
-            + diff.btm.added.count + diff.btm.removed.count + diff.btm.changed.count
-            + diff.launchAgents.added.count + diff.launchAgents.removed.count + diff.launchAgents.changed.count
+    /// Records a "Skip forever" and drops the app from the current list, so
+    /// the sidebar and dropdown counts fall without waiting for a rescan.
+    public func skipStaleAppForever(stableKey: String, in store: DismissedStaleAppStore) {
+        store.skipForever(stableKey: stableKey)
+        staleApps.removeAll { $0.app.stableKey == stableKey }
     }
 
     public var attentionState: AttentionState {

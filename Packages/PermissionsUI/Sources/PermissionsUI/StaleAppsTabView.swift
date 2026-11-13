@@ -6,6 +6,7 @@ struct StaleAppsTabView: View {
     let staleApps: [StaleApp]
     var staleThresholdDays: Int = 90
     @Environment(DismissedStaleAppStore.self) private var dismissedStore
+    @Environment(AppViewModel.self) private var viewModel
 
     @State private var pendingSkipCandidate: StableStaleApp?
 
@@ -59,7 +60,7 @@ struct StaleAppsTabView: View {
                 presenting: pendingSkipCandidate
             ) { candidate in
                 Button(String(localized: "Skip"), role: .destructive) {
-                    dismissedStore.skipForever(stableKey: candidate.stableKey)
+                    viewModel.skipStaleAppForever(stableKey: candidate.stableKey, in: dismissedStore)
                     pendingSkipCandidate = nil
                 }
                 Button(String(localized: "Cancel"), role: .cancel) {

@@ -31,13 +31,21 @@ struct AppViewModelRoutingTests {
         )
     }
 
-    private func diffs(addedGrants: [PermissionGrant], from: Int64 = 41, to: Int64 = 42) -> SnapshotDiffs {
+    private func diffs(addedGrants: [PermissionGrant]) -> SnapshotDiffs {
         SnapshotDiffs(
-            fromID: SnapshotID(rawValue: from),
-            toID: SnapshotID(rawValue: to),
+            toID: SnapshotID(rawValue: 42),
             tcc: TCCGrantsDiff(added: addedGrants, removed: [], changed: []),
             btm: BTMItemsDiff(added: [], removed: [], changed: []),
             launchAgents: LaunchAgentsDiff(added: [], removed: [], changed: [])
+        )
+    }
+
+    private func unreviewed(_ sinceReview: SnapshotDiffs?, week: SnapshotDiffs? = nil) -> AppViewModel {
+        AppViewModel(
+            latestSnapshotID: SnapshotID(rawValue: 42),
+            lastReviewedSnapshotID: SnapshotID(rawValue: 41),
+            latestDiffSinceReview: sinceReview,
+            latestDiffWeek: week
         )
     }
 
@@ -52,45 +60,84 @@ struct AppViewModelRoutingTests {
         )
     }
 
-    @Test("recentChangeEventCount uses yesterday diff when it has content")
-    func countPrefersYesterday() {
-        let vm = AppViewModel(
-            latestDiffYesterday: diffs(addedGrants: [grant("a", .camera), grant("b", .microphone)]),
-            latestDiffWeek: diffs(addedGrants: [grant("c", .camera)])
+    @Test("unreviewedChangeCount counts the since-last-review diff only")
+    func countUsesSinceReviewWindow() {
+        let vm = unreviewed(
+            diffs(addedGrants: [grant("a", .camera), grant("b", .microphone)]),
+            week: diffs(addedGrants: [grant("c", .camera)])
         )
-        #expect(vm.recentChangeEventCount == 2)
+        #expect(vm.unreviewedChangeCount == 2)
+        #expect(unreviewed(diffs(addedGrants: []), week: diffs(addedGrants: [grant("c", .camera)]))
+            .unreviewedChangeCount == 0)
     }
 
-    @Test("recentChangeEventCount falls back to week diff when yesterday is empty")
-    func countFallsBackToWeek() {
-        let vm = AppViewModel(
-            latestDiffYesterday: diffs(addedGrants: []),
-            latestDiffWeek: diffs(addedGrants: [grant("c", .camera)])
+    @Test("dismissed and snoozed changes are not counted")
+    func countSkipsDismissedEntries() throws {
+        let defaults = try #require(UserDefaults(suiteName: "routing-\(UUID().uuidString)"))
+        let store = DismissedDiffEntryStore(defaults: defaults)
+        let vm = unreviewed(diffs(addedGrants: [grant("a", .camera), grant("b", .microphone), grant("c", .photos)]))
+        vm.dismissedDiffEntries = store
+        let entries = vm.visibleEntries(of: vm.latestDiffSinceReview)
+        store.dismissForever(key: entries[0].id)
+        store.snooze(key: entries[1].id, until: Date().addingTimeInterval(3600))
+
+        #expect(vm.unreviewedChangeCount == 1)
+        #expect(vm.visibleEntries(of: vm.latestDiffSinceReview, asOf: Date().addingTimeInterval(7200)).count == 2)
+    }
+
+    @Test("a coverage-only diff raises no badge")
+    func coverageOnlyDiffIsNotUnreviewed() {
+        let coverageOnly = SnapshotDiffs(
+            toID: SnapshotID(rawValue: 42),
+            tcc: TCCGrantsDiff(added: [], removed: []),
+            btm: BTMItemsDiff(added: [], removed: []),
+            launchAgents: LaunchAgentsDiff(added: [], removed: []),
+            uncompared: [.launchAgents: .itemsUnreadable]
         )
-        #expect(vm.recentChangeEventCount == 1)
+        #expect(!unreviewed(coverageOnly).hasUnreviewedChanges)
     }
 
-    @Test("recentChangeEventCount is zero with no diffs")
-    func countZeroWithNoDiffs() {
-        #expect(AppViewModel().recentChangeEventCount == 0)
+    @Test("nothing is unreviewed while Recent Changes is on screen")
+    func countIsZeroWhileViewing() {
+        let vm = unreviewed(diffs(addedGrants: [grant("a", .camera)]))
+        vm.isViewingRecentChanges = true
+        #expect(vm.unreviewedChangeCount == 0)
+        vm.isViewingRecentChanges = false
+        #expect(vm.unreviewedChangeCount == 1)
     }
 
-    @Test("recentChangeEventCount counts BTM disposition flip as one event")
+    @Test("unreviewedChangeCount counts BTM disposition flip as one event")
     func countBTMFlip() {
-        // BTMItemsDiff.hasContent includes `changed`, so a flips-only diff has
-        // content and activeDiff selects it. recentChangeEventCount must reflect
-        // the one changed entry so the badge/count isn't 0 while the page shows a row.
         let before = btmItem(identifier: "com.example.app", disposition: .enabled)
         let after = btmItem(identifier: "com.example.app", disposition: .disabled)
         let diffsWithFlip = SnapshotDiffs(
-            fromID: SnapshotID(rawValue: 41),
             toID: SnapshotID(rawValue: 42),
             tcc: TCCGrantsDiff(added: [], removed: [], changed: []),
             btm: BTMItemsDiff(added: [], removed: [], changed: [DomainChange(before: before, after: after)]),
             launchAgents: LaunchAgentsDiff(added: [], removed: [], changed: [])
         )
-        let vm = AppViewModel(latestDiffYesterday: diffsWithFlip)
-        #expect(vm.recentChangeEventCount == 1)
+        #expect(unreviewed(diffsWithFlip).unreviewedChangeCount == 1)
+    }
+
+    @Test("Skip forever drops the stale app from the count at once")
+    func skipStaleAppUpdatesCount() throws {
+        let defaults = try #require(UserDefaults(suiteName: "stale-skip-\(UUID().uuidString)"))
+        let store = DismissedStaleAppStore(defaults: defaults)
+        let stale = ["com.example.kept", "com.example.skipped"].map { bundleID in
+            StaleApp(
+                app: AppIdentity(bundleID: bundleID, displayName: bundleID),
+                lastUsedDate: Date(timeIntervalSince1970: 0),
+                dateSource: .spotlight,
+                daysSinceUsed: 200,
+                grantedServices: [.camera]
+            )
+        }
+        let vm = AppViewModel(staleApps: stale)
+
+        vm.skipStaleAppForever(stableKey: "bundle:com.example.skipped", in: store)
+
+        #expect(vm.staleApps.map(\.app.bundleID) == ["com.example.kept"])
+        #expect(store.contains(stableKey: "bundle:com.example.skipped"))
     }
 
     @Test("lastScanDate is nil by default")

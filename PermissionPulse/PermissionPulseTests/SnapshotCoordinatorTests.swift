@@ -34,7 +34,7 @@ import PermissionsUI
         await env.coordinator.onScanCompleted()
 
         #expect(try await env.snapshotsCount() == 3)
-        let added = env.viewModel.latestDiffYesterday?.tcc.added.map(\.app.bundleID)
+        let added = env.viewModel.latestDiffSinceReview?.tcc.added.map(\.app.bundleID)
         #expect(added == ["com.example.b", "com.example.c"])
         #expect(env.viewModel.latestSnapshotDate != nil)
     }
@@ -65,7 +65,7 @@ import PermissionsUI
         await env.coordinator.onScanCompleted()
 
         #expect(try await env.snapshotsCount() == 1)
-        let diff = try #require(env.viewModel.latestDiffYesterday)
+        let diff = try #require(env.viewModel.latestDiffSinceReview)
         #expect(!diff.hasContent)
     }
 
@@ -84,7 +84,7 @@ import PermissionsUI
         await env.coordinator.onScanCompleted()
 
         #expect(try await env.snapshotsCount() == 1)
-        #expect(env.viewModel.latestDiffYesterday?.uncomparedDomains == [.launchAgents])
+        #expect(env.viewModel.latestDiffSinceReview?.uncomparedDomains == [.launchAgents])
     }
 
     // Retention and the week window must share a day boundary: at 7-day
@@ -178,7 +178,7 @@ import PermissionsUI
 
         await env.coordinator.onScanCompleted()
 
-        let diff = try #require(env.viewModel.latestDiffYesterday)
+        let diff = try #require(env.viewModel.latestDiffSinceReview)
         #expect(diff.launchAgents.removed.isEmpty)
         #expect(diff.uncomparedDomains == [.launchAgents])
         #expect(!diff.hasContent)
@@ -202,9 +202,9 @@ import PermissionsUI
 
         let boundaryID = try #require(env.viewModel.latestSnapshotID)
         #expect(try await env.store.coverage(snapshotID: boundaryID).tcc == .reduced)
-        let boundary = try #require(env.viewModel.latestDiffYesterday)
+        let boundary = try #require(env.viewModel.latestDiffSinceReview)
         #expect(boundary.tcc.removed.isEmpty)
-        #expect(boundary.uncomparedDomains == [.tcc])
+        #expect(boundary.systemLevelPermissionsOnly)
 
         // Two reduced snapshots cover the same scope and diff normally.
         _ = try await env.store.writeSnapshot(
@@ -244,7 +244,7 @@ import PermissionsUI
 
         // Yesterday diff should be non-nil with content (oldOnly was removed,
         // staleApp was added).
-        let yd = env.viewModel.latestDiffYesterday
+        let yd = env.viewModel.latestDiffSinceReview
         #expect(yd != nil)
         #expect(yd?.hasContent == true)
         // Stale apps should include the one app whose probe date is 200d old.
@@ -496,8 +496,7 @@ import PermissionsUI
         // Force a state where hasUnreviewedChanges == true.
         env.viewModel.latestSnapshotID = SnapshotID(rawValue: 1)
         env.viewModel.lastReviewedSnapshotID = nil
-        env.viewModel.latestDiffYesterday = SnapshotDiffs(
-            fromID: SnapshotID(rawValue: 0),
+        env.viewModel.latestDiffSinceReview = SnapshotDiffs(
             toID: SnapshotID(rawValue: 1),
             tcc: TCCGrantsDiff(added: [], removed: []),
             btm: BTMItemsDiff(added: [], removed: []),
@@ -505,7 +504,7 @@ import PermissionsUI
         )
         #expect(env.viewModel.hasUnreviewedChanges)
 
-        env.coordinator.markCurrentSnapshotReviewed()
+        await env.coordinator.markCurrentSnapshotReviewed()?.value
 
         #expect(env.viewModel.lastReviewedSnapshotID == SnapshotID(rawValue: 1))
         #expect(!env.viewModel.hasUnreviewedChanges)
@@ -535,8 +534,8 @@ import PermissionsUI
         env.viewModel.grants = [demoGrant(bundleID: "com.example.new")]
         await env.coordinator.onScanCompleted()
 
-        #expect(env.viewModel.latestDiffYesterday != nil)
-        #expect(env.viewModel.latestDiffYesterday?.hasContent == true)
+        #expect(env.viewModel.latestDiffSinceReview != nil)
+        #expect(env.viewModel.latestDiffSinceReview?.hasContent == true)
     }
 
     @Test func constructingCoordinatorClearsSnapshotStoreUnavailable() async throws {

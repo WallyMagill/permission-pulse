@@ -69,7 +69,7 @@ struct PermissionPulseApp: App {
                 onRefresh: { [appDelegate] in
                     await appDelegate.rescan()
                 },
-                onWhatChangedSelected: { [appDelegate] in
+                onRecentChangesReviewed: { [appDelegate] in
                     appDelegate.markCurrentSnapshotReviewed()
                 },
                 onBecameVisible: { [appDelegate] in
@@ -175,6 +175,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         self.resetOperation = resetOperation
         self.weeklyDigestScheduler = weeklyDigestScheduler
         super.init()
+        viewModel.dismissedDiffEntries = dismissedDiffEntries
         if runtimeEnvironment.isRunningTests {
             // Test mode skips applicationDidFinishLaunching, but reset recovery
             // still needs a real deterministic scan rather than treating
@@ -243,7 +244,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             Self.logger.error(
                 "SnapshotStore init failed: \(error.localizedDescription, privacy: .public)"
             )
-            viewModel.snapshotStoreUnavailable = true
+            viewModel.snapshotStoreProblem = Self.storeProblem(for: error)
         }
         if let snapshotStore {
             installSnapshotRuntime(snapshotStore)
@@ -304,6 +305,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func markCurrentSnapshotReviewed() {
         snapshotCoordinator?.markCurrentSnapshotReviewed()
+    }
+
+    static func storeProblem(for error: any Error) -> SnapshotStoreProblem {
+        switch error as? SnapshotStoreOpenError {
+        case .createdByNewerVersion: .createdByNewerVersion
+        case .corrupt: .corrupt
+        case nil: .unavailable
+        }
     }
 
     func requestResetAllData() {
