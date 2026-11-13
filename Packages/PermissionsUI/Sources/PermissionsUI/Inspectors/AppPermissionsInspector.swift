@@ -14,6 +14,11 @@ struct AppPermissionsInspector: View {
     let app: AppIdentity
     let grants: [PermissionGrant]
     var appMissing = false
+    var systemLevelOnly = false
+
+    /// Bumped on each copy; the confirmation clears itself a moment later.
+    @State private var copyCount = 0
+    @State private var showsCopied = false
 
     var body: some View {
         ScrollView {
@@ -85,8 +90,29 @@ struct AppPermissionsInspector: View {
                     )
                 }
             }
+            if systemLevelOnly {
+                hiddenServicesFootnote
+            }
         }
     }
+
+    private var hiddenServicesFootnote: some View {
+        VStack(alignment: .leading, spacing: PPSpacing.xs) {
+            Text(Self.hiddenServicesFootnoteText)
+                .ppFont(.metadata)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+            Button(String(localized: "Open Privacy & Security")) {
+                SystemSettingsLink.openPrivacyPane()
+            }
+            .buttonStyle(.link)
+            .ppFont(.metadata)
+        }
+    }
+
+    static let hiddenServicesFootnoteText = String(
+        localized: "macOS 27 hides this app's Camera, Microphone, Files and Folders, and other per-user permissions."
+    )
 
     // MARK: - Automation section
 
@@ -154,17 +180,34 @@ struct AppPermissionsInspector: View {
                 }
             }
             if !resetCommands.isEmpty {
-                Button {
-                    NSPasteboard.general.clearContents()
-                    NSPasteboard.general.setString(resetCommands.joined(separator: "\n"), forType: .string)
-                } label: {
-                    Label(String(localized: "Copy Reset Commands"), systemImage: "doc.on.doc")
-                        .frame(maxWidth: .infinity)
-                }
-                .help(String(localized: "Copies tccutil reset commands to run yourself in Terminal."))
+                copyResetCommandsButton
             }
         }
         .controlSize(.large)
+    }
+
+    private var copyResetCommandsButton: some View {
+        Button {
+            NSPasteboard.general.clearContents()
+            NSPasteboard.general.setString(resetCommands.joined(separator: "\n"), forType: .string)
+            showsCopied = true
+            copyCount += 1
+        } label: {
+            Label(
+                showsCopied ? String(localized: "Copied") : String(localized: "Copy Reset Commands"),
+                systemImage: showsCopied ? "checkmark" : "doc.on.doc"
+            )
+            .frame(maxWidth: .infinity)
+        }
+        .help(String(localized: "Copies tccutil reset commands to run yourself in Terminal."))
+        // Restarts on every copy and is cancelled if the inspector goes away.
+        // Two seconds is a guess at long enough to read, short enough to
+        // copy again; nothing was measured.
+        .task(id: copyCount) {
+            guard copyCount > 0 else { return }
+            try? await Task.sleep(for: .seconds(2))
+            if !Task.isCancelled { showsCopied = false }
+        }
     }
 
     // MARK: - Derived state

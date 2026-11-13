@@ -14,7 +14,8 @@ struct InspectorPanel: View {
                 AppPermissionsInspector(
                     app: app,
                     grants: grants,
-                    appMissing: viewModel.tccDataSource == .live && AppPresence.isMissing(app)
+                    appMissing: viewModel.tccDataSource == .live && AppPresence.isMissing(app),
+                    systemLevelOnly: viewModel.permissionScope.isReduced
                 )
             case .launchAgent(let item):
                 LaunchAgentInspector(item: item)
