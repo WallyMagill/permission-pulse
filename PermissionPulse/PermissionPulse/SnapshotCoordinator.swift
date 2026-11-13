@@ -302,10 +302,10 @@ final class SnapshotCoordinator {
         )
     }
 
-    private func computeStaleApps(nowDate: Date, thresholdDays: Int) async -> [StaleApp] {
-        // Dedupe grants by stable app identity, keep only those with a bundlePath.
-        // Drop anything the user has chosen to skip in Preferences so the
-        // sidebar badge count stays honest end-to-end.
+    /// One candidate per stable app identity that has a bundle path, each
+    /// service listed once. Apps the user chose to skip in Preferences are
+    /// dropped so the sidebar badge count stays honest end-to-end.
+    private func staleCandidates() -> [StaleCandidate] {
         let skipped = dismissedStaleApps?.allStableKeys() ?? []
         var grouped: [String: [PermissionGrant]] = [:]
         for grant in viewModel.grants {
@@ -313,13 +313,17 @@ final class SnapshotCoordinator {
                   !skipped.contains(stableKey) else { continue }
             grouped[stableKey, default: []].append(grant)
         }
-        let candidates: [StaleCandidate] = grouped.compactMap { _, grants in
+        return grouped.compactMap { _, grants in
             guard let representative = grants.first(where: { $0.app.bundlePath != nil }),
                   let path = representative.app.bundlePath else { return nil }
-            let services = grants.map(\.service)
+            var seen = Set<PermissionService>()
+            let services = grants.map(\.service).filter { seen.insert($0).inserted }
             return StaleCandidate(app: representative.app, path: path, services: services)
         }
+    }
 
+    private func computeStaleApps(nowDate: Date, thresholdDays: Int) async -> [StaleApp] {
+        let candidates = staleCandidates()
         let probe = lastUsedProbe
         let cal = calendar
         let limit = Self.maxStaleProbesInFlight

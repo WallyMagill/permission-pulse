@@ -7,6 +7,11 @@ import PermissionsCore
 // the app from Stale review (under-flag, never over-flag, per
 // docs/04-data-sources.md).
 //
+// Only `.app` bundles are probed. For a bare binary such as
+// /usr/libexec/sshd-keygen-wrapper, Spotlight's "last used" is its
+// modification time (the last OS update), so a tool used daily would read
+// as stale.
+//
 // Note for a future sandboxed build (v0.6.0+): Process(/usr/bin/mdls)
 // requires the sandbox to be off or a binary entitlement. The drop-in
 // replacement is MDItemCreate / MDItemCopyAttribute in-process.
@@ -24,6 +29,7 @@ public struct LastUsedProbeHybrid: LastUsedProbe, Sendable {
     public func lastUsedDate(
         for bundlePath: URL
     ) async -> (date: Date, source: StaleApp.DateSource)? {
+        guard bundlePath.pathExtension == "app" else { return nil }
         if let spotlight = await spotlightDate(for: bundlePath) {
             return (spotlight, .spotlight)
         }

@@ -251,6 +251,20 @@ import PermissionsUI
         #expect(env.viewModel.staleApps.contains { $0.app.bundleID == "com.example.staleApp" })
     }
 
+    @Test func staleAppListsEachServiceOnce() async throws {
+        let path = URL(fileURLWithPath: "/Applications/Scripter.app")
+        let old = fixedNow().addingTimeInterval(-200 * 86_400)
+        let env = try await Environment(now: fixedNow, probe: MockLastUsedProbe(fixed: [path: (old, .spotlight)]))
+        let app = AppIdentity(bundleID: "com.example.scripter", displayName: "Scripter", bundlePath: path)
+        env.viewModel.grants = ["com.apple.finder", "com.apple.mail"].map {
+            PermissionGrant(service: .automation, app: app, lastModified: old, automationTarget: $0)
+        } + [demoGrant(bundleID: "com.example.scripter", bundlePath: path)]
+
+        await env.coordinator.onScanCompleted()
+
+        #expect(env.viewModel.staleApps.map(\.grantedServices) == [[.automation, .microphone]])
+    }
+
     @Test func customStaleThresholdHonored() async throws {
         // Probe returns a 60-day-old date for one app. Default threshold (90)
         // would skip it; a custom 30-day threshold should flag it.

@@ -106,7 +106,7 @@ private struct StaleAppRow: View {
                 Text(app.app.displayName).ppFont(.body).fontWeight(.medium)
                 Text(app.app.bundleID).ppFont(.metadata).foregroundStyle(.secondary)
                 Text(servicesLine).ppFont(.metadata).foregroundStyle(.tertiary)
-                Text(lastUsedLine).ppFont(.metadata).foregroundStyle(.secondary)
+                Text(StaleAppsTabView.dateLine(for: app)).ppFont(.metadata).foregroundStyle(.secondary)
             }
         }
         .padding(.vertical, PPSpacing.xxs)
@@ -118,15 +118,22 @@ private struct StaleAppRow: View {
         return String(localized: "Granted: \(names)")
     }
 
-    private var lastUsedLine: String {
+}
+
+extension StaleAppsTabView {
+    /// A modification date is not a use date, so a row whose date came from
+    /// the file-system fallback says so.
+    static func dateLine(for app: StaleApp) -> String {
         let dateString = DateFormatter.localizedString(
             from: app.lastUsedDate,
             dateStyle: .medium,
             timeStyle: .none
         )
-        let source = app.dateSource == .spotlight
-            ? String(localized: "via Spotlight")
-            : String(localized: "via file modified")
-        return String(localized: "Last used \(dateString) · \(source) · \(app.daysSinceUsed) days ago")
+        switch app.dateSource {
+        case .spotlight:
+            return String(localized: "Last used \(dateString) · via Spotlight · \(app.daysSinceUsed) days ago")
+        case .fileSystem:
+            return String(localized: "Last modified \(dateString) · \(app.daysSinceUsed) days ago")
+        }
     }
 }
