@@ -29,4 +29,15 @@ struct ExportReportBuilderTests {
         #expect(folder.lastSuccessfulScan == Date(timeIntervalSince1970: 5))
         #expect(ExportReportBuilder.coverage(.never).failureReason == .notScannedYet)
     }
+
+    @Test("Stale Apps exports why it wasn't checked, like the page's empty states")
+    func staleAppsStatus() {
+        let vm = AppViewModel(tccAvailability: .complete(lastUpdated: Date(timeIntervalSince1970: 0)))
+        vm.snapshotStoreProblem = .corrupt
+        #expect(ExportReportBuilder.staleAppsStatus(vm) == .historyUnavailable)
+        vm.snapshotStoreProblem = nil
+        vm.latestSnapshotID = SnapshotID(rawValue: 1)
+        #expect(ExportReportBuilder.staleAppsStatus(vm) == .checked)
+        #expect(ExportReportBuilder.staleAppsStatus(AppViewModel()) == .permissionsNotScanned)
+    }
 }

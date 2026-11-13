@@ -79,8 +79,24 @@ enum ExportReportBuilder {
                 permissions: coverage(viewModel.tccAvailability, unavailableServices: hidden),
                 launchAgents: coverage(viewModel.launchAgentAvailability, needsFullDiskAccess: false),
                 backgroundItems: coverage(viewModel.btmAvailability)
-            )
+            ),
+            staleAppsStatus: staleAppsStatus(viewModel)
         )
+    }
+
+    /// The same reasons the Stale Apps page gives for an empty list.
+    @MainActor
+    static func staleAppsStatus(_ viewModel: AppViewModel) -> ExportStaleAppsStatus {
+        let state = StaleAppsEmptyState.resolve(
+            hasPermissionData: viewModel.hasPermissionData,
+            historyAvailable: !viewModel.snapshotStoreUnavailable && viewModel.latestSnapshotID != nil,
+            systemLevelOnly: viewModel.permissionScope.isReduced
+        )
+        return switch state {
+        case .noPermissionData: .permissionsNotScanned
+        case .historyUnavailable: .historyUnavailable
+        case .noneStale: .checked
+        }
     }
 
     /// A Launch Agents "permission denied" is an unreadable folder, not Full

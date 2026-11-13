@@ -23,7 +23,8 @@ struct PermissionsExportTests {
         launchAgents: [LaunchAgentItem] = [],
         generatedAt: Date = Date(timeIntervalSince1970: 0),
         permissions: ExportDomainCoverage = complete,
-        backgroundItems: ExportDomainCoverage = complete
+        backgroundItems: ExportDomainCoverage = complete,
+        staleAppsStatus: ExportStaleAppsStatus = .checked
     ) -> ExportReport {
         PermissionsExport.report(
             grants: grants, launchAgents: launchAgents, btmItems: [], staleApps: [],
@@ -33,7 +34,8 @@ struct PermissionsExportTests {
                 permissions: permissions,
                 launchAgents: Self.complete,
                 backgroundItems: backgroundItems
-            )
+            ),
+            staleAppsStatus: staleAppsStatus
         )
     }
 
@@ -70,6 +72,23 @@ struct PermissionsExportTests {
         let text = String(decoding: try PermissionsExport.makeJSON(report: report(launchAgents: [locked])), as: UTF8.self)
         #expect(text.contains("\"detailsReadable\" : false"))
         #expect(text.contains("\"fileName\" : \"com.example.locked.plist\""))
+        #expect(text.contains("\"runAtLoad\" : null"))
+        #expect(text.contains("\"keepAlive\" : null"))
+        let md = PermissionsExport.makeMarkdown(report: report(launchAgents: [locked]))
+        #expect(md.contains("| com.example.locked | libraryLaunchDaemons | unknown | unknown |"))
+    }
+
+    @Test("Stale Apps says why it wasn't checked, and notes a reduced scope")
+    func staleAppsStatusIsStated() {
+        let noHistory = PermissionsExport.makeMarkdown(report: report(staleAppsStatus: .historyUnavailable))
+        #expect(noHistory.contains("## Stale Apps\n\n_Not checked: Permission Pulse's local history isn't available._"))
+        #expect(!noHistory.hasSuffix("_None._\n\n"))
+
+        let reduced = ExportDomainCoverage(
+            coverage: .reduced, lastSuccessfulScan: Date(timeIntervalSince1970: 0), unavailableServices: ["camera"]
+        )
+        let narrowed = PermissionsExport.makeMarkdown(report: report(permissions: reduced))
+        #expect(narrowed.hasSuffix("## Stale Apps\n\n_Checks apps with system-level permissions only._\n\n_None._\n\n"))
     }
 
     @Test("Markdown has section headers and the app name")
@@ -103,7 +122,7 @@ struct PermissionsExportTests {
         )
         let base = report(permissions: reduced)
         let text = String(decoding: try PermissionsExport.makeJSON(report: base), as: UTF8.self)
-        #expect(text.contains("\"schemaVersion\" : 2"))
+        #expect(text.contains("\"schemaVersion\" : 3"))
         #expect(text.contains("\"appVersion\" : \"0.7.2\""))
         #expect(text.contains("\"appBuild\" : \"42\""))
         #expect(text.contains("\"macOSVersion\" : \"27.2.0\""))

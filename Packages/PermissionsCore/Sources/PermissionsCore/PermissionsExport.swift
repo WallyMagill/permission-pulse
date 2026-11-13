@@ -6,7 +6,9 @@ import Foundation
 
 public struct ExportReport: Codable, Sendable, Equatable {
     /// The export format's version. 2 added the environment, coverage and
-    /// grant `authValue`; earlier exports carried no version.
+    /// grant `authValue`; 3 added `staleAppsStatus` and writes null for
+    /// launch agent details that could not be read. Earlier exports carried
+    /// no version.
     public let schemaVersion: Int
     public let generatedAt: Date
     public let appVersion: String
@@ -17,6 +19,15 @@ public struct ExportReport: Codable, Sendable, Equatable {
     public let launchAgents: [ExportLaunchAgent]
     public let backgroundItems: [ExportBackgroundItem]
     public let staleApps: [ExportStaleApp]
+    public let staleAppsStatus: ExportStaleAppsStatus
+}
+
+/// Whether Stale Apps was computed, so an empty list says whether nothing
+/// was stale or nothing was checked.
+public enum ExportStaleAppsStatus: String, Codable, Sendable {
+    case checked
+    case permissionsNotScanned
+    case historyUnavailable
 }
 
 public struct ExportGrant: Codable, Sendable, Equatable {
@@ -35,11 +46,30 @@ public struct ExportLaunchAgent: Codable, Sendable, Equatable {
     public let label: String
     public let source: String
     public let programPath: String?
-    public let runAtLoad: Bool
-    public let keepAlive: Bool
+    /// Null when the plist could not be read: unknown, not false.
+    public let runAtLoad: Bool?
+    public let keepAlive: Bool?
     public let isDisabled: Bool
     public let detailsReadable: Bool
     public let fileName: String?
+
+    private enum CodingKeys: String, CodingKey {
+        case label, source, programPath, runAtLoad, keepAlive, isDisabled, detailsReadable, fileName
+    }
+
+    /// Writes unknown values as explicit nulls; the synthesized encoder
+    /// would drop the keys.
+    public func encode(to encoder: any Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(label, forKey: .label)
+        try container.encode(source, forKey: .source)
+        try container.encodeIfPresent(programPath, forKey: .programPath)
+        try container.encode(runAtLoad, forKey: .runAtLoad)
+        try container.encode(keepAlive, forKey: .keepAlive)
+        try container.encode(isDisabled, forKey: .isDisabled)
+        try container.encode(detailsReadable, forKey: .detailsReadable)
+        try container.encodeIfPresent(fileName, forKey: .fileName)
+    }
 }
 
 public struct ExportBackgroundItem: Codable, Sendable, Equatable {
@@ -63,7 +93,7 @@ public struct ExportStaleApp: Codable, Sendable, Equatable {
 }
 
 public enum PermissionsExport {
-    public static let schemaVersion = 2
+    public static let schemaVersion = 3
 
     public static func report(
         grants: [PermissionGrant],
@@ -72,7 +102,8 @@ public enum PermissionsExport {
         staleApps: [StaleApp],
         generatedAt: Date,
         environment: ExportEnvironment,
-        coverage: ExportCoverage
+        coverage: ExportCoverage,
+        staleAppsStatus: ExportStaleAppsStatus = .checked
     ) -> ExportReport {
         ExportReport(
             schemaVersion: schemaVersion,
@@ -84,7 +115,8 @@ public enum PermissionsExport {
             grants: grants.map(Self.map),
             launchAgents: launchAgents.map(Self.map),
             backgroundItems: btmItems.map(Self.map),
-            staleApps: staleApps.map(Self.map)
+            staleApps: staleApps.map(Self.map),
+            staleAppsStatus: staleAppsStatus
         )
     }
 
@@ -110,13 +142,23 @@ public enum PermissionsExport {
         out += section("Background Items", coverage: coverage.backgroundItems,
                        rows: report.backgroundItems.map(Self.row),
                        header: "| Name | Developer | Type | Disposition |")
-        out += "## Stale Apps\n\n"
-        if !coverage.permissions.hasData {
-            out += "_Not checked: permissions were not scanned._\n\n"
-        } else {
-            out += table(header: "| App | Last used | Days | Services |", rows: report.staleApps.map(Self.row))
-        }
+        out += staleAppsSection(report)
         return out
+    }
+
+    /// Says why Stale Apps was not checked instead of printing "None".
+    private static func staleAppsSection(_ report: ExportReport) -> String {
+        var out = "## Stale Apps\n\n"
+        if !report.coverage.permissions.hasData || report.staleAppsStatus == .permissionsNotScanned {
+            return out + "_Not checked: permissions were not scanned._\n\n"
+        }
+        if report.staleAppsStatus == .historyUnavailable {
+            return out + "_Not checked: Permission Pulse's local history isn't available._\n\n"
+        }
+        if report.coverage.permissions.coverage == .reduced {
+            out += "_Checks apps with system-level permissions only._\n\n"
+        }
+        return out + table(header: "| App | Last used | Days | Services |", rows: report.staleApps.map(Self.row))
     }
 
     private static func coverageBlock(_ report: ExportReport) -> String {
@@ -153,7 +195,7 @@ public enum PermissionsExport {
     }
 
     private static func row(_ a: ExportLaunchAgent) -> String {
-        "| \(cell(a.label)) | \(cell(a.source)) | \(a.runAtLoad) | \(a.keepAlive) |"
+        "| \(cell(a.label)) | \(cell(a.source)) | \(a.runAtLoad.map(String.init) ?? "unknown") | \(a.keepAlive.map(String.init) ?? "unknown") |"
     }
 
     private static func row(_ b: ExportBackgroundItem) -> String {
@@ -184,8 +226,8 @@ public enum PermissionsExport {
             label: a.label,
             source: a.sourceDirectory.rawValue,
             programPath: a.programPath,
-            runAtLoad: a.runAtLoad,
-            keepAlive: a.keepAlive,
+            runAtLoad: a.detailsReadable ? a.runAtLoad : nil,
+            keepAlive: a.detailsReadable ? a.keepAlive : nil,
             isDisabled: a.isDisabled,
             detailsReadable: a.detailsReadable,
             fileName: a.fileName
