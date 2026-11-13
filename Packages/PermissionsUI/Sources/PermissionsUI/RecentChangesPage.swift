@@ -18,6 +18,7 @@ struct RecentChangesDetailPage: View {
             searchText: searchText,
             storeProblem: viewModel.snapshotStoreProblem,
             diffUnavailable: viewModel.diffUnavailable,
+            permissionScope: viewModel.permissionScope,
             onMarkAllReviewed: onMarkAllReviewed
         )
         .id(viewModel.recentChangesWindow)

@@ -8,6 +8,7 @@ struct DiffTabView: View {
     var searchText: String = ""
     var storeProblem: SnapshotStoreProblem?
     var diffUnavailable: Bool = false
+    var permissionScope: PermissionScope = .full
     var onMarkAllReviewed: (() -> Void)?
     @Environment(DismissedDiffEntryStore.self) private var dismissedStore
     @State private var pendingDismiss: PendingDismiss?
@@ -36,6 +37,8 @@ struct DiffTabView: View {
             )
             if !visible.isEmpty {
                 diffList(visible)
+            } else if let hidden = permissionScope.hiddenService(matching: searchText) {
+                HiddenServiceSearchView(service: hidden)
             } else if !searchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                 ContentUnavailableView.search(text: searchText)
             } else {

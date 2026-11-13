@@ -18,8 +18,14 @@ public struct ScanAvailabilityBanner: View {
     }
 
     private var isReducedScope: Bool {
-        availability.isComplete && unavailableSources == [.userTCCDatabase]
+        availability.isComplete && PermissionScope(unavailableSources: unavailableSources).isReduced
     }
+
+    /// Why a reduced scan sees only system-level permissions; also shown by
+    /// the Overview's coverage popover.
+    public static let reducedScopeExplanation = String(
+        localized: "This version of macOS doesn't let apps read per-app records for Camera, Microphone, Files and Folders, Automation, and other per-user permissions."
+    )
 
     public var body: some View {
         HStack(alignment: .top, spacing: PPSpacing.md) {
@@ -113,7 +119,7 @@ public struct ScanAvailabilityBanner: View {
             return String(localized: "No scan results are available yet.")
         case .complete(let lastUpdated):
             if isReducedScope {
-                return String(localized: "This version of macOS doesn't let apps read per-app records for Camera, Microphone, Files and Folders, Automation, and other per-user permissions. Updated \(formatted(lastUpdated)).")
+                return String(localized: "\(Self.reducedScopeExplanation) Updated \(formatted(lastUpdated)).")
             }
             return String(localized: "Updated \(formatted(lastUpdated)).")
         case .degraded(let lastUpdated, _):
