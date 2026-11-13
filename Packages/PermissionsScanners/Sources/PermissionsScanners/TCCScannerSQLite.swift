@@ -375,15 +375,15 @@ public struct TCCScannerSQLite: TCCScanner, Sendable {
     )
 
     private static let busyReason = String(
-        localized: "The TCC database is temporarily locked by macOS. Try Refresh in a moment."
+        localized: "The TCC database is temporarily locked by macOS. Try Rescan in a moment."
     )
 
     private static let ioErrorReason = String(
-        localized: "A disk I/O error occurred reading the TCC database. Check available disk space and try Refresh."
+        localized: "A disk I/O error occurred reading the TCC database. Check available disk space and try Rescan."
     )
 
     private static let unexpectedReadReason = String(
-        localized: "The TCC database is temporarily unavailable. Try Refresh in a moment."
+        localized: "The TCC database is temporarily unavailable. Try Rescan in a moment."
     )
 
     private struct TCCRow: Sendable {
