@@ -11,9 +11,20 @@ public struct SnapshotStore: Sendable {
 
     let dbQueue: DatabaseQueue
 
+    /// Throws `SnapshotStoreOpenError` when the file was migrated by a newer
+    /// build or is not a usable SQLite database.
     public init(path: String) throws {
-        self.dbQueue = try DatabaseQueue(path: path)
-        try Self.migrate(dbQueue)
+        var configuration = Configuration()
+        // A guess sized well above the ~50 ms scan, so a second process
+        // holding the write lock briefly does not fail this one's write.
+        configuration.busyMode = .timeout(5)
+        do {
+            self.dbQueue = try DatabaseQueue(path: path, configuration: configuration)
+            try Self.migrate(dbQueue)
+        } catch let error as DatabaseError
+            where error.resultCode == .SQLITE_CORRUPT || error.resultCode == .SQLITE_NOTADB {
+            throw SnapshotStoreOpenError.corrupt(error.message ?? error.description)
+        }
     }
 
     public static func inMemory() throws -> SnapshotStore {
@@ -28,6 +39,16 @@ public struct SnapshotStore: Sendable {
     // all REALs before all TEXT and silently corrupt ordering/pruning. Pinned by
     // SnapshotDateEncodingTests. (D5)
     private static func migrate(_ queue: DatabaseQueue) throws {
+        let migrator = makeMigrator()
+        // GRDB's migrate() silently accepts unknown applied migrations, so a
+        // downgrade would read a schema this build does not understand.
+        if try queue.read({ try migrator.hasBeenSuperseded($0) }) {
+            throw SnapshotStoreOpenError.createdByNewerVersion
+        }
+        try migrator.migrate(queue)
+    }
+
+    private static func makeMigrator() -> DatabaseMigrator {
         var migrator = DatabaseMigrator()
 
         migrator.registerMigration("v1") { db in
@@ -131,7 +152,7 @@ public struct SnapshotStore: Sendable {
             try db.execute(sql: "UPDATE schema_version SET version = 7")
         }
 
-        try migrator.migrate(queue)
+        return migrator
     }
 
     public func schemaVersion() throws -> Int {
@@ -291,7 +312,7 @@ public struct SnapshotStore: Sendable {
 
     // An unrecognized value (e.g. written by a newer build) must never let a
     // diff compare uncertain evidence, so it reads as `.failed`.
-    private static func decodeCoverage(_ raw: String) -> SnapshotCoverage {
+    static func decodeCoverage(_ raw: String) -> SnapshotCoverage {
         if let coverage = SnapshotCoverage(rawValue: raw) { return coverage }
         logger.error("Unknown snapshot coverage value \(raw, privacy: .public); treating as failed")
         return .failed
@@ -324,27 +345,6 @@ public struct SnapshotStore: Sendable {
                 LIMIT 1
                 """, arguments: [cutoff])
                 .map(SnapshotID.init(rawValue:))
-        }
-    }
-
-    /// Deletes snapshots older than `cutoff`, except the newest one at or before
-    /// it (snapshots are written only on change, so that row *is* the state at
-    /// the cutoff) and the overall latest.
-    @discardableResult
-    public func pruneSnapshots(olderThan cutoff: Date) async throws -> Int {
-        try await dbQueue.write { db in
-            let baselineID = try Int64.fetchOne(db, sql: """
-                SELECT id FROM snapshots WHERE created_at <= ?
-                ORDER BY created_at DESC, id DESC LIMIT 1
-                """, arguments: [cutoff])
-            let latestID = try Int64.fetchOne(db, sql: """
-                SELECT id FROM snapshots ORDER BY created_at DESC, id DESC LIMIT 1
-                """)
-            try db.execute(
-                sql: "DELETE FROM snapshots WHERE created_at < ? AND id NOT IN (?, ?)",
-                arguments: [cutoff, baselineID ?? -1, latestID ?? -1]
-            )
-            return db.changesCount
         }
     }
 
@@ -617,4 +617,12 @@ public enum StoreError: Error, Sendable {
     case unknownBTMScopeKind(String)
     case missingPerUserScopeUUID
     case snapshotNotFound(Int64)
+}
+
+public enum SnapshotStoreOpenError: Error, Sendable, Equatable {
+    /// The database records migrations this build does not know: it was
+    /// written by a newer Permission Pulse.
+    case createdByNewerVersion
+    /// SQLite reports the file as damaged or not a database.
+    case corrupt(String)
 }
