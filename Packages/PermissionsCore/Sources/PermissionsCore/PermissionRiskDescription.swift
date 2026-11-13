@@ -95,9 +95,10 @@ extension PermissionService {
 /// One-line menu-bar hygiene signal counting distinct apps that hold each
 /// surfaced high-risk service. (F4)
 public enum PermissionRiskSummary {
-    /// High-risk services worth surfacing, in display order.
+    /// High-risk services worth surfacing, by `riskSeverity`, highest first.
     private static let surfaced: [PermissionService] = [
-        .fullDiskAccess, .accessibility, .inputMonitoring, .screenRecording,
+        .fullDiskAccess, .endpointSecurity, .accessibility, .remoteDesktop,
+        .inputMonitoring, .screenRecording,
     ]
 
     /// e.g. "3 Full Disk Access · 1 Accessibility". `nil` when none are held.
