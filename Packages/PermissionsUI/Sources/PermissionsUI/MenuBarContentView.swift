@@ -60,6 +60,11 @@ public struct MenuBarContentView: View {
                         .ppFont(.metadata)
                         .foregroundStyle(.secondary)
                 }
+            } else if let updated = ScanTimestamp.updatedText(lastScan: viewModel.lastScanDate) {
+                Text(updated)
+                    .ppFont(.metadata)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
             }
         }
     }
@@ -87,7 +92,8 @@ public struct MenuBarContentView: View {
             changeCount: viewModel.unreviewedChangeCount,
             hasUnreviewedChanges: viewModel.hasUnreviewedChanges,
             staleCount: viewModel.staleApps.count,
-            appCount: Set(viewModel.grants.map(\.appKey)).count
+            appCount: Set(viewModel.grants.map(\.appKey)).count,
+            isTranslocated: viewModel.isTranslocated
         )
     }
 
@@ -212,13 +218,14 @@ private struct StatusRowButton: View {
     private var isCountRow: Bool {
         switch row.kind {
         case .changes, .stale, .allClear: true
-        case .attention, .media: false
+        case .attention, .moveToApplications, .media: false
         }
     }
 
     private var symbolName: String {
         switch row.kind {
         case .attention: "exclamationmark.triangle.fill"
+        case .moveToApplications: "folder.badge.questionmark"
         case .media(_, true): "video.fill"
         case .media: "mic.fill"
         case .changes: "clock.arrow.circlepath"
@@ -229,7 +236,7 @@ private struct StatusRowButton: View {
 
     private var iconColor: Color {
         switch row.kind {
-        case .attention: PPColor.warning
+        case .attention, .moveToApplications: PPColor.warning
         case .media: PPColor.danger
         case .changes: PPColor.recentChanges
         case .stale: PPColor.staleApps

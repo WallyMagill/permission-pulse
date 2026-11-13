@@ -9,13 +9,34 @@ struct DropdownStatusTests {
         attention: AttentionState = .clean,
         mic: Bool = false, camera: Bool = false,
         changeCount: Int = 0, hasUnreviewed: Bool = false,
-        staleCount: Int = 0, appCount: Int = 42
+        staleCount: Int = 0, appCount: Int = 42, translocated: Bool = false
     ) -> [DropdownStatusRow] {
         DropdownStatusBuilder.rows(
             attention: attention, micInUse: mic, cameraInUse: camera,
             changeCount: changeCount, hasUnreviewedChanges: hasUnreviewed,
-            staleCount: staleCount, appCount: appCount
+            staleCount: staleCount, appCount: appCount, isTranslocated: translocated
         )
+    }
+
+    @Test("A translocated copy gets the move instruction right after any attention row")
+    func translocated() {
+        let result = rows(attention: .fdaDenied, mic: true, translocated: true)
+        #expect(result.map(\.kind).prefix(3) == [.attention(.fdaDenied), .moveToApplications, .media(mic: true, camera: false)])
+        #expect(result[1].title == "Move Permission Pulse to your Applications folder, then open it from there.")
+        #expect(!rows().contains { $0.kind == .moveToApplications })
+    }
+
+    @Test("Header says when the last scan finished: time today, date otherwise")
+    func updatedText() throws {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = try #require(TimeZone(identifier: "UTC"))
+        let now = Date(timeIntervalSince1970: 1_700_000_000)
+        #expect(ScanTimestamp.updatedText(lastScan: nil, now: now, calendar: calendar) == nil)
+        let today = try #require(ScanTimestamp.updatedText(lastScan: now.addingTimeInterval(-60), now: now, calendar: calendar))
+        let older = try #require(ScanTimestamp.updatedText(lastScan: now.addingTimeInterval(-3 * 86_400), now: now, calendar: calendar))
+        #expect(today == "Updated \(now.addingTimeInterval(-60).formatted(date: .omitted, time: .shortened))")
+        #expect(older.hasPrefix("Updated "))
+        #expect(older.count > today.count)
     }
 
     @Test("All-clear shows only the summary row, routed to Overview")

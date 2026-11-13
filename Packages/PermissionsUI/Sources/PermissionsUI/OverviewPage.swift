@@ -53,10 +53,17 @@ struct OverviewPage: View {
 
     private var hasAttentionContent: Bool {
         viewModel.attentionState != .clean || viewModel.hasUnreviewedChanges
+            || viewModel.isTranslocated
     }
 
     @ViewBuilder
     private var attentionRows: some View {
+        if viewModel.isTranslocated {
+            Label(
+                String(localized: "Move Permission Pulse to your Applications folder, then open it from there."),
+                systemImage: "folder.badge.questionmark"
+            )
+        }
         switch viewModel.attentionState {
         case .fdaDenied:
             attentionRow(

@@ -48,6 +48,9 @@ public final class AppViewModel {
     /// code that has no SwiftUI `openWindow` (the app delegate).
     public var windowToOpen: String?
 
+    /// This copy runs from a temporary App Translocation path; set at launch.
+    public var isTranslocated: Bool = false
+
     // Stamped by AppDelegate after each completed scan; Overview displays it.
     public var lastScanDate: Date?
 

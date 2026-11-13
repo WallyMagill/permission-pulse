@@ -5,6 +5,8 @@ import Foundation
 public struct DropdownStatusRow: Equatable, Sendable, Identifiable {
     public enum Kind: Equatable, Sendable {
         case attention(AttentionState)
+        /// Running from a temporary App Translocation copy.
+        case moveToApplications
         case media(mic: Bool, camera: Bool)
         case changes(count: Int)
         case stale(count: Int)
@@ -17,6 +19,7 @@ public struct DropdownStatusRow: Equatable, Sendable, Identifiable {
     public var id: String {
         switch kind {
         case .attention: "attention"
+        case .moveToApplications: "moveToApplications"
         case .media: "media"
         case .changes: "changes"
         case .stale: "stale"
@@ -42,6 +45,8 @@ public struct DropdownStatusRow: Equatable, Sendable, Identifiable {
             String(localized: "Scan data is stale")
         case .attention(.clean):
             "" // builder never emits this
+        case .moveToApplications:
+            String(localized: "Move Permission Pulse to your Applications folder, then open it from there.")
         case .media(true, true):
             String(localized: "Microphone and camera are in use")
         case .media(true, false):
@@ -65,8 +70,9 @@ public struct DropdownStatusRow: Equatable, Sendable, Identifiable {
 }
 
 /// Pure derivation of the dropdown's status rows. Order: attention first,
-/// live media, unreviewed changes, stale apps, then the always-present
-/// summary row (which doubles as the "all clear" line).
+/// then the move-to-Applications instruction, live media, unreviewed
+/// changes, stale apps, then the always-present summary row (which doubles
+/// as the "all clear" line).
 public enum DropdownStatusBuilder {
     public static func rows(
         attention: AttentionState,
@@ -75,7 +81,8 @@ public enum DropdownStatusBuilder {
         changeCount: Int,
         hasUnreviewedChanges: Bool,
         staleCount: Int,
-        appCount: Int
+        appCount: Int,
+        isTranslocated: Bool = false
     ) -> [DropdownStatusRow] {
         var result: [DropdownStatusRow] = []
         switch attention {
@@ -89,6 +96,9 @@ public enum DropdownStatusBuilder {
             result.append(.init(kind: .attention(attention), route: .launchAgents(selectID: nil)))
         case .scanFailed, .degradedData, .staleData:
             result.append(.init(kind: .attention(attention), route: .overview))
+        }
+        if isTranslocated {
+            result.append(.init(kind: .moveToApplications, route: .overview))
         }
         if micInUse || cameraInUse {
             result.append(.init(
@@ -104,5 +114,22 @@ public enum DropdownStatusBuilder {
         }
         result.append(.init(kind: .allClear(appCount: appCount), route: .overview))
         return result
+    }
+}
+
+/// The dropdown header's "Updated …" line.
+public enum ScanTimestamp {
+    /// Time of day for a scan today, date and time otherwise; nil before
+    /// the first scan.
+    public static func updatedText(
+        lastScan: Date?,
+        now: Date = Date(),
+        calendar: Calendar = .autoupdatingCurrent
+    ) -> String? {
+        guard let lastScan else { return nil }
+        let formatted = calendar.isDate(lastScan, inSameDayAs: now)
+            ? lastScan.formatted(date: .omitted, time: .shortened)
+            : lastScan.formatted(date: .abbreviated, time: .shortened)
+        return String(localized: "Updated \(formatted)")
     }
 }

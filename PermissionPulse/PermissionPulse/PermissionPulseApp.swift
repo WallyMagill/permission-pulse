@@ -262,6 +262,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // Preferences test notification never visibly fires.
         UNUserNotificationCenter.current().delegate = notificationPresentationDelegate
         openSnapshotStore()
+        viewModel.isTranslocated = AppLocation.isTranslocated(Bundle.main.bundlePath)
 
         coordinator = ScanCoordinator(viewModel: viewModel)
         Task { @MainActor [weak self] in
