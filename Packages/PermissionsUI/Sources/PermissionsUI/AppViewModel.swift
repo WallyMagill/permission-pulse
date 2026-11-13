@@ -44,6 +44,9 @@ public final class AppViewModel {
     // Set by glance surfaces (dropdown rows) before opening the detail
     // window. The window consumes it on appear / onChange, then clears it.
     public var pendingRoute: AppRoute?
+    /// A window scene id for the hidden trampoline window to open, set by
+    /// code that has no SwiftUI `openWindow` (the app delegate).
+    public var windowToOpen: String?
 
     // Stamped by AppDelegate after each completed scan; Overview displays it.
     public var lastScanDate: Date?

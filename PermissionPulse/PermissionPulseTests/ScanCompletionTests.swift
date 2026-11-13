@@ -1,3 +1,4 @@
+import AppKit
 import Foundation
 import Testing
 import PermissionsCore
@@ -108,5 +109,19 @@ extension MockWeeklyDigestScheduler {
                   identifier.hasPrefix(prefix) else { return nil }
             return (identifier, title, body)
         }
+    }
+}
+
+@Suite @MainActor struct ReopenTests {
+    @Test func reopenAsksTheTrampolineForTheDetailWindowOnOverview() throws {
+        let env = try ScanEnvironment()
+        defer { env.cleanUp() }
+        env.delegate.viewModel.pendingRoute = .recentChanges
+
+        let handledByDefault = env.delegate.applicationShouldHandleReopen(NSApplication.shared, hasVisibleWindows: false)
+
+        #expect(!handledByDefault)
+        #expect(env.delegate.viewModel.windowToOpen == "detail")
+        #expect(env.delegate.viewModel.pendingRoute == .overview)
     }
 }

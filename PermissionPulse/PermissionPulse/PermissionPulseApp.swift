@@ -18,7 +18,8 @@ struct PermissionPulseApp: App {
         // FIRST (before any Settings scene or other WindowGroup). See
         // docs/03-architecture.md.
         WindowGroup(id: "settings-trampoline") {
-            EmptyView().frame(width: 0, height: 0)
+            WindowOpeningTrampoline()
+                .environment(appDelegate.viewModel)
         }
         .windowResizability(.contentSize)
         .defaultSize(width: 0, height: 0)
@@ -249,24 +250,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             Self.logger.debug("Skipping production launch services in test mode")
             return
         }
+        Task { @MainActor [weak self] in
+            guard await SingleInstanceGuard.resolve() else { return }
+            self?.startRuntime()
+        }
+    }
 
+    private func startRuntime() {
         // Set before anything schedules: without a willPresent delegate,
         // macOS suppresses banners while the app is frontmost, so the
         // Preferences test notification never visibly fires.
         UNUserNotificationCenter.current().delegate = notificationPresentationDelegate
-
-        do {
-            let url = try SnapshotPath.canonicalURL()
-            snapshotStore = try SnapshotStore(path: url.path(percentEncoded: false))
-        } catch {
-            Self.logger.error(
-                "SnapshotStore init failed: \(error.localizedDescription, privacy: .public)"
-            )
-            viewModel.snapshotStoreProblem = Self.storeProblem(for: error)
-        }
-        if let snapshotStore {
-            installSnapshotRuntime(snapshotStore)
-        }
+        openSnapshotStore()
 
         coordinator = ScanCoordinator(viewModel: viewModel)
         Task { @MainActor [weak self] in
@@ -287,6 +282,33 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         if !runtimeDefaults.bool(forKey: Self.hasSeenWelcomeKey) {
             showWelcomeWindow()
         }
+    }
+
+    private func openSnapshotStore() {
+        do {
+            let url = try SnapshotPath.canonicalURL()
+            snapshotStore = try SnapshotStore(path: url.path(percentEncoded: false))
+        } catch {
+            Self.logger.error(
+                "SnapshotStore init failed: \(error.localizedDescription, privacy: .public)"
+            )
+            viewModel.snapshotStoreProblem = Self.storeProblem(for: error)
+        }
+        if let snapshotStore {
+            installSnapshotRuntime(snapshotStore)
+        }
+    }
+
+    /// Double-clicking the running app in Finder: it has no Dock icon, and
+    /// its menu-bar icon may be hidden, so show the main window on Overview.
+    func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
+        showDetailWindow(route: .overview)
+        return false
+    }
+
+    func showDetailWindow(route: AppRoute) {
+        viewModel.pendingRoute = route
+        viewModel.windowToOpen = "detail"
     }
 
     func applicationDidBecomeActive(_ notification: Notification) {
