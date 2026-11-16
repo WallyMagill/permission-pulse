@@ -25,13 +25,13 @@ import PermissionsStore
         #expect(vm.menuBarSymbolName == "video.badge.waveform")
     }
 
-    @Test func tccErrorBeatsMicAndCamera() {
+    @Test func liveMicAndCameraBeatTCCError() {
         let vm = AppViewModel(
             tccScanError: .permissionDenied(reason: "FDA needed"),
             micInUse: true,
             cameraInUse: true
         )
-        #expect(vm.menuBarSymbolName == "exclamationmark.shield.fill")
+        #expect(vm.menuBarSymbolName == "video.badge.waveform")
     }
 
     @Test func btmErrorAloneStillFlipsToError() {
@@ -57,9 +57,9 @@ import PermissionsStore
         #expect(vm.menuBarSymbolName == "exclamationmark.shield.fill")
     }
 
-    @Test func unreviewedChangesBeatsMicAndCamera() {
-        let vm = unreviewedViewModel(micInUse: true, cameraInUse: true)
-        #expect(vm.menuBarSymbolName == "bell.badge.fill")
+    @Test func liveMicBeatsUnreviewedChanges() {
+        let vm = unreviewedViewModel(micInUse: true)
+        #expect(vm.menuBarSymbolName == "mic.fill")
     }
 
     @Test func errorBeatsUnreviewedChanges() {
@@ -81,7 +81,6 @@ import PermissionsStore
     ) -> AppViewModel {
         let latest = SnapshotID(rawValue: 99)
         let diff = SnapshotDiffs(
-            fromID: SnapshotID(rawValue: 98),
             toID: latest,
             tcc: TCCGrantsDiff(added: [], removed: []),
             btm: BTMItemsDiff(added: [], removed: []),
@@ -104,7 +103,7 @@ import PermissionsStore
             cameraInUse: cameraInUse,
             latestSnapshotID: latest,
             lastReviewedSnapshotID: nil,
-            latestDiffYesterday: diff
+            latestDiffSinceReview: diff
         )
     }
 }

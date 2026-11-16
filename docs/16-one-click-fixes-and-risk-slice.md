@@ -1,5 +1,7 @@
 # 16 — Seventh slice: one-click fixes and risk explanations
 
+> Historical slice spec; file names reflect that release and may have moved.
+
 **Status:** Implemented v0.6.0 — 2026-05-15.
 
 ## Why this slice

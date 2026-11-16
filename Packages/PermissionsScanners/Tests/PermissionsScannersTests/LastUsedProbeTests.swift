@@ -19,12 +19,21 @@ import PermissionsCore
         #expect(result == nil)
     }
 
+    @Test func hybridProbeSkipsAnythingThatIsNotAnAppBundle() async throws {
+        let tempURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent("permission-pulse-stale-probe-\(UUID().uuidString)")
+        try Data().write(to: tempURL)
+        defer { try? FileManager.default.removeItem(at: tempURL) }
+
+        #expect(await LastUsedProbeHybrid().lastUsedDate(for: tempURL) == nil)
+    }
+
     @Test func hybridProbeFallsBackToFileSystemWhenSpotlightMissing() async throws {
-        // Create a real temp file with a known modification date. Spotlight will
+        // Create a real temp bundle with a known modification date. Spotlight will
         // almost certainly return (null) for /tmp paths, exercising the fallback.
         let tempDir = FileManager.default.temporaryDirectory
-        let tempURL = tempDir.appendingPathComponent("permission-pulse-stale-probe-\(UUID().uuidString)")
-        try Data().write(to: tempURL)
+        let tempURL = tempDir.appendingPathComponent("permission-pulse-stale-probe-\(UUID().uuidString).app")
+        try FileManager.default.createDirectory(at: tempURL, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: tempURL) }
 
         // Set a fixed mtime in the past (90+ days).

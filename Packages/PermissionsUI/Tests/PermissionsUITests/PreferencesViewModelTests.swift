@@ -254,22 +254,59 @@ import Testing
 
     @Test("Launch-at-login toggle applies the system result, not the request")
     @MainActor
-    func launchAtLoginAppliesSystemResult() async {
+    func launchAtLoginAppliesSystemResult() {
         var requested: Bool?
         let vm = PreferencesViewModel(
             store: PreferencesStore(defaults: fresh()),
-            onDigestToggle: { _ in .disabled },
-            onSendTestNotification: { .idle },
-            onFetchNextFireDate: { nil },
-            initialLaunchAtLogin: false,
-            onLaunchAtLoginToggle: { enable in
-                requested = enable
-                return false   // system refused (e.g. SMAppService error)
-            }
+            fetchLaunchAtLoginStatus: { .notRegistered },
+            onLaunchAtLoginToggle: { requested = $0 }
         )
-        await vm.setLaunchAtLogin(true)
+        vm.setLaunchAtLogin(true)
         #expect(requested == true)
-        #expect(vm.launchAtLoginEnabled == false)  // reflects reality, not the wish
+        #expect(vm.launchAtLoginStatus == .notRegistered)  // reflects reality, not the wish
+        #expect(!vm.launchAtLoginEnabled)
+    }
+
+    @Test("Requires-approval keeps the toggle on and is exposed for the approval hint")
+    @MainActor
+    func launchAtLoginRequiresApproval() {
+        var status = LaunchAtLoginStatus.notRegistered
+        let vm = PreferencesViewModel(
+            store: PreferencesStore(defaults: fresh()),
+            fetchLaunchAtLoginStatus: { status },
+            onLaunchAtLoginToggle: { _ in status = .requiresApproval }
+        )
+        vm.setLaunchAtLogin(true)
+        #expect(vm.launchAtLoginStatus == .requiresApproval)
+        #expect(vm.launchAtLoginEnabled)
+    }
+
+    @Test("A thrown launch-at-login error is shown, and a later success clears it")
+    @MainActor
+    func launchAtLoginErrorSurfaces() {
+        var shouldFail = true
+        let vm = PreferencesViewModel(
+            store: PreferencesStore(defaults: fresh()),
+            onLaunchAtLoginToggle: { _ in if shouldFail { throw LaunchAtLoginTestError() } }
+        )
+        vm.setLaunchAtLogin(true)
+        #expect(vm.launchAtLoginError == "Operation not permitted by the test")
+        shouldFail = false
+        vm.setLaunchAtLogin(true)
+        #expect(vm.launchAtLoginError == nil)
+    }
+
+    @Test("Refreshing picks up a change made in System Settings")
+    @MainActor
+    func launchAtLoginRefreshReadsSystemState() {
+        var status = LaunchAtLoginStatus.enabled
+        let vm = PreferencesViewModel(
+            store: PreferencesStore(defaults: fresh()),
+            fetchLaunchAtLoginStatus: { status }
+        )
+        status = .notRegistered
+        vm.refreshLaunchAtLoginStatus()
+        #expect(vm.launchAtLoginStatus == .notRegistered)
     }
 
     // MARK: - Helpers
@@ -284,6 +321,10 @@ import Testing
             await Task.yield()
         }
     }
+}
+
+private struct LaunchAtLoginTestError: LocalizedError {
+    var errorDescription: String? { "Operation not permitted by the test" }
 }
 
 private actor RefreshHintGate {

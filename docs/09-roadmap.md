@@ -102,7 +102,7 @@ A small post-v0.7.0 code-review follow-up — no new features:
 
 (The store/window fixes also visible in recent history — `computeDiff` no longer traps on duplicate identity keys, `latestSnapshotID` orders by `created_at`, singleton detail/preferences windows + Preferences toolbar entry — landed within the v0.7.0 tag range, not v0.7.1.)
 
-## Unreleased — on `main` since v0.7.1 (next tag)
+## Unreleased since v0.7.1 (on `main`, plus `release/v0.7.2` until it merges)
 
 Landed after the v0.7.1 tag; ships in the next release:
 
@@ -112,17 +112,29 @@ Landed after the v0.7.1 tag; ships in the next release:
 - Launch at login via `SMAppService` (Preferences → General). ✅
 - TCC `auth_value` change tracking in the diff engine and rendered authorization-transition rows, including consistent badge/search/dismiss/digest counts. ✅
 - Stable `bundle:` / `path:` identities, installed bundle-path retention, and migrated stale-app dismissals. ✅
-- Typed scanner coverage with complete/degraded/failed states, last-known failure behavior, and degraded snapshot suppression. ✅
+- Typed scanner coverage with complete/degraded/failed states, last-known failure behavior, and degraded snapshot suppression (superseded by per-domain coverage in the core-loop item below). ✅
 - Snapshot schema v5 persists LaunchAgent disabled state with a compatibility marker that preserves v4 history and suppresses false upgrade transitions. ✅
 - Section-aware search: Overview has no false affordance; Recent Changes searches every rendered TCC/BTM/LaunchAgent row kind. ✅
 - Notification banners present while the app is frontmost (`NotificationPresentationDelegate`). ✅
+- Core loop: scans run at launch, on wake, on calendar-day change, and on a stale open (`ScanScheduler`); snapshots are written when the evidence changes instead of once per day; snapshot schema v6 records per-domain coverage so one degraded or failed scanner no longer blocks history for the others; Recent Changes shows when history was last updated and names domains it could not compare; label-less launchd plists are treated as inert instead of malformed. See `docs/superpowers/specs/2026-10-10-core-loop-design.md`. ✅
+- macOS 27 compatibility: Background Items reads the per-user store layout (`BackgroundItems-v18-<UUID>.btm`); Permissions treats the per-user TCC database, which macOS 27 no longer exposes to any app, as out of scope instead of a failed read — the banner says "System-level permissions only" and snapshots record `reduced` coverage. On macOS 27+ a per-user directory without a `TCC.db` is also treated as unexposed. ✅
+- Launch Agents fidelity: a plist that cannot be read or parsed (e.g. a root-only 0700 daemon) is listed as "Details unreadable" instead of degrading the section; dangling symlinks are ignored; disabled state comes from launchd's override files (`/private/var/db/com.apple.xpc.launchd/disabled.plist`, `disabled.<uid>.plist`); rows show the program and scope, "Program not found" marks a job whose program is gone, and Recent Changes describes launch-agent changes in plain language. ✅
+- Snapshot schema v7: `launch_agents.details_readable` and `launch_agents.file_name`; v4/v5/v6 databases migrate in place. A database written by a newer version or a corrupt one gets its own Recent Changes state instead of being opened; writes wait up to 5 s on a lock. ✅
+- Background Items: every observed `type` value is named (login item, app agent, legacy agent and daemon, background tasks, Spotlight / QuickLook / Dock tile extensions); identity is scope + identifier; diffs compare disposition and type only. ✅
+- Permissions: Remote Desktop and Endpoint Security grants (18 services; both are system-level and counted in Overview's risk line); "App not found on this Mac" badge for grants whose app is gone; diffs compare the authorization state only. ✅
+- History: each section picks its own baseline, and pruning keeps those baselines. Recent Changes' first window is "Since Last Review" (replacing the old "Yesterday" window), marked reviewed on leaving the page, closing the window on it, or Mark All Reviewed; the first snapshot ever is the first baseline. Each section not compared says why; a macOS 26 history compared with a macOS 27 scan covers the system-level permissions only. One visible-change list feeds the page, badges, counts, change alerts, and the digest. ✅
+- Notifications: opt-in change alerts (`changeAlertsEnabled`) after a scan writes a snapshot; clicking a change alert or the digest opens Recent Changes; the weekly digest is re-armed after every scan with a non-repeating trigger; the Preferences "Digest" tab is now "Notifications". ✅
+- Full Disk Access: loss after an update or a revocation opens a recovery window once per build (`lastLaunchedVersion`, `fdaPromptShownForVersion`) that waits for the user to come back, checks again, and offers Reopen; the Welcome window runs the same loop. ✅
+- App behavior: double-clicking the running app in Finder opens the detail window; only one copy runs at a time; launch-at-login shows its real status, including requires-approval; Check for Updates… (dropdown and Preferences → General → About, which shows the version) opens the Releases page in the browser; the dropdown footer's welcome item is "Welcome Tour"; the dropdown header shows "Updated <time>"; a copy running from App Translocation is told to move to Applications; live mic/camera use wins the menu-bar icon; mic and camera devices added or removed after launch are followed. ✅
+- macOS 27 scope stated everywhere: hidden-service searches, the dropdown summary, Overview's "Permission coverage" row, the app inspector, and Stale Apps (banner and separate empty states for no data and no history). ✅
+- Data: export records app and macOS versions, per-section scan coverage, and export `schemaVersion` 2; Preferences → Data can restore dismissed changes and skipped stale apps and has Copy Diagnostics; attention rows open the section they are about. ✅
+- Stale Apps probes only `.app` bundles and says "Last modified" when the date came from the file. ✅
 
 ## v0.8.x — Remaining model fidelity (planned, deferred from v0.7.0)
 
 Carried over from `docs/17` "Deferred to later slices":
 
 - Sub-service preservation for `.filesAndFolders` / Photos / Bluetooth (the five folder-scope TCC strings currently collapse to one grant).
-- Notification click → open Recent Changes (needs a `UNUserNotificationCenterDelegate` routing into `pendingDetailMode`).
 
 ## v1.0.0 — First public release
 

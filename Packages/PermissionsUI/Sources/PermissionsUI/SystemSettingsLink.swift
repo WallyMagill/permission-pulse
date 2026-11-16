@@ -52,10 +52,12 @@ enum SystemSettingsLink {
     )!
 
     static func urlString(for service: PermissionService) -> String {
-        "x-apple.systempreferences:com.apple.preference.security?\(anchor(for: service))"
+        guard let anchor = anchor(for: service) else { return privacyPaneURL.absoluteString }
+        return "x-apple.systempreferences:com.apple.preference.security?\(anchor)"
     }
 
-    private static func anchor(for service: PermissionService) -> String {
+    // nil where no anchor has been verified; those open the top-level pane.
+    private static func anchor(for service: PermissionService) -> String? {
         switch service {
         case .accessibility:   "Privacy_Accessibility"
         case .screenRecording: "Privacy_ScreenCapture"
@@ -73,6 +75,7 @@ enum SystemSettingsLink {
         case .appManagement:   "Privacy_AppBundles"
         case .inputMonitoring: "Privacy_ListenEvent"
         case .developerTool:   "Privacy_DeveloperTool"
+        case .remoteDesktop, .endpointSecurity: nil
         }
     }
 }

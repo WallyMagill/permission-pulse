@@ -18,9 +18,14 @@ import PermissionsStore
         #expect(AppViewModel().menuBarAccessibilityLabel == String(localized: "Permission Pulse"))
     }
 
-    @Test func errorTakesPrecedence() {
+    @Test func fullDiskAccessDenialIsNamedNotCalledAScanError() {
         let vm = AppViewModel(tccScanError: .permissionDenied(reason: "x"))
-        #expect(vm.menuBarAccessibilityLabel.contains("action needed"))
+        #expect(vm.menuBarAccessibilityLabel == "Permission Pulse — Full Disk Access is off")
+    }
+
+    @Test func liveMediaAndAWarningAreBothRead() {
+        let vm = AppViewModel(tccScanError: .permissionDenied(reason: "x"), micInUse: true)
+        #expect(vm.menuBarAccessibilityLabel == "Permission Pulse — microphone in use; Full Disk Access is off")
     }
 
     @Test func degradedDataIsNamedWithoutRelyingOnTheIcon() {
@@ -75,7 +80,6 @@ import PermissionsStore
     @Test func unreviewedChangesAnnounced() {
         let latest = SnapshotID(rawValue: 99)
         let diff = SnapshotDiffs(
-            fromID: SnapshotID(rawValue: 98),
             toID: latest,
             tcc: TCCGrantsDiff(added: [], removed: []),
             btm: BTMItemsDiff(added: [], removed: []),
@@ -96,8 +100,39 @@ import PermissionsStore
         let vm = AppViewModel(
             latestSnapshotID: latest,
             lastReviewedSnapshotID: nil,
-            latestDiffYesterday: diff
+            latestDiffSinceReview: diff
         )
         #expect(vm.menuBarAccessibilityLabel.contains("unreviewed"))
+    }
+
+    @Test func mediaAWarningAndUnreviewedChangesAreAllRead() {
+        let latest = SnapshotID(rawValue: 99)
+        let vm = AppViewModel(
+            tccScanError: .permissionDenied(reason: "x"),
+            micInUse: true,
+            latestSnapshotID: latest,
+            latestDiffSinceReview: SnapshotDiffs(
+                toID: latest,
+                tcc: TCCGrantsDiff(added: [], removed: []),
+                btm: BTMItemsDiff(added: [], removed: []),
+                launchAgents: LaunchAgentsDiff(
+                    added: [LaunchAgentItem(
+                        label: "com.example.new", sourceDirectory: .userLaunchAgents,
+                        programPath: "/bin/new", programArguments: [], runAtLoad: true, keepAlive: false
+                    )],
+                    removed: []
+                )
+            )
+        )
+        #expect(vm.menuBarAccessibilityLabel
+            == "Permission Pulse — microphone in use; Full Disk Access is off; unreviewed changes")
+    }
+
+    @Test func historyThatIsNotRecordedIsAnnouncedAndNotAllClear() {
+        let vm = AppViewModel()
+        vm.snapshotWriteFailed = true
+        #expect(vm.menuBarAccessibilityLabel == "Permission Pulse — history isn't being recorded")
+        #expect(vm.menuBarSymbolName == "exclamationmark.shield.fill")
+        #expect(vm.attentionItems.map(\.domain) == [.history])
     }
 }

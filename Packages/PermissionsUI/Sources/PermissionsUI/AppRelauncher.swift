@@ -10,6 +10,10 @@ public enum AppRelauncher {
         category: "app-relauncher"
     )
 
+    /// Names the process a relaunched instance replaces, so the new one waits
+    /// for it to quit instead of handing off to it as a duplicate.
+    public static let relaunchedFromArgument = "--relaunched-from"
+
     /// Launch a new instance of this app, then terminate the current process.
     /// Used to recover from the FDA grant loop, where a running process stays
     /// denied until restart. (U3)
@@ -17,6 +21,10 @@ public enum AppRelauncher {
         let url = Bundle.main.bundleURL
         let configuration = NSWorkspace.OpenConfiguration()
         configuration.createsNewApplicationInstance = true
+        configuration.arguments = [
+            relaunchedFromArgument,
+            String(ProcessInfo.processInfo.processIdentifier),
+        ]
         Task { @MainActor in
             do {
                 _ = try await NSWorkspace.shared.openApplication(at: url, configuration: configuration)
@@ -28,5 +36,12 @@ public enum AppRelauncher {
                 logger.error("Relaunch failed; keeping current instance: \(error.localizedDescription, privacy: .public)")
             }
         }
+    }
+
+    /// The process ID passed by `relaunch()`, if this instance was started by it.
+    public static func relaunchedFromPID(in arguments: [String]) -> pid_t? {
+        guard let index = arguments.firstIndex(of: relaunchedFromArgument),
+              arguments.indices.contains(index + 1) else { return nil }
+        return pid_t(arguments[index + 1])
     }
 }

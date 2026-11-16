@@ -39,22 +39,29 @@ public struct TCCScannerSQLite: TCCScanner, Sendable {
 
     private let databaseURLs: [URL]
     private let applicationResolver: any ApplicationResolving
+    private let osMajorVersion: Int
+    private let fileExists: @Sendable (String) -> Bool
 
     public init() {
-        self.databaseURLs = [Self.userDatabaseURL, Self.systemDatabaseURL]
-        self.applicationResolver = WorkspaceApplicationResolver()
+        self.init(databaseURLs: [Self.userDatabaseURL, Self.systemDatabaseURL])
     }
 
+    /// `databaseURLs[0]` is treated as the per-user database.
     public init(
         databaseURLs: [URL],
-        applicationResolver: any ApplicationResolving = WorkspaceApplicationResolver()
+        applicationResolver: any ApplicationResolving = WorkspaceApplicationResolver(),
+        osMajorVersion: Int = ProcessInfo.processInfo.operatingSystemVersion.majorVersion,
+        fileExists: @escaping @Sendable (String) -> Bool = { FileManager.default.fileExists(atPath: $0) }
     ) {
         self.databaseURLs = databaseURLs
         self.applicationResolver = applicationResolver
+        self.osMajorVersion = osMajorVersion
+        self.fileExists = fileExists
     }
 
     public func scan() async throws -> ScannerOutput<PermissionGrant> {
-        let results = await readAllDatabases()
+        let unexposed = databaseURLs.indices.filter { !isExposed(databaseAt: $0) }
+        let results = await readAllDatabases(skipping: Set(unexposed))
 
         let failures = results.compactMap { index, url, result -> (Int, URL, any Error)? in
             switch result {
@@ -67,8 +74,10 @@ public struct TCCScannerSQLite: TCCScanner, Sendable {
             try? result.get()
         }
 
-        if successes.isEmpty, let firstFailure = failures.first {
-            throw firstFailure.2
+        if successes.isEmpty {
+            throw failures.first?.2 ?? ScannerError.unsupportedOnThisOS(
+                detail: String(localized: "This macOS version does not expose any permission database.")
+            )
         }
 
         for (_, url, error) in failures {
@@ -84,7 +93,28 @@ public struct TCCScannerSQLite: TCCScanner, Sendable {
         let warnings = failures.map { index, _, _ in
             ScannerWarning(source: Self.scannerSource(forDatabaseAt: index))
         }
-        return ScannerOutput(items: items, warnings: warnings)
+        return ScannerOutput(
+            items: items,
+            warnings: warnings,
+            unavailableSources: unexposed.map(Self.scannerSource(forDatabaseAt:))
+        )
+    }
+
+    /// macOS 27 moved the per-user TCC database out of
+    /// `~/Library/Application Support/com.apple.TCC/` into a protected system
+    /// container that Full Disk Access does not open (observed on 27.2,
+    /// build 26B123). The old directory no longer exists there, whereas on
+    /// earlier releases it exists even when FDA is missing — reading inside it
+    /// is what gets denied. A missing directory therefore means "not exposed
+    /// on this OS", not "permission denied". On macOS 27+ a directory that
+    /// reappears at the old per-user path (recreated by some tool) holds no
+    /// TCC.db either; without this, it would read as a permanent
+    /// Full Disk Access error.
+    private func isExposed(databaseAt index: Int) -> Bool {
+        let url = databaseURLs[index]
+        guard fileExists(url.deletingLastPathComponent().path(percentEncoded: false)) else { return false }
+        let isPerUser = index == 0
+        return !(isPerUser && osMajorVersion >= 27 && !fileExists(url.path(percentEncoded: false)))
     }
 
     // TCC.db produces duplicates in two common situations:
@@ -115,11 +145,13 @@ public struct TCCScannerSQLite: TCCScanner, Sendable {
         return Array(byKey.values)
     }
 
-    private func readAllDatabases() async -> [(Int, URL, Result<[TCCRow], any Error>)] {
+    private func readAllDatabases(
+        skipping skipped: Set<Int>
+    ) async -> [(Int, URL, Result<[TCCRow], any Error>)] {
         await withTaskGroup(
             of: (Int, URL, Result<[TCCRow], any Error>).self
         ) { group in
-            for (index, url) in databaseURLs.enumerated() {
+            for (index, url) in databaseURLs.enumerated() where !skipped.contains(index) {
                 group.addTask {
                     do {
                         let rows = try await Self.readRows(from: url)
@@ -343,15 +375,15 @@ public struct TCCScannerSQLite: TCCScanner, Sendable {
     )
 
     private static let busyReason = String(
-        localized: "The TCC database is temporarily locked by macOS. Try Refresh in a moment."
+        localized: "The TCC database is temporarily locked by macOS. Try Rescan in a moment."
     )
 
     private static let ioErrorReason = String(
-        localized: "A disk I/O error occurred reading the TCC database. Check available disk space and try Refresh."
+        localized: "A disk I/O error occurred reading the TCC database. Check available disk space and try Rescan."
     )
 
     private static let unexpectedReadReason = String(
-        localized: "The TCC database is temporarily unavailable. Try Refresh in a moment."
+        localized: "The TCC database is temporarily unavailable. Try Rescan in a moment."
     )
 
     private struct TCCRow: Sendable {

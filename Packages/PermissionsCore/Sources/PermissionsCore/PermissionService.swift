@@ -17,6 +17,8 @@ public enum PermissionService: String, Sendable, CaseIterable, Hashable {
     case appManagement
     case inputMonitoring
     case developerTool
+    case remoteDesktop
+    case endpointSecurity
 
     public var displayName: String {
         switch self {
@@ -36,8 +38,22 @@ public enum PermissionService: String, Sendable, CaseIterable, Hashable {
         case .appManagement:   String(localized: "App Management")
         case .inputMonitoring: String(localized: "Input Monitoring")
         case .developerTool:   String(localized: "Developer Tools")
+        case .remoteDesktop:   String(localized: "Remote Desktop")
+        case .endpointSecurity: String(localized: "Endpoint Security")
         }
     }
+
+    /// Services whose grants live in the system TCC database. macOS 27 hides
+    /// the per-user database, so these are all a reduced scan can see.
+    public static let systemLevel: Set<PermissionService> = [
+        .accessibility,
+        .fullDiskAccess,
+        .inputMonitoring,
+        .screenRecording,
+        .developerTool,
+        .remoteDesktop,
+        .endpointSecurity,
+    ]
 
     public static let knownSkipped: Set<String> = [
         "kTCCServiceLiverpool",
@@ -69,6 +85,8 @@ public enum PermissionService: String, Sendable, CaseIterable, Hashable {
         case .appManagement:   "SystemPolicyAppBundles"
         case .inputMonitoring: "ListenEvent"
         case .developerTool:   "DeveloperTool"
+        case .remoteDesktop:   "RemoteDesktop"
+        case .endpointSecurity: "EndpointSecurityClient"
         }
     }
 
@@ -100,6 +118,8 @@ public enum PermissionService: String, Sendable, CaseIterable, Hashable {
             self = .appManagement
         case "kTCCServiceListenEvent":                self = .inputMonitoring
         case "kTCCServiceDeveloperTool":              self = .developerTool
+        case "kTCCServiceRemoteDesktop":              self = .remoteDesktop
+        case "kTCCServiceEndpointSecurityClient":     self = .endpointSecurity
         default:                                      return nil
         }
     }

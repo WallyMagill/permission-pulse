@@ -4,8 +4,8 @@ import PermissionsCore
 public struct TCCGrantsDiff: Sendable, Equatable {
     public let added: [PermissionGrant]
     public let removed: [PermissionGrant]
-    // `changed` contains persisted value transitions between grants with the same
-    // stable identity, including authValue shifts (2 = allowed <-> 3 = limited).
+    // `changed` contains authValue transitions (2 = allowed <-> 3 = limited)
+    // between grants with the same stable identity; nothing else counts.
     // DiffTabView renders these alongside added and removed grants, and ChangeRow
     // includes their before/after values in Recent Changes search.
     public let changed: [DomainChange<PermissionGrant>]

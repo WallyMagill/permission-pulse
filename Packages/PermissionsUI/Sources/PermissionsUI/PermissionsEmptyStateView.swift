@@ -4,13 +4,15 @@ import PermissionsCore
 struct PermissionsEmptyStateView: View {
     let error: ScannerError?
     let domain: ScannerDomain
+    let scope: PermissionScope
 
     // Explicit binding so the disclosure survives parent recomposition.
     @State private var isDisclosureExpanded = false
 
-    init(error: ScannerError?, domain: ScannerDomain = .tcc) {
+    init(error: ScannerError?, domain: ScannerDomain = .tcc, scope: PermissionScope = .full) {
         self.error = error
         self.domain = domain
+        self.scope = scope
     }
 
     var body: some View {
@@ -42,6 +44,12 @@ struct PermissionsEmptyStateView: View {
                 Text(String(localized: "You'll need to relaunch Permission Pulse after granting."))
                     .ppFont(.metadata)
                     .foregroundStyle(.tertiary)
+                Text(String(localized: "Just updated? macOS turns Full Disk Access off for each new version. If Permission Pulse already looks enabled, switch it off and on again, then quit and reopen."))
+                    .ppFont(.metadata)
+                    .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.center)
+                    .frame(maxWidth: 420)
+                    .fixedSize(horizontal: false, vertical: true)
                 Button {
                     AppRelauncher.relaunch()
                 } label: {
@@ -92,10 +100,33 @@ struct PermissionsEmptyStateView: View {
     }
 
     private var emptyView: some View {
-        ContentUnavailableView {
-            Label(emptyHeadline, systemImage: "tray")
+        let copy = Self.emptyCopy(domain: domain, scope: scope)
+        return ContentUnavailableView {
+            Label(copy.headline, systemImage: "tray")
         } description: {
-            Text(emptyDescription)
+            Text(copy.description)
+        }
+    }
+
+    /// With a reduced scope an empty list says nothing about Camera or the
+    /// other hidden services, so the copy names what was actually checked.
+    static func emptyCopy(domain: ScannerDomain, scope: PermissionScope) -> (headline: String, description: String) {
+        switch domain {
+        case .tcc where scope.isReduced:
+            (
+                String(localized: "No apps hold system-level permissions"),
+                String(localized: "No app holds \(PermissionScope.systemLevelServiceList). macOS 27 hides every other permission from apps.")
+            )
+        case .tcc:
+            (
+                String(localized: "No permissions yet"),
+                String(localized: "No app permissions have been recorded on this Mac.")
+            )
+        case .btm:
+            (
+                String(localized: "No background items yet"),
+                String(localized: "No background items have been recorded on this Mac.")
+            )
         }
     }
 
@@ -131,18 +162,21 @@ struct PermissionsEmptyStateView: View {
         case .btm: String(localized: "Background items unavailable")
         }
     }
+}
 
-    private var emptyHeadline: String {
-        switch domain {
-        case .tcc: String(localized: "No permissions yet")
-        case .btm: String(localized: "No background items yet")
-        }
-    }
+/// "No results" for a search that names a service macOS hides from apps.
+struct HiddenServiceSearchView: View {
+    let service: PermissionService
 
-    private var emptyDescription: String {
-        switch domain {
-        case .tcc: String(localized: "No app permissions have been recorded on this Mac.")
-        case .btm: String(localized: "No background items have been recorded on this Mac.")
+    var body: some View {
+        ContentUnavailableView {
+            Label(String(localized: "Hidden by macOS"), systemImage: "eye.slash")
+        } description: {
+            Text(PermissionScope.hiddenServiceMessage(service))
+        } actions: {
+            Button(PermissionScope.openServiceSettingsTitle(service)) {
+                SystemSettingsLink.open(for: service)
+            }
         }
     }
 }

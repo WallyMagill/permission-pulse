@@ -19,20 +19,32 @@ public enum ScannerSource: Sendable, Equatable {
 public struct ScannerWarning: Sendable, Equatable {
     public let source: ScannerSource
     public let omittedCount: Int?
+    /// File names of omitted entries, when the scanner knows them.
+    public let omittedNames: [String]
 
-    public init(source: ScannerSource, omittedCount: Int? = nil) {
+    public init(source: ScannerSource, omittedCount: Int? = nil, omittedNames: [String] = []) {
         self.source = source
         self.omittedCount = omittedCount
+        self.omittedNames = omittedNames
     }
 }
 
 public struct ScannerOutput<Item: Sendable>: Sendable {
     public let items: [Item]
     public let warnings: [ScannerWarning]
+    /// Sources this macOS version does not expose to any app. Unlike
+    /// `warnings` this is not a failed read and nothing the user can fix, so
+    /// it does not degrade the scan; it narrows what "complete" covers.
+    public let unavailableSources: [ScannerSource]
 
-    public init(items: [Item], warnings: [ScannerWarning] = []) {
+    public init(
+        items: [Item],
+        warnings: [ScannerWarning] = [],
+        unavailableSources: [ScannerSource] = []
+    ) {
         self.items = items
         self.warnings = warnings
+        self.unavailableSources = unavailableSources
     }
 }
 

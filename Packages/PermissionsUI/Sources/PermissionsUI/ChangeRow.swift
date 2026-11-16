@@ -5,21 +5,11 @@ import PermissionsStore
 // One row in a diff sub-section. The kind enum tells the row what to render
 // (indicator color + description string); the actual layout is uniform.
 struct ChangeRow: View {
-    enum Kind: Identifiable {
-        case granted(PermissionGrant)
-        case revoked(PermissionGrant)
-        case permissionChanged(DomainChange<PermissionGrant>)
-        case btmAdded(BTMItem)
-        case btmRemoved(BTMItem)
-        case btmDispositionFlipped(DomainChange<BTMItem>)
-        case launchAgentAdded(LaunchAgentItem)
-        case launchAgentRemoved(LaunchAgentItem)
-        case launchAgentFlipped(DomainChange<LaunchAgentItem>)
-
-        var id: String { DiffEntryKey.key(for: self) }
-    }
+    typealias Kind = DiffEntry
 
     let kind: Kind
+    /// BTM identifiers registered in more than one scope; their rows name the scope.
+    var scopedIdentifiers: Set<String> = []
     var onDismissForever: (() -> Void)? = nil
     var onSnooze: (() -> Void)? = nil
 
@@ -32,16 +22,11 @@ struct ChangeRow: View {
                 .ppFont(.body)
                 .lineLimit(2)
                 .frame(maxWidth: .infinity, alignment: .leading)
-        }
-        .contextMenu {
-            if let onSnooze {
-                Button(String(localized: "Snooze 7 days")) { onSnooze() }
-            }
-            if let onDismissForever {
-                Button(String(localized: "Dismiss forever"), role: .destructive) { onDismissForever() }
+            if hasMenuActions {
+                optionsMenu
             }
         }
-        .help(hasMenuActions ? String(localized: "Right-click for dismiss options") : "")
+        .contextMenu { menuItems }
         // VoiceOver can't discover a context menu on its own; mirror its actions.
         .accessibilityActions {
             if let onSnooze {
@@ -51,6 +36,31 @@ struct ChangeRow: View {
                 Button(String(localized: "Dismiss forever")) { onDismissForever() }
             }
         }
+    }
+
+    @ViewBuilder
+    private var menuItems: some View {
+        if let onSnooze {
+            Button(String(localized: "Snooze 7 days")) { onSnooze() }
+        }
+        if let onDismissForever {
+            Button(String(localized: "Dismiss forever"), role: .destructive) { onDismissForever() }
+        }
+    }
+
+    /// The same actions as the context menu, visible so they can be found
+    /// without right-clicking.
+    private var optionsMenu: some View {
+        Menu { menuItems } label: {
+            Image(systemName: "ellipsis.circle")
+        }
+        .menuStyle(.button)
+        .buttonStyle(.borderless)
+        .menuIndicator(.hidden)
+        .fixedSize()
+        .foregroundStyle(.secondary)
+        .help(String(localized: "Snooze or dismiss this change"))
+        .accessibilityLabel(String(localized: "Change options"))
     }
 
     @ViewBuilder
@@ -75,7 +85,28 @@ struct ChangeRow: View {
     }
 
     private var description: String {
-        Self.summary(for: kind)
+        Self.summary(for: kind, scopedIdentifiers: scopedIdentifiers)
+    }
+
+    static func summary(for kind: Kind, scopedIdentifiers: Set<String>) -> String {
+        let base = summary(for: kind)
+        guard let item = btmItem(of: kind), scopedIdentifiers.contains(item.identifier) else { return base }
+        return String(localized: "\(base) · \(item.scope.displayName)")
+    }
+
+    /// Identifiers that appear under more than one scope among `items`.
+    static func identifiersInSeveralScopes(_ items: [BTMItem]) -> Set<String> {
+        let scopesByIdentifier = Dictionary(grouping: items, by: \.identifier)
+            .mapValues { Set($0.map(\.scope)) }
+        return Set(scopesByIdentifier.filter { $0.value.count > 1 }.keys)
+    }
+
+    private static func btmItem(of kind: Kind) -> BTMItem? {
+        switch kind {
+        case .btmAdded(let item), .btmRemoved(let item): item
+        case .btmDispositionFlipped(let change): change.after
+        default: nil
+        }
     }
 
     static func summary(for kind: Kind) -> String {
@@ -93,15 +124,13 @@ struct ChangeRow: View {
         case .btmRemoved(let i):
             return String(localized: "Removed background item: \(i.name)")
         case .btmDispositionFlipped(let change):
-            let from = dispositionLabel(change.before.disposition)
-            let to = dispositionLabel(change.after.disposition)
-            return String(localized: "Disposition changed: \(change.after.name) (\(from) → \(to))")
+            return btmChangeSummary(change)
         case .launchAgentAdded(let i):
-            return String(localized: "New launch agent: \(i.label)")
+            return LaunchAgentChangeDescription.addedSummary(i)
         case .launchAgentRemoved(let i):
             return String(localized: "Removed launch agent: \(i.label)")
         case .launchAgentFlipped(let change):
-            return launchAgentFlipDescription(change)
+            return LaunchAgentChangeDescription.summary(change)
         }
     }
 
@@ -158,6 +187,7 @@ struct ChangeRow: View {
             item.sourceDirectory.rawValue,
             item.sourceDirectory.path,
             item.programPath,
+            item.fileName,
         ].compactMap { $0 } + item.programArguments
     }
 
@@ -169,18 +199,18 @@ struct ChangeRow: View {
         }
     }
 
-    private static func launchAgentFlipDescription(_ change: DomainChange<LaunchAgentItem>) -> String {
-        if change.before.runAtLoad != change.after.runAtLoad {
-            let from = change.before.runAtLoad ? String(localized: "on") : String(localized: "off")
-            let to = change.after.runAtLoad ? String(localized: "on") : String(localized: "off")
-            return String(localized: "runAtLoad flipped: \(change.after.label) (\(from) → \(to))")
+    private static func btmChangeSummary(_ change: DomainChange<BTMItem>) -> String {
+        if change.teamIdentifierChanged, let from = change.before.teamIdentifier, let to = change.after.teamIdentifier {
+            return String(localized: "Developer changed: \(change.after.name) (\(from) → \(to))")
         }
-        if change.before.keepAlive != change.after.keepAlive {
-            let from = change.before.keepAlive ? String(localized: "on") : String(localized: "off")
-            let to = change.after.keepAlive ? String(localized: "on") : String(localized: "off")
-            return String(localized: "keepAlive flipped: \(change.after.label) (\(from) → \(to))")
+        guard change.before.disposition == change.after.disposition else {
+            let from = dispositionLabel(change.before.disposition)
+            let to = dispositionLabel(change.after.disposition)
+            return String(localized: "Disposition changed: \(change.after.name) (\(from) → \(to))")
         }
-        return String(localized: "Modified: \(change.after.label)")
+        let from = change.before.type.displayName
+        let to = change.after.type.displayName
+        return String(localized: "Type changed: \(change.after.name) (\(from) → \(to))")
     }
 
     private static func dispositionLabel(_ d: BTMItem.Disposition) -> String {

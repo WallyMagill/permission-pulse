@@ -18,6 +18,14 @@ public final class PreferencesViewModel {
         case failed(String)
     }
 
+    /// Change alerts need nothing scheduled, only permission to notify.
+    public enum ChangeAlertsHint: Sendable, Equatable {
+        case off
+        case on
+        case denied
+        case failed(String)
+    }
+
     public enum TestNotificationResult: Sendable, Equatable {
         case idle
         case scheduling
@@ -32,14 +40,19 @@ public final class PreferencesViewModel {
     public var authorizationHint: AuthorizationHint = .notYetRequested
     public var nextWeeklyFireDate: Date?
     public var testNotificationResult: TestNotificationResult = .idle
-    public private(set) var launchAtLoginEnabled: Bool
+    public var changeAlertsHint: ChangeAlertsHint = .off
+    public private(set) var launchAtLoginStatus: LaunchAtLoginStatus
+    /// The last register/unregister error, shown under the toggle.
+    public private(set) var launchAtLoginError: String?
 
     private let onDigestToggle: @MainActor (Bool) async -> AuthorizationHint
     private let onDigestScheduleChange: @MainActor () async -> AuthorizationHint
     private let onSendTestNotification: @MainActor () async -> TestNotificationResult
     private let onFetchNextFireDate: @MainActor () async -> Date?
+    private let onChangeAlertsToggle: @MainActor (Bool) async -> ChangeAlertsHint
     private let scheduleDebounce: Duration
-    private let onLaunchAtLoginToggle: ((Bool) async -> Bool)?
+    private let fetchLaunchAtLoginStatus: @MainActor () -> LaunchAtLoginStatus
+    private let onLaunchAtLoginToggle: (@MainActor (Bool) throws -> Void)?
     // Swift 6 deinit is nonisolated. Task is Sendable, and every mutation
     // remains MainActor-isolated; only final cancellation crosses isolation.
     @ObservationIgnored
@@ -52,17 +65,20 @@ public final class PreferencesViewModel {
         onDigestScheduleChange: @escaping @MainActor () async -> AuthorizationHint = { .disabled },
         onSendTestNotification: @escaping @MainActor () async -> TestNotificationResult = { .idle },
         onFetchNextFireDate: @escaping @MainActor () async -> Date? = { nil },
+        onChangeAlertsToggle: @escaping @MainActor (Bool) async -> ChangeAlertsHint = { $0 ? .on : .off },
         scheduleDebounce: Duration = .milliseconds(300),
-        initialLaunchAtLogin: Bool = false,
-        onLaunchAtLoginToggle: ((Bool) async -> Bool)? = nil
+        fetchLaunchAtLoginStatus: @escaping @MainActor () -> LaunchAtLoginStatus = { .notRegistered },
+        onLaunchAtLoginToggle: (@MainActor (Bool) throws -> Void)? = nil
     ) {
         self.store = store
         self.onDigestToggle = onDigestToggle
         self.onDigestScheduleChange = onDigestScheduleChange
         self.onSendTestNotification = onSendTestNotification
         self.onFetchNextFireDate = onFetchNextFireDate
+        self.onChangeAlertsToggle = onChangeAlertsToggle
         self.scheduleDebounce = scheduleDebounce
-        self.launchAtLoginEnabled = initialLaunchAtLogin
+        self.fetchLaunchAtLoginStatus = fetchLaunchAtLoginStatus
+        self.launchAtLoginStatus = fetchLaunchAtLoginStatus()
         self.onLaunchAtLoginToggle = onLaunchAtLoginToggle
     }
 
@@ -131,6 +147,7 @@ public final class PreferencesViewModel {
         // Called on appear so the hint reflects the latest OS state even if
         // the user toggled notifications in System Settings while the app
         // was alive.
+        await refreshChangeAlertsHint()
         scheduleTask?.cancel()
         let operationID = beginDigestOperation()
         let enabled = store.digestEnabled
@@ -156,6 +173,41 @@ public final class PreferencesViewModel {
         return await onFetchNextFireDate()
     }
 
+    // MARK: - Change alerts
+
+    public var changeAlertsEnabled: Bool {
+        get { store.changeAlertsEnabled }
+        set { store.changeAlertsEnabled = newValue }
+    }
+
+    public func handleChangeAlertsToggle(to newValue: Bool) async {
+        store.changeAlertsEnabled = newValue
+        let hint = await onChangeAlertsToggle(newValue)
+        guard store.changeAlertsEnabled == newValue else { return }
+        changeAlertsHint = hint
+    }
+
+    private func refreshChangeAlertsHint() async {
+        guard store.changeAlertsEnabled else {
+            changeAlertsHint = .off
+            return
+        }
+        let hint = await onChangeAlertsToggle(true)
+        guard store.changeAlertsEnabled else { return }
+        changeAlertsHint = hint
+    }
+
+    /// Either notification feature is on but macOS will not deliver.
+    public var notificationsDenied: Bool {
+        authorizationHint == .denied || changeAlertsHint == .denied
+    }
+
+    public var anyNotificationEnabled: Bool {
+        store.digestEnabled || store.changeAlertsEnabled
+    }
+
+    // MARK: - Test notification
+
     public func sendTestNotification() async {
         testNotificationResult = .scheduling
         let result = await onSendTestNotification()
@@ -168,12 +220,26 @@ public final class PreferencesViewModel {
 
     // MARK: - Launch at login
 
-    public func setLaunchAtLogin(_ enable: Bool) async {
+    /// On while registered, including while macOS waits for the user to
+    /// approve it in System Settings.
+    public var launchAtLoginEnabled: Bool {
+        launchAtLoginStatus == .enabled || launchAtLoginStatus == .requiresApproval
+    }
+
+    /// Re-reads the system state; the user can change it in System Settings
+    /// at any time.
+    public func refreshLaunchAtLoginStatus() {
+        launchAtLoginStatus = fetchLaunchAtLoginStatus()
+    }
+
+    public func setLaunchAtLogin(_ enable: Bool) {
         guard let onLaunchAtLoginToggle else { return }
-        // Flip optimistically so the checkbox responds on click; the
-        // SMAppService round-trip below reconciles to the real state
-        // (including reverting on registration failure).
-        launchAtLoginEnabled = enable
-        launchAtLoginEnabled = await onLaunchAtLoginToggle(enable)
+        launchAtLoginError = nil
+        do {
+            try onLaunchAtLoginToggle(enable)
+        } catch {
+            launchAtLoginError = error.localizedDescription
+        }
+        refreshLaunchAtLoginStatus()
     }
 }

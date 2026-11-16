@@ -145,6 +145,44 @@ enum BTMFixtures {
         try writeArchive(storage: storage, to: directory.appendingPathComponent(fileName))
     }
 
+    static let splitLayoutVersion = 18
+
+    /// The macOS 27 layout: an index file with no items plus one
+    /// `BTMUserStore` archive per user.
+    static func makeSplitLayoutFixture(
+        at directory: URL,
+        recordsByUser: [String: [BTMItemRecordShim]]
+    ) throws {
+        let index = NSKeyedArchiver(requiringSecureCoding: false)
+        index.outputFormat = .binary
+        index.encode(splitLayoutVersion, forKey: "version")
+        index.encode(
+            NSDictionary(dictionary: recordsByUser.mapValues { _ in NSDate() }),
+            forKey: "infoByUserIdentifier"
+        )
+        index.finishEncoding()
+        try index.encodedData.write(
+            to: directory.appendingPathComponent("BackgroundItems-v\(splitLayoutVersion).btm")
+        )
+
+        for (userUUID, records) in recordsByUser {
+            let archiver = NSKeyedArchiver(requiringSecureCoding: false)
+            archiver.outputFormat = .binary
+            archiver.setClassName(BTMScannerDirect.userStoreClassName, for: BTMUserStoreShim.self)
+            archiver.setClassName(BTMScannerDirect.itemRecordClassName, for: BTMItemRecordShim.self)
+            archiver.encode(
+                BTMUserStoreShim(userIdentifier: userUUID, records: NSArray(array: records)),
+                forKey: BTMScannerDirect.topLevelUserStoreKey
+            )
+            archiver.finishEncoding()
+            try archiver.encodedData.write(to: splitLayoutFileURL(in: directory, userUUID: userUUID))
+        }
+    }
+
+    static func splitLayoutFileURL(in directory: URL, userUUID: String) -> URL {
+        directory.appendingPathComponent("BackgroundItems-v\(splitLayoutVersion)-\(userUUID).btm")
+    }
+
     private static func writeArchive(storage: BTMStorageShim, to url: URL) throws {
         let archiver = NSKeyedArchiver(requiringSecureCoding: false)
         archiver.outputFormat = .binary

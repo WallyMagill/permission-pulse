@@ -4,11 +4,28 @@ import PermissionsCore
 public struct ScanAvailabilityBanner: View {
     public let availability: ScanAvailability
     public let domainName: String
+    /// Sources this macOS version does not expose; narrows a complete scan.
+    public let unavailableSources: [ScannerSource]
 
-    public init(availability: ScanAvailability, domainName: String) {
+    public init(
+        availability: ScanAvailability,
+        domainName: String,
+        unavailableSources: [ScannerSource] = []
+    ) {
         self.availability = availability
         self.domainName = domainName
+        self.unavailableSources = unavailableSources
     }
+
+    private var isReducedScope: Bool {
+        availability.isComplete && PermissionScope(unavailableSources: unavailableSources).isReduced
+    }
+
+    /// Why a reduced scan sees only system-level permissions; also shown by
+    /// the Overview's coverage popover.
+    public static let reducedScopeExplanation = String(
+        localized: "This version of macOS doesn't let apps read per-app records for Camera, Microphone, Files and Folders, Automation, and other per-user permissions."
+    )
 
     public var body: some View {
         HStack(alignment: .top, spacing: PPSpacing.md) {
@@ -43,9 +60,15 @@ public struct ScanAvailabilityBanner: View {
         case .never:
             return String(localized: "\(domainName) not yet scanned. No scan results are available yet.")
         case .complete:
+            if isReducedScope {
+                return String(localized: "\(domainName) scan covers system-level permissions only. \(detailText)")
+            }
             return String(localized: "\(domainName) scan complete. \(detailText)")
         case .degraded(_, let warnings):
             let warningText = warnings.map(Self.warningText).joined(separator: " ")
+            if availability.onlyOmittedEntries {
+                return String(localized: "\(domainName) scan skipped some entries. \(detailText) \(warningText)")
+            }
             return String(localized: "\(domainName) scan degraded. \(detailText) \(warningText)")
         case .failed(let lastSuccessful, _):
             if lastSuccessful != nil {
@@ -68,21 +91,34 @@ public struct ScanAvailabilityBanner: View {
         case .libraryLaunchDaemons:
             String(localized: "System Launch Daemons were unavailable.")
         case .entries:
-            if let count = warning.omittedCount {
-                count == 1
-                    ? String(localized: "1 malformed or unreadable entry was omitted.")
-                    : String(localized: "\(count) malformed or unreadable entries were omitted.")
-            } else {
-                String(localized: "Some malformed or unreadable entries were omitted.")
-            }
+            omittedEntriesText(for: warning)
         }
+    }
+
+    private static func omittedEntriesText(for warning: ScannerWarning) -> String {
+        let summary = if let count = warning.omittedCount {
+            count == 1
+                ? String(localized: "1 malformed or unreadable entry was omitted.")
+                : String(localized: "\(count) malformed or unreadable entries were omitted.")
+        } else {
+            String(localized: "Some malformed or unreadable entries were omitted.")
+        }
+        guard !warning.omittedNames.isEmpty else { return summary }
+        let names = ListFormatter.localizedString(byJoining: warning.omittedNames)
+        return String(localized: "\(summary) Skipped: \(names).")
     }
 
     var headline: String {
         switch availability {
         case .never: String(localized: "Not yet scanned")
-        case .complete: String(localized: "Complete data")
-        case .degraded: String(localized: "Degraded data")
+        case .complete:
+            isReducedScope
+                ? String(localized: "System-level permissions only")
+                : String(localized: "Complete data")
+        case .degraded:
+            availability.onlyOmittedEntries
+                ? String(localized: "Some entries skipped")
+                : String(localized: "Degraded data")
         case .failed(let lastSuccessful, _):
             lastSuccessful == nil
                 ? String(localized: "Scan failed")
@@ -95,8 +131,14 @@ public struct ScanAvailabilityBanner: View {
         case .never:
             return String(localized: "No scan results are available yet.")
         case .complete(let lastUpdated):
+            if isReducedScope {
+                return String(localized: "\(Self.reducedScopeExplanation) Updated \(formatted(lastUpdated)).")
+            }
             return String(localized: "Updated \(formatted(lastUpdated)).")
         case .degraded(let lastUpdated, _):
+            if availability.onlyOmittedEntries {
+                return String(localized: "Every source was read. Updated \(formatted(lastUpdated)).")
+            }
             return String(localized: "Some sources could not be read. Updated \(formatted(lastUpdated)).")
         case .failed(let lastSuccessful, let error):
             if let lastSuccessful {
@@ -109,8 +151,8 @@ public struct ScanAvailabilityBanner: View {
     private var symbolName: String {
         switch availability {
         case .never: "clock"
-        case .complete: "checkmark.circle.fill"
-        case .degraded: "exclamationmark.triangle.fill"
+        case .complete: isReducedScope ? "info.circle.fill" : "checkmark.circle.fill"
+        case .degraded: availability.onlyOmittedEntries ? "info.circle.fill" : "exclamationmark.triangle.fill"
         case .failed: "clock.badge.exclamationmark.fill"
         }
     }
@@ -118,8 +160,9 @@ public struct ScanAvailabilityBanner: View {
     private var symbolColor: Color {
         switch availability {
         case .never: .secondary
-        case .complete: PPColor.success
-        case .degraded, .failed: PPColor.warning
+        case .complete: isReducedScope ? .secondary : PPColor.success
+        case .degraded: availability.onlyOmittedEntries ? .secondary : PPColor.warning
+        case .failed: PPColor.warning
         }
     }
 

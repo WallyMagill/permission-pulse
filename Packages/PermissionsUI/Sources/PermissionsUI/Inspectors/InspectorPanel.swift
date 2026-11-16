@@ -11,9 +11,17 @@ struct InspectorPanel: View {
         Group {
             switch resolvedContent {
             case .app(let app, let grants):
-                AppPermissionsInspector(app: app, grants: grants)
+                AppPermissionsInspector(
+                    app: app,
+                    grants: grants,
+                    appMissing: grants.first.map { viewModel.missingAppKeys.contains($0.appKey) } ?? false,
+                    systemLevelOnly: viewModel.permissionScope.isReduced
+                )
             case .launchAgent(let item):
-                LaunchAgentInspector(item: item)
+                LaunchAgentInspector(
+                    item: item,
+                    programMissing: viewModel.missingProgramAgentIDs.contains(item.id)
+                )
             case .backgroundItem(let item):
                 BackgroundItemInspector(item: item)
             case nil:

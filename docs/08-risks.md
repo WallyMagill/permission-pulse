@@ -12,7 +12,7 @@ Four real risks. None are project-killers, all need active mitigation.
 
 **Mitigation:**
 - Probe the column list at read time. If we see unexpected columns or missing expected columns, fall back to "schema unknown" banner.
-- Model complete/degraded/failed coverage explicitly; never convert schema failure to a valid empty list, and never snapshot incomplete evidence.
+- Model complete/degraded/failed coverage explicitly and record per-domain snapshot coverage (`complete` / `reduced` / `degraded` / `failed`); never convert schema failure to a valid empty list, and compare a domain only when both snapshots have the same full scope.
 - Pin a known-good schema per macOS major in `PermissionsCore`.
 - Test fixture: a snapshot of the schema (sql dump of the `access` table structure) per macOS major. Re-record at each major's first beta.
 - Maintain a small "what macOS is this" diagnostic in the app's own log file so the user can paste it into a bug report.
@@ -27,7 +27,7 @@ Four real risks. None are project-killers, all need active mitigation.
 
 **Mitigation:**
 - `BTMScanner` protocol isolates the shipping direct `.btm` reader. The app does not ship an `sfltool` implementation, invoke `sudo`, or mutate the store.
-- Typed complete/degraded/failed availability prevents a scanner failure from looking like a valid empty result. Any degraded or failed domain suppresses snapshot persistence.
+- Typed complete/degraded/failed availability prevents a scanner failure from looking like a valid empty result. Each snapshot records per-domain coverage; a failed domain stores no rows, and a degraded or failed domain is never compared against a complete one, so it cannot appear as removals.
 - A future manual `sfltool` implementation remains an explicit product decision rather than an automatic fallback.
 - Pin the expected `.btm` filename version per macOS major.
 - Watch `objective-see/DumpBTM` for upstream fixes; we're not vendoring but the README is a useful smoke signal.

@@ -9,6 +9,7 @@ import PermissionsCore
 /// full-width "Reveal in Finder" action.
 struct LaunchAgentInspector: View {
     let item: LaunchAgentItem
+    var programMissing: Bool = false
 
     var body: some View {
         ScrollView {
@@ -44,28 +45,36 @@ struct LaunchAgentInspector: View {
     private var propertiesSection: some View {
         VStack(alignment: .leading, spacing: PPSpacing.sm) {
             SheetSectionLabel(String(localized: "Properties"))
-            SheetKVCard(rows: propertyRows)
+            SheetKVCard(rows: Self.propertyRows(for: item))
+            if programMissing {
+                MissingProgramNote()
+            }
         }
     }
 
-    private var propertyRows: [SheetKVRow] {
-        [
+    static func propertyRows(for item: LaunchAgentItem) -> [SheetKVRow] {
+        let unknown = item.detailsReadable ? nil : LaunchAgentDisplay.unreadableValue
+        return [
             SheetKVRow(
                 String(localized: "Program"),
-                item.programPath ?? String(localized: "(unset)"),
-                mono: true
+                unknown ?? item.programPath ?? String(localized: "(unset)"),
+                mono: item.detailsReadable
             ),
             SheetKVRow(
                 String(localized: "Arguments"),
-                item.programArguments.isEmpty
+                unknown ?? (item.programArguments.isEmpty
                     ? String(localized: "(none)")
-                    : item.programArguments.joined(separator: " "),
-                mono: true
+                    : item.programArguments.joined(separator: " ")),
+                mono: item.detailsReadable
             ),
-            SheetKVRow(String(localized: "Run at load"), item.runAtLoad ? String(localized: "Yes") : String(localized: "No")),
-            SheetKVRow(String(localized: "Keep alive"), item.keepAlive ? String(localized: "Yes") : String(localized: "No")),
-            SheetKVRow(String(localized: "Disabled"), item.isDisabled ? String(localized: "Yes") : String(localized: "No")),
+            SheetKVRow(String(localized: "Run at load"), unknown ?? yesNo(item.runAtLoad)),
+            SheetKVRow(String(localized: "Keep alive"), unknown ?? yesNo(item.keepAlive)),
+            SheetKVRow(String(localized: "Disabled"), yesNo(item.isDisabled)),
         ]
+    }
+
+    private static func yesNo(_ value: Bool) -> String {
+        value ? String(localized: "Yes") : String(localized: "No")
     }
 
     // MARK: - Source section
@@ -107,13 +116,6 @@ struct LaunchAgentInspector: View {
     }
 
     private func revealInFinder() {
-        let expanded = (item.sourceDirectory.path as NSString).expandingTildeInPath
-        let dir = URL(fileURLWithPath: expanded, isDirectory: true)
-        let probable = dir.appendingPathComponent("\(item.label).plist")
-        if FileManager.default.fileExists(atPath: probable.path(percentEncoded: false)) {
-            NSWorkspace.shared.activateFileViewerSelecting([probable])
-        } else {
-            NSWorkspace.shared.activateFileViewerSelecting([dir])
-        }
+        NSWorkspace.shared.activateFileViewerSelecting([LaunchAgentDisplay.revealTarget(for: item)])
     }
 }

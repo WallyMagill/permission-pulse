@@ -96,4 +96,32 @@ import PermissionsCore
         let pending = await scheduler.pendingIdentifiers()
         #expect(pending == ["com.unrelated.thing"])
     }
+
+    // Like UNCalendarNotificationTrigger: once the armed date passes, the
+    // next trigger date moves on to the following match.
+    @Test func aPendingCalendarRequestNeverReportsAPastNextTriggerDate() async throws {
+        let clock = MockClock(Date(timeIntervalSince1970: 1_700_000_000))
+        let scheduler = MockWeeklyDigestScheduler(initialStatus: .authorized, now: { clock.date })
+        try await scheduler.scheduleWeekly(
+            identifier: "weekly", weekday: 2, hour: 9, minute: 0,
+            title: "T", body: "B"
+        )
+        let armed = try #require(await scheduler.armedFireDate(for: "weekly"))
+        clock.date = armed.addingTimeInterval(60)
+
+        #expect(try #require(await scheduler.nextFireDate(for: "weekly")) > clock.date)
+        #expect(await scheduler.armedFireDate(for: "weekly") == armed)
+    }
+}
+
+private final class MockClock: @unchecked Sendable {
+    private let lock = NSLock()
+    private var current: Date
+
+    init(_ date: Date) { current = date }
+
+    var date: Date {
+        get { lock.withLock { current } }
+        set { lock.withLock { current = newValue } }
+    }
 }

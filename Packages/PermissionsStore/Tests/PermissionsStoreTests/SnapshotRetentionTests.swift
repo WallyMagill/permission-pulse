@@ -9,8 +9,8 @@ import PermissionsCore
         let day: TimeInterval = 24 * 60 * 60
         let now = Date(timeIntervalSince1970: 1_700_000_000)
 
-        // Write a full snapshot at -100d with one row in each child table.
-        let oldDate = now.addingTimeInterval(-100 * day)
+        // Write a full snapshot at -120d with one row in each child table.
+        let oldDate = now.addingTimeInterval(-120 * day)
         _ = try await store.writeFullSnapshot(
             grants: [
                 PermissionGrant(
@@ -45,6 +45,9 @@ import PermissionsCore
         // Confirm child rows exist via low-level SQL count.
         try await assertChildRowCounts(in: store, expected: (tcc: 1, btm: 1, la: 1))
 
+        // A newer (still pre-cutoff) empty snapshot becomes the retained baseline.
+        _ = try await store.writeLaunchAgentsSnapshot([], at: now.addingTimeInterval(-100 * day))
+
         // Prune anything older than 90 days.
         let cutoff = now.addingTimeInterval(-90 * day)
         let removed = try await store.pruneSnapshots(olderThan: cutoff)
@@ -59,7 +62,8 @@ import PermissionsCore
         let day: TimeInterval = 24 * 60 * 60
         let now = Date(timeIntervalSince1970: 1_700_000_000)
 
-        let oldID = try await store.writeLaunchAgentsSnapshot([], at: now.addingTimeInterval(-100 * day))
+        let oldID = try await store.writeLaunchAgentsSnapshot([], at: now.addingTimeInterval(-110 * day))
+        _ = try await store.writeLaunchAgentsSnapshot([], at: now.addingTimeInterval(-100 * day))
         let recentID = try await store.writeLaunchAgentsSnapshot([], at: now.addingTimeInterval(-1 * day))
 
         let removed = try await store.pruneSnapshots(olderThan: now.addingTimeInterval(-90 * day))
@@ -73,6 +77,37 @@ import PermissionsCore
         #expect(latest == recentID)
 
         _ = oldID
+    }
+
+    // With change-only writes the newest pre-cutoff snapshot is the state at
+    // the cutoff, so deleting it would erase the comparison baseline.
+    @Test func pruneKeepsTheOnlySnapshotEvenWhenOld() async throws {
+        let store = try SnapshotStore.inMemory()
+        let day: TimeInterval = 24 * 60 * 60
+        let now = Date(timeIntervalSince1970: 1_700_000_000)
+        let onlyID = try await store.writeLaunchAgentsSnapshot([], at: now.addingTimeInterval(-100 * day))
+
+        let removed = try await store.pruneSnapshots(olderThan: now.addingTimeInterval(-90 * day))
+
+        #expect(removed == 0)
+        #expect(try await store.latestSnapshotID() == onlyID)
+    }
+
+    @Test func pruneKeepsBaselineAndLatestOnly() async throws {
+        let store = try SnapshotStore.inMemory()
+        let day: TimeInterval = 24 * 60 * 60
+        let now = Date(timeIntervalSince1970: 1_700_000_000)
+        for offset in [-130.0, -120, -110] {
+            _ = try await store.writeLaunchAgentsSnapshot([], at: now.addingTimeInterval(offset * day))
+        }
+        let baselineID = try await store.writeLaunchAgentsSnapshot([], at: now.addingTimeInterval(-100 * day))
+        let latestID = try await store.writeLaunchAgentsSnapshot([], at: now)
+
+        let removed = try await store.pruneSnapshots(olderThan: now.addingTimeInterval(-90 * day))
+
+        #expect(removed == 3)
+        #expect(try await store.latestSnapshotID(atOrBefore: now.addingTimeInterval(-90 * day)) == baselineID)
+        #expect(try await store.latestSnapshotID() == latestID)
     }
 
     private func assertChildRowCounts(

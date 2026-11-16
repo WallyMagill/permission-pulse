@@ -59,23 +59,22 @@ struct PermissionPulseTests {
     }
 
     @Test func testModeConstructsStoresWithIsolatedDefaults() throws {
-        let expectedTestSuite =
-            "com.wallymagill.permissionpulse.test-host.\(ProcessInfo.processInfo.processIdentifier)"
-        let observedDefaults = try #require(UserDefaults(suiteName: expectedTestSuite))
         let delegate = AppDelegate(
             runtimeEnvironment: AppRuntimeEnvironment(
                 environment: ["PERMISSION_PULSE_TEST_MODE": "1"]
             )
         )
+        let suiteName = try #require(delegate.runtimeDefaultsSuiteName)
+        let observedDefaults = try #require(UserDefaults(suiteName: suiteName))
         let preferenceKey = PreferencesStore.snapshotRetentionDaysKey
         let dismissedDiffKey = DismissedDiffEntryStore.key
         let dismissedStaleKey = DismissedStaleAppStore.key
 
         defer {
-            observedDefaults.removePersistentDomain(forName: expectedTestSuite)
+            observedDefaults.removePersistentDomain(forName: suiteName)
         }
 
-        #expect(AppDelegate.testDefaultsSuiteName == expectedTestSuite)
+        #expect(suiteName.hasPrefix(AppDelegate.testDefaultsSuitePrefix))
 
         delegate.preferencesStore.snapshotRetentionDays = 123
         delegate.dismissedDiffEntries.dismissForever(key: "test-entry")
@@ -89,14 +88,32 @@ struct PermissionPulseTests {
         )
     }
 
+    @Test func eachTestModeDelegateHasItsOwnDefaults() throws {
+        let environment = AppRuntimeEnvironment(environment: ["PERMISSION_PULSE_TEST_MODE": "1"])
+        let first = AppDelegate(runtimeEnvironment: environment)
+        let second = AppDelegate(runtimeEnvironment: environment)
+        defer {
+            for name in [first.runtimeDefaultsSuiteName, second.runtimeDefaultsSuiteName].compactMap({ $0 }) {
+                UserDefaults().removePersistentDomain(forName: name)
+            }
+        }
+
+        first.runtimeDefaults.set(true, forKey: AppDelegate.hasSeenWelcomeKey)
+        _ = AppDelegate(runtimeEnvironment: environment)
+
+        #expect(first.runtimeDefaultsSuiteName != second.runtimeDefaultsSuiteName)
+        #expect(first.runtimeDefaults.bool(forKey: AppDelegate.hasSeenWelcomeKey))
+        #expect(!second.runtimeDefaults.bool(forKey: AppDelegate.hasSeenWelcomeKey))
+    }
+
     @Test func welcomeDismissalUsesTheRuntimeIsolatedDefaults() throws {
-        let suiteName = AppDelegate.testDefaultsSuiteName
-        let isolatedDefaults = try #require(UserDefaults(suiteName: suiteName))
         let delegate = AppDelegate(
             runtimeEnvironment: AppRuntimeEnvironment(
                 environment: ["PERMISSION_PULSE_TEST_MODE": "1"]
             )
         )
+        let suiteName = try #require(delegate.runtimeDefaultsSuiteName)
+        let isolatedDefaults = try #require(UserDefaults(suiteName: suiteName))
         defer { isolatedDefaults.removePersistentDomain(forName: suiteName) }
 
         #expect(!isolatedDefaults.bool(forKey: AppDelegate.hasSeenWelcomeKey))

@@ -9,6 +9,8 @@ struct TccutilResetTests {
         #expect(PermissionService.fullDiskAccess.tccutilServiceName == "SystemPolicyAllFiles")
         #expect(PermissionService.contacts.tccutilServiceName == "AddressBook")
         #expect(PermissionService.inputMonitoring.tccutilServiceName == "ListenEvent")
+        #expect(PermissionService.remoteDesktop.tccutilServiceName == "RemoteDesktop")
+        #expect(PermissionService.endpointSecurity.tccutilServiceName == "EndpointSecurityClient")
     }
 
     @Test("filesAndFolders has no single canonical reset command")

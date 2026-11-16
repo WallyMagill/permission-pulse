@@ -25,6 +25,16 @@ struct PermissionRiskSummaryTests {
         #expect(PermissionRiskSummary.line(for: grants) == "2 Full Disk Access · 1 Input Monitoring")
     }
 
+    @Test("counts Remote Desktop and Endpoint Security in severity order")
+    func countsNewerServices() {
+        let grants = [
+            grant(.remoteDesktop, bundleID: "r"),
+            grant(.endpointSecurity, bundleID: "e"),
+            grant(.accessibility, bundleID: "a"),
+        ]
+        #expect(PermissionRiskSummary.line(for: grants) == "1 Endpoint Security · 1 Accessibility · 1 Remote Desktop")
+    }
+
     @Test("nil when no surfaced high-risk grants")
     func nilWhenNone() {
         #expect(PermissionRiskSummary.line(for: [grant(.camera, bundleID: "c")]) == nil)

@@ -18,7 +18,8 @@ struct PermissionPulseApp: App {
         // FIRST (before any Settings scene or other WindowGroup). See
         // docs/03-architecture.md.
         WindowGroup(id: "settings-trampoline") {
-            EmptyView().frame(width: 0, height: 0)
+            WindowOpeningTrampoline()
+                .environment(appDelegate.viewModel)
         }
         .windowResizability(.contentSize)
         .defaultSize(width: 0, height: 0)
@@ -30,6 +31,9 @@ struct PermissionPulseApp: App {
                 },
                 onRescan: { [appDelegate] in
                     Task { await appDelegate.rescan() }
+                },
+                onBecameVisible: { [appDelegate] in
+                    appDelegate.scanScheduler?.noteBecameVisible()
                 }
             )
                 .environment(appDelegate.viewModel)
@@ -54,10 +58,18 @@ struct PermissionPulseApp: App {
                 },
                 scanInProgress: { [appDelegate] in
                     appDelegate.viewModel.scanInProgress
+                },
+                makeDiagnostics: { [appDelegate] in
+                    await appDelegate.diagnosticsText()
+                },
+                onRestoreSkippedStaleApps: { [appDelegate] in
+                    appDelegate.restoreSkippedStaleApps()
                 }
             )
             .environment(appDelegate.preferencesViewModel)
             .environment(appDelegate.viewModel)
+            .environment(appDelegate.dismissedDiffEntries)
+            .environment(appDelegate.dismissedStaleApps)
         }
         .windowResizability(.contentSize)
 
@@ -66,8 +78,11 @@ struct PermissionPulseApp: App {
                 onRefresh: { [appDelegate] in
                     await appDelegate.rescan()
                 },
-                onWhatChangedSelected: { [appDelegate] in
-                    appDelegate.markCurrentSnapshotReviewed()
+                onRecentChangesReviewed: { [appDelegate] seen in
+                    appDelegate.markSnapshotReviewed(seen)
+                },
+                onBecameVisible: { [appDelegate] in
+                    appDelegate.scanScheduler?.noteBecameVisible()
                 }
             )
             .environment(appDelegate.viewModel)
@@ -86,18 +101,32 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     )
 
     static let hasSeenWelcomeKey = "com.wallymagill.permissionpulse.hasSeenWelcome"
-    static let testDefaultsSuiteName =
+    static let testDefaultsSuitePrefix =
         "com.wallymagill.permissionpulse.test-host.\(ProcessInfo.processInfo.processIdentifier)"
 
-    private let runtimeEnvironment: AppRuntimeEnvironment
-    private let runtimeDefaults: UserDefaults
+    let runtimeEnvironment: AppRuntimeEnvironment
+    let runtimeDefaults: UserDefaults
+    /// The isolated defaults suite in test mode, one per instance: test
+    /// suites interleave at awaits, so a shared one let one test wipe
+    /// another's keys. Nil in production, which uses `.standard`.
+    let runtimeDefaultsSuiteName: String?
+    let appVersion: AppVersion
+    let fullDiskAccessRecovery = FullDiskAccessRecovery()
     let viewModel: AppViewModel
     let preferencesStore: PreferencesStore
     // UNUserNotificationCenter.delegate is weak — must be retained here.
-    private let notificationPresentationDelegate: NotificationPresentationDelegate
+    private lazy var notificationPresentationDelegate = NotificationPresentationDelegate { [weak self] identifier in
+        self?.receiveNotificationOpen(identifier: identifier)
+    }
+    private var notificationOpenGate = NotificationOpenGate()
     let dismissedDiffEntries: DismissedDiffEntryStore
     let dismissedStaleApps: DismissedStaleAppStore
     lazy var weeklyDigestCoordinator = WeeklyDigestCoordinator(
+        viewModel: viewModel,
+        preferencesStore: preferencesStore,
+        scheduler: weeklyDigestScheduler
+    )
+    lazy var changeAlertCoordinator = ChangeAlertCoordinator(
         viewModel: viewModel,
         preferencesStore: preferencesStore,
         scheduler: weeklyDigestScheduler
@@ -122,7 +151,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         onFetchNextFireDate: { [weak self] in
             await self?.weeklyDigestCoordinator.nextWeeklyFireDate()
         },
-        initialLaunchAtLogin: SMAppService.mainApp.status == .enabled,
+        onChangeAlertsToggle: { [weak self] turnOn in
+            await self?.changeAlertCoordinator.handleToggle(turnOn: turnOn) ?? .off
+        },
+        fetchLaunchAtLoginStatus: { LaunchAtLoginStatus(SMAppService.mainApp.status) },
         onLaunchAtLoginToggle: { enable in
             do {
                 if enable { try SMAppService.mainApp.register() }
@@ -132,19 +164,29 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                     subsystem: "com.wallymagill.permissionpulse",
                     category: "app-delegate"
                 ).error("Launch-at-login toggle failed: \(error.localizedDescription, privacy: .public)")
+                throw error
             }
-            return SMAppService.mainApp.status == .enabled
         }
     )
     private var coordinator: ScanCoordinator?
+    private(set) var scanScheduler: ScanScheduler?
     private var mediaCoordinator: MediaUseCoordinator?
-    private var snapshotStore: SnapshotStore?
-    private var snapshotCoordinator: SnapshotCoordinator?
-    private var welcomeWindow: NSWindow?
+    private(set) var snapshotStore: SnapshotStore?
+    private(set) var snapshotCoordinator: SnapshotCoordinator?
+    var welcomeWindow: NSWindow?
+    var fullDiskAccessWindow: NSWindow?
+    /// The loss the recovery window last explained, for reopening it from
+    /// its notification.
+    var lastFullDiskAccessLoss: FullDiskAccessLoss?
+    let fullDiskAccessPromptPresenter: (@MainActor (FullDiskAccessLoss) -> Void)?
     private let resetMessagePresenter: (@MainActor (String) -> Void)?
     private let resetOperation: (@MainActor () async -> Void)?
-    private let weeklyDigestScheduler: any WeeklyDigestScheduler
-    private var resetTask: Task<Void, Never>?
+    let weeklyDigestScheduler: any WeeklyDigestScheduler
+    private(set) var resetTask: Task<Void, Never>?
+    /// The scan in flight, if any.
+    private(set) var scanTask: Task<Bool, Never>?
+    /// Set by the snapshot coordinator when the current scan wrote a snapshot.
+    private var snapshotWrite: (previous: SnapshotID?, written: SnapshotID)?
 
     override convenience init() {
         self.init(runtimeEnvironment: AppRuntimeEnvironment())
@@ -154,20 +196,28 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         runtimeEnvironment: AppRuntimeEnvironment,
         resetMessagePresenter: (@MainActor (String) -> Void)? = nil,
         resetOperation: (@MainActor () async -> Void)? = nil,
-        weeklyDigestScheduler: any WeeklyDigestScheduler = LiveWeeklyDigestScheduler()
+        weeklyDigestScheduler: any WeeklyDigestScheduler = LiveWeeklyDigestScheduler(),
+        appVersion: AppVersion = .running,
+        fullDiskAccessPromptPresenter: (@MainActor (FullDiskAccessLoss) -> Void)? = nil
     ) {
-        let defaults = Self.makeRuntimeDefaults(for: runtimeEnvironment)
+        let suiteName = runtimeEnvironment.isRunningTests
+            ? "\(Self.testDefaultsSuitePrefix).\(UUID().uuidString)"
+            : nil
+        let defaults = Self.makeRuntimeDefaults(suiteName: suiteName)
         self.runtimeEnvironment = runtimeEnvironment
         self.runtimeDefaults = defaults
+        self.runtimeDefaultsSuiteName = suiteName
+        self.appVersion = appVersion
+        self.fullDiskAccessPromptPresenter = fullDiskAccessPromptPresenter
         self.viewModel = AppViewModel()
         self.preferencesStore = PreferencesStore(defaults: defaults)
-        self.notificationPresentationDelegate = NotificationPresentationDelegate()
         self.dismissedDiffEntries = DismissedDiffEntryStore(defaults: defaults)
         self.dismissedStaleApps = DismissedStaleAppStore(defaults: defaults)
         self.resetMessagePresenter = resetMessagePresenter
         self.resetOperation = resetOperation
         self.weeklyDigestScheduler = weeklyDigestScheduler
         super.init()
+        viewModel.dismissedDiffEntries = dismissedDiffEntries
         if runtimeEnvironment.isRunningTests {
             // Test mode skips applicationDidFinishLaunching, but reset recovery
             // still needs a real deterministic scan rather than treating
@@ -184,12 +234,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
-    private static func makeRuntimeDefaults(
-        for runtimeEnvironment: AppRuntimeEnvironment
-    ) -> UserDefaults {
-        guard runtimeEnvironment.isRunningTests else { return .standard }
-
-        let suiteName = testDefaultsSuiteName
+    private static func makeRuntimeDefaults(suiteName: String?) -> UserDefaults {
+        guard let suiteName else { return .standard }
         guard let defaults = UserDefaults(suiteName: suiteName) else {
             preconditionFailure("Unable to create isolated test defaults")
         }
@@ -218,39 +264,44 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
+    /// The delegate must be set before launch finishes, or the click that
+    /// launched the app is dropped. Without a willPresent delegate macOS
+    /// also suppresses banners while the app is frontmost, so the
+    /// Preferences test notification would never visibly fire.
+    func applicationWillFinishLaunching(_ notification: Notification) {
+        guard !runtimeEnvironment.isRunningTests else { return }
+        UNUserNotificationCenter.current().delegate = notificationPresentationDelegate
+    }
+
     func applicationDidFinishLaunching(_ notification: Notification) {
         guard !runtimeEnvironment.isRunningTests else {
             Self.logger.debug("Skipping production launch services in test mode")
             return
         }
-
-        // Set before anything schedules: without a willPresent delegate,
-        // macOS suppresses banners while the app is frontmost, so the
-        // Preferences test notification never visibly fires.
-        UNUserNotificationCenter.current().delegate = notificationPresentationDelegate
-
-        do {
-            let url = try SnapshotPath.canonicalURL()
-            snapshotStore = try SnapshotStore(path: url.path(percentEncoded: false))
-        } catch {
-            Self.logger.error(
-                "SnapshotStore init failed: \(error.localizedDescription, privacy: .public)"
-            )
-            viewModel.snapshotStoreUnavailable = true
+        Task { @MainActor [weak self] in
+            guard await SingleInstanceGuard.resolve() else {
+                self?.notificationOpenGate.handOff()
+                return
+            }
+            self?.startRuntime()
         }
-        if let snapshotStore {
-            installSnapshotRuntime(snapshotStore)
-        }
+    }
+
+    private func startRuntime() {
+        openSnapshotStore()
+        viewModel.isTranslocated = AppLocation.isTranslocated(Bundle.main.bundlePath)
 
         coordinator = ScanCoordinator(viewModel: viewModel)
-        viewModel.staleThresholdDays = preferencesStore.staleThresholdDays
-        Task { @MainActor in
-            viewModel.scanInProgress = true
-            await coordinator?.runScan()
-            await updateSnapshotHistoryAfterScan()
-            viewModel.lastScanDate = Date()
-            viewModel.scanInProgress = false
-            _ = await weeklyDigestCoordinator.reconcileSchedule()
+        Task { @MainActor [weak self] in
+            guard let self else { return }
+            await self.performRescanIfIdle()
+            self.scanScheduler = ScanScheduler(
+                lastScanDate: { [weak self] in self?.viewModel.lastScanDate },
+                requestScan: { [weak self] in
+                    Task { await self?.rescan() }
+                }
+            )
+            self.scanScheduler?.start()
         }
 
         mediaCoordinator = MediaUseCoordinator(viewModel: viewModel)
@@ -259,6 +310,71 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         if !runtimeDefaults.bool(forKey: Self.hasSeenWelcomeKey) {
             showWelcomeWindow()
         }
+        if let identifier = notificationOpenGate.startRuntime() {
+            openNotification(identifier: identifier)
+        }
+    }
+
+    private func openSnapshotStore() {
+        do {
+            let url = try SnapshotPath.canonicalURL()
+            snapshotStore = try SnapshotStore(path: url.path(percentEncoded: false))
+        } catch {
+            Self.logger.error(
+                "SnapshotStore init failed: \(error.localizedDescription, privacy: .public)"
+            )
+            viewModel.snapshotStoreProblem = Self.storeProblem(for: error)
+        }
+        if let snapshotStore {
+            installSnapshotRuntime(snapshotStore)
+        }
+    }
+
+    /// Double-clicking the running app in Finder: it has no Dock icon, and
+    /// its menu-bar icon may be hidden, so show the main window.
+    func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
+        showDetailWindow(route: Self.reopenRoute(detailWindowOpen: viewModel.isDetailWindowOpen))
+        return false
+    }
+
+    /// An open detail window only comes forward, keeping the page the user
+    /// is on; a closed one opens on Overview.
+    static func reopenRoute(detailWindowOpen: Bool) -> AppRoute? {
+        detailWindowOpen ? nil : .overview
+    }
+
+    /// A nil route also clears any request no window consumed, so it can't
+    /// fire later.
+    func showDetailWindow(route: AppRoute?) {
+        viewModel.pendingRoute = route
+        viewModel.windowToOpen = "detail"
+    }
+
+    private func receiveNotificationOpen(identifier: String) {
+        if let identifier = notificationOpenGate.received(identifier) {
+            openNotification(identifier: identifier)
+        }
+    }
+
+    func openNotification(identifier: String) {
+        switch NotificationDestination.forRequest(identifier) {
+        case .detail(let route):
+            showDetailWindow(route: route)
+        case .fullDiskAccessRecovery:
+            openFullDiskAccessNotification()
+        case nil:
+            break
+        }
+    }
+
+    func applicationDidBecomeActive(_ notification: Notification) {
+        guard !runtimeEnvironment.isRunningTests else { return }
+        preferencesViewModel.refreshLaunchAtLoginStatus()
+        Task { [weak self] in await self?.recheckFullDiskAccessIfReturning() }
+    }
+
+    func applicationDidResignActive(_ notification: Notification) {
+        fullDiskAccessRecovery.appResignedActive()
     }
 
     func rescan() async {
@@ -269,27 +385,95 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         _ = await performRescanIfIdle()
     }
 
+    /// The one scan path: the launch scan, every scheduled or manual rescan,
+    /// and Reset's recovery scan all end here, so whatever depends on fresh
+    /// results (the digest body above all) is refreshed after each scan.
     @discardableResult
-    private func performRescanIfIdle() async -> Bool {
-        // Don't start a second scan while one is in flight (e.g. user hits
-        // Refresh during the initial launch scan). Concurrent scans can both
-        // pass SnapshotCoordinator's once-per-day write guard before the first
-        // persists lastSnapshotDate, producing duplicate snapshot rows. (R2)
-        guard !viewModel.scanInProgress else {
-            Self.logger.debug("Rescan ignored — a scan is already in progress")
-            return false
-        }
-        viewModel.scanInProgress = true
-        defer { viewModel.scanInProgress = false }
-        viewModel.staleThresholdDays = preferencesStore.staleThresholdDays
-        await coordinator?.rescan()
-        await updateSnapshotHistoryAfterScan()
-        viewModel.lastScanDate = Date()
-        return true
+    func performRescanIfIdle() async -> Bool {
+        guard let scan = startScanIfIdle() else { return false }
+        return await scan.value
     }
 
-    func markCurrentSnapshotReviewed() {
-        snapshotCoordinator?.markCurrentSnapshotReviewed()
+    /// Starts a scan and returns it, or nil when one is already in flight or
+    /// launch has not finished. The task is kept in `scanTask` so callers
+    /// that need fresh results can await a scan someone else started.
+    func startScanIfIdle() -> Task<Bool, Never>? {
+        // Don't start a second scan while one is in flight (e.g. user hits
+        // Refresh during the initial launch scan, or a wake and a menu open
+        // land together). Concurrent scans could both see changed evidence
+        // before either writes, producing duplicate snapshot rows. (R2)
+        guard !viewModel.scanInProgress else {
+            Self.logger.debug("Rescan ignored — a scan is already in progress")
+            return nil
+        }
+        // Nil until launch finishes (a relaunched copy may still be waiting
+        // for the old process); recording this build's version or touching
+        // notifications before then would act on no scan at all.
+        guard let coordinator else {
+            Self.logger.debug("Rescan ignored — launch has not finished")
+            return nil
+        }
+        viewModel.scanInProgress = true
+        let scan = Task { @MainActor [weak self] () -> Bool in
+            guard let self else { return false }
+            defer {
+                self.viewModel.scanInProgress = false
+                self.scanTask = nil
+            }
+            await self.runScan(coordinator)
+            return true
+        }
+        scanTask = scan
+        return scan
+    }
+
+    private func runScan(_ coordinator: ScanCoordinator) async {
+        viewModel.staleThresholdDays = preferencesStore.staleThresholdDays
+        snapshotWrite = nil
+        await coordinator.rescan()
+        let fullDiskAccessLoss = await classifyFullDiskAccessLoss()
+        await updateSnapshotHistoryAfterScan()
+        viewModel.lastScanDate = Date()
+        await handleFullDiskAccessLoss(fullDiskAccessLoss)
+        await postChangeAlertIfNeeded()
+        _ = await weeklyDigestCoordinator.reconcileSchedule()
+    }
+
+    private func postChangeAlertIfNeeded() async {
+        guard preferencesStore.changeAlertsEnabled, let write = snapshotWrite else { return }
+        snapshotWrite = nil
+        guard let previous = write.previous else { return }
+        let changes = await snapshotCoordinator?.changes(from: previous, to: write.written)
+        await changeAlertCoordinator.snapshotWritten(changes: changes)
+    }
+
+    func markSnapshotReviewed(_ id: SnapshotID) {
+        snapshotCoordinator?.markSnapshotReviewed(id)
+    }
+
+    /// Changes on screen in Recent Changes when the app quits were seen;
+    /// they must not come back as unreviewed on the next launch.
+    func applicationWillTerminate(_ notification: Notification) {
+        guard let seen = viewModel.takeSeenRecentChanges() else { return }
+        markSnapshotReviewed(seen)
+    }
+
+    /// Un-skips every skipped stale app and lists the ones still stale
+    /// again without waiting for the next scan.
+    @discardableResult
+    func restoreSkippedStaleApps() -> Task<Void, Never> {
+        dismissedStaleApps.removeAll()
+        return Task { [weak self] in
+            await self?.snapshotCoordinator?.refreshStaleApps()
+        }
+    }
+
+    static func storeProblem(for error: any Error) -> SnapshotStoreProblem {
+        switch error as? SnapshotStoreOpenError {
+        case .createdByNewerVersion: .createdByNewerVersion
+        case .corrupt: .corrupt
+        case nil: .unavailable
+        }
     }
 
     func requestResetAllData() {
@@ -428,7 +612,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func installSnapshotRuntime(_ store: SnapshotStore) {
         snapshotStore = store
-        snapshotCoordinator = makeSnapshotCoordinator(store: store)
+        let coordinator = makeSnapshotCoordinator(store: store)
+        coordinator.onSnapshotWritten = { [weak self] previous, written in
+            self?.snapshotWrite = (previous, written)
+        }
+        snapshotCoordinator = coordinator
     }
 
     func updateSnapshotHistoryAfterScan() async {
@@ -462,37 +650,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // before any subsequent scan begins.
         alert.runModal()
     }
+}
 
-    func showWelcomeWindow() {
-        // Singleton: re-front the existing window instead of orphaning it. The
-        // menu-bar "Welcome & About" entry can call this repeatedly. (U5)
-        if let welcomeWindow {
-            welcomeWindow.makeKeyAndOrderFront(nil)
-            NSApp.activate(ignoringOtherApps: true)
-            return
-        }
-        let view = WelcomeWindowView(onDismiss: welcomeDismissAction())
-        let window = NSWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 480, height: 440),
-            styleMask: [.titled, .closable],
-            backing: .buffered,
-            defer: false
-        )
-        window.title = String(localized: "Welcome")
-        window.contentView = NSHostingView(rootView: view)
-        window.center()
-        window.isReleasedWhenClosed = false
-        window.makeKeyAndOrderFront(nil)
-        NSApp.activate(ignoringOtherApps: true)
-        welcomeWindow = window
-    }
-
-    func welcomeDismissAction() -> () -> Void {
-        { [weak self] in
-            guard let self else { return }
-            self.runtimeDefaults.set(true, forKey: Self.hasSeenWelcomeKey)
-            self.welcomeWindow?.close()
-            self.welcomeWindow = nil
+extension LaunchAtLoginStatus {
+    init(_ status: SMAppService.Status) {
+        switch status {
+        case .enabled: self = .enabled
+        case .requiresApproval: self = .requiresApproval
+        case .notRegistered: self = .notRegistered
+        case .notFound: self = .notFound
+        @unknown default: self = .notFound
         }
     }
 }

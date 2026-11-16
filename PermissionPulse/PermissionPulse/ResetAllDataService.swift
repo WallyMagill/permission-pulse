@@ -131,6 +131,9 @@ final class ResetAllDataService {
         await weeklyDigestCoordinator.scheduler.cancelAll(
             matchingPrefix: WeeklyDigestCoordinator.testIdentifierPrefix
         )
+        await weeklyDigestCoordinator.scheduler.cancelAll(
+            matchingPrefix: ChangeAlertCoordinator.identifierPrefix
+        )
 
         releaseSnapshotStore()
         do {
@@ -219,13 +222,15 @@ final class ResetAllDataService {
         viewModel.launchAgentAvailability = .never
         viewModel.latestSnapshotID = nil
         viewModel.lastReviewedSnapshotID = nil
-        viewModel.latestDiffYesterday = nil
+        viewModel.latestDiffSinceReview = nil
         viewModel.latestDiffWeek = nil
+        viewModel.latestSnapshotDate = nil
         viewModel.staleApps.removeAll()
         viewModel.pendingRoute = nil
         viewModel.lastScanDate = nil
         viewModel.staleThresholdDays = preferencesStore.staleThresholdDays
         viewModel.snapshotStoreUnavailable = false
         viewModel.diffUnavailable = false
+        viewModel.snapshotWriteFailed = false
     }
 }

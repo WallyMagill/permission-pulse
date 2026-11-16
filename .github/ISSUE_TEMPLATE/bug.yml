@@ -1,0 +1,68 @@
+name: Bug report
+description: Something in Permission Pulse is wrong or broken.
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting. For a security problem, do not file it here: follow SECURITY.md and use the repository's private "Report a vulnerability" form.
+  - type: input
+    id: macos
+    attributes:
+      label: macOS version
+      description: Paste the output of `sw_vers` (ProductVersion and BuildVersion).
+      placeholder: "macOS 27.2 (26B123)"
+    validations:
+      required: true
+  - type: input
+    id: app-version
+    attributes:
+      label: Permission Pulse version
+      description: The release you downloaded, or Finder → select PermissionPulse.app → File → Get Info.
+      placeholder: "0.7.2"
+    validations:
+      required: true
+  - type: dropdown
+    id: hardware
+    attributes:
+      label: Mac hardware
+      options:
+        - Apple Silicon
+        - Intel
+    validations:
+      required: true
+  - type: dropdown
+    id: fda
+    attributes:
+      label: Is Full Disk Access granted to Permission Pulse?
+      description: System Settings → Privacy & Security → Full Disk Access. After an update the toggle turns off on its own.
+      options:
+        - "Yes"
+        - "No"
+        - "Not sure"
+    validations:
+      required: true
+  - type: textarea
+    id: banner
+    attributes:
+      label: Banner text
+      description: The exact text of any banner the app shows (for example "Degraded data" or "System-level permissions only"), copied word for word. Write "none" if there is no banner.
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: What you did, what you expected, and what happened instead.
+      placeholder: |
+        1. Open Permission Pulse
+        2. ...
+        Expected: ...
+        Actual: ...
+    validations:
+      required: true
+  - type: textarea
+    id: extra
+    attributes:
+      label: Anything else
+      description: Screenshots or other details. Check that they do not show anything you want to keep private, such as your list of installed apps.

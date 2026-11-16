@@ -6,8 +6,11 @@ import PermissionsStore
 public struct DetailWindowView: View {
     @Environment(AppViewModel.self) private var viewModel
     @Environment(\.openWindow) private var openWindow
+    /// Key or active while this window is in front in the active app.
+    @Environment(\.controlActiveState) private var controlActiveState
     private let onRefresh: (() async -> Void)?
-    private let onWhatChangedSelected: (() -> Void)?
+    private let onRecentChangesReviewed: ((SnapshotID) -> Void)?
+    private let onBecameVisible: (() -> Void)?
 
     @State private var section: SidebarItem? = .overview
     @State private var inspectorSelection: InspectorSelection?
@@ -15,13 +18,20 @@ public struct DetailWindowView: View {
     @State private var searchText = ""
     @State private var isRefreshing = false
     @State private var isApplyingRoute = false
+    /// A routed search waiting for the section change that would clear it.
+    @State private var routeSearchText: String?
 
+    /// `onRecentChangesReviewed` receives the newest snapshot whose changes
+    /// the user saw, when they leave Recent Changes (another section or
+    /// closing the window) or choose Mark All Reviewed.
     public init(
         onRefresh: (() async -> Void)? = nil,
-        onWhatChangedSelected: (() -> Void)? = nil
+        onRecentChangesReviewed: ((SnapshotID) -> Void)? = nil,
+        onBecameVisible: (() -> Void)? = nil
     ) {
         self.onRefresh = onRefresh
-        self.onWhatChangedSelected = onWhatChangedSelected
+        self.onRecentChangesReviewed = onRecentChangesReviewed
+        self.onBecameVisible = onBecameVisible
     }
 
     public var body: some View {
@@ -45,21 +55,23 @@ public struct DetailWindowView: View {
         .toolbar { toolbarContent }
         .frame(minWidth: 760, minHeight: 480)
         .background(windowShortcuts)
-        .onAppear { applyPendingRouteIfAny() }
+        .onAppear {
+            viewModel.isDetailWindowOpen = true
+            applyPendingRouteIfAny()
+            updateRecentChangesVisibility()
+            onBecameVisible?()
+        }
+        .onDisappear {
+            viewModel.isDetailWindowOpen = false
+            markSeenChangesReviewed()
+            viewModel.isViewingRecentChanges = false
+        }
         .onChange(of: viewModel.pendingRoute) { _, _ in applyPendingRouteIfAny() }
-        .onChange(of: section) { _, newSection in
-            // Landing on Recent Changes — via sidebar or a menu-bar route —
-            // marks the latest snapshot reviewed so the unreviewed badge clears.
-            if newSection == .recentChanges { onWhatChangedSelected?() }
-            // Reset per-context state: the search field and any inspector
-            // selection would otherwise dangle into a section that can't show them.
-            searchText = ""
-            if isApplyingRoute {
-                // Route-driven change: keep the pre-selected inspector item.
-                isApplyingRoute = false
-            } else {
-                inspectorSelection = nil
-            }
+        .onChange(of: controlActiveState) { _, _ in updateRecentChangesVisibility() }
+        .onChange(of: viewModel.recentChangesWindow) { _, _ in updateRecentChangesVisibility() }
+        .onChange(of: viewModel.latestDiffSinceReview?.toID) { _, _ in updateRecentChangesVisibility() }
+        .onChange(of: section) { oldSection, newSection in
+            handleSectionChange(from: oldSection, to: newSection)
         }
         .onChange(of: inspectorSelection) { _, newValue in
             if newValue != nil { isInspectorPresented = true }
@@ -84,15 +96,7 @@ public struct DetailWindowView: View {
         }
         if let onRefresh {
             ToolbarItem(placement: .primaryAction) {
-                Button {
-                    guard !isRefreshing else { return }
-                    Task { isRefreshing = true; await onRefresh(); isRefreshing = false }
-                } label: {
-                    Label(String(localized: "Rescan"), systemImage: "arrow.clockwise")
-                }
-                .disabled(isRefreshing)
-                .help(String(localized: "Rescan Now"))
-                .keyboardShortcut("r", modifiers: [.command])
+                rescanButton(onRefresh)
             }
         }
         ToolbarItem(placement: .primaryAction) { ExportToolbarMenu() }
@@ -105,6 +109,27 @@ public struct DetailWindowView: View {
             .help(String(localized: "Show or hide the inspector"))
             .keyboardShortcut("i", modifiers: [.command, .option])
         }
+    }
+
+    /// Disabled with a spinner while any scan runs, including scheduled
+    /// ones started elsewhere, not just the ones this button started.
+    private func rescanButton(_ onRefresh: @escaping () async -> Void) -> some View {
+        let isScanning = isRefreshing || viewModel.scanInProgress
+        return Button {
+            guard !isScanning else { return }
+            Task { isRefreshing = true; await onRefresh(); isRefreshing = false }
+        } label: {
+            if isScanning {
+                ProgressView()
+                    .controlSize(.small)
+                    .accessibilityLabel(String(localized: "Scanning"))
+            } else {
+                Label(String(localized: "Rescan"), systemImage: "arrow.clockwise")
+            }
+        }
+        .disabled(isScanning)
+        .help(isScanning ? String(localized: "Scanning…") : String(localized: "Rescan Now"))
+        .keyboardShortcut("r", modifiers: [.command])
     }
 
     // Hidden buttons give the window ⌘1–⌘6 section switching and ⌘, Preferences
@@ -133,7 +158,8 @@ public struct DetailWindowView: View {
         case .permissions: PermissionsDetailPage(searchText: searchText, selection: $inspectorSelection)
         case .launchAgents: LaunchAgentsDetailPage(searchText: searchText, selection: $inspectorSelection)
         case .backgroundItems: BackgroundItemsDetailPage(searchText: searchText, selection: $inspectorSelection)
-        case .recentChanges: RecentChangesDetailPage(searchText: searchText)
+        case .recentChanges:
+            RecentChangesDetailPage(searchText: searchText, onMarkAllReviewed: markAllReviewedAction)
         case .staleApps: StaleAppsDetailPage(searchText: searchText)
         }
     }
@@ -148,11 +174,57 @@ public struct DetailWindowView: View {
         }
     }
 
+    private func handleSectionChange(from oldSection: SidebarItem?, to newSection: SidebarItem?) {
+        // Rows stay on screen for the whole visit; leaving marks the ones
+        // seen reviewed so the next visit starts from them.
+        if oldSection == .recentChanges, newSection != .recentChanges {
+            markSeenChangesReviewed()
+        }
+        updateRecentChangesVisibility()
+        // Reset per-context state: the search field and any inspector
+        // selection would otherwise dangle into a section that can't show them.
+        searchText = routeSearchText ?? ""
+        routeSearchText = nil
+        if isApplyingRoute {
+            // Route-driven change: keep the pre-selected inspector item.
+            isApplyingRoute = false
+        } else {
+            inspectorSelection = nil
+        }
+    }
+
+    private func updateRecentChangesVisibility() {
+        let inFront = controlActiveState.isInFront
+        viewModel.isViewingRecentChanges = (section ?? .overview)
+            .suppressesUnreviewedBadge(windowIsInFront: inFront)
+        viewModel.observeRecentChanges(showing: section == .recentChanges, inFront: inFront)
+    }
+
+    private func markSeenChangesReviewed() {
+        guard let seen = viewModel.takeSeenRecentChanges() else { return }
+        onRecentChangesReviewed?(seen)
+    }
+
+    /// The button sits under the since-last-review rows, so they are seen.
+    private var markAllReviewedAction: (() -> Void)? {
+        guard let onRecentChangesReviewed else { return nil }
+        return {
+            guard let shown = viewModel.latestDiffSinceReview?.toID else { return }
+            onRecentChangesReviewed(shown)
+        }
+    }
+
     private func applyPendingRouteIfAny() {
         guard let route = viewModel.pendingRoute else { return }
         // Suppress the section-change reset only when the section actually
         // changes (onChange won't fire otherwise, so the flag must not stick).
         isApplyingRoute = section != route.sidebarItem
+        if isApplyingRoute {
+            routeSearchText = route.searchText
+        } else if let text = route.searchText {
+            searchText = text
+        }
+        if let window = route.recentChangesWindow { viewModel.recentChangesWindow = window }
         section = route.sidebarItem
         if let preselect = route.inspectorSelection {
             inspectorSelection = preselect
@@ -164,6 +236,17 @@ public struct DetailWindowView: View {
 
 extension SidebarItem {
     var showsSearch: Bool { self != .overview }
+
+    /// Recent Changes counts as seen only while it is on screen in front;
+    /// a window left open behind other apps must not hide new changes.
+    func suppressesUnreviewedBadge(windowIsInFront: Bool) -> Bool {
+        self == .recentChanges && windowIsInFront
+    }
+}
+
+extension ControlActiveState {
+    /// `appearsActive` would say this directly but needs macOS 15.
+    var isInFront: Bool { self == .key || self == .active }
 }
 
 // MARK: - Sidebar (native source list)
@@ -174,7 +257,7 @@ private struct DetailSidebar: View {
     @Binding var selection: SidebarItem?
 
     var body: some View {
-        let changeCount = viewModel.hasUnreviewedChanges ? viewModel.recentChangeEventCount : 0
+        let changeCount = viewModel.unreviewedChangeCount
         let staleCount = viewModel.staleApps.count
 
         List(selection: $selection) {
@@ -226,134 +309,6 @@ private struct DetailSidebar: View {
     }
 }
 
-// MARK: - Permissions page
-
-private struct PermissionsDetailPage: View {
-    @Environment(AppViewModel.self) private var viewModel
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    let searchText: String
-    @Binding var selection: InspectorSelection?
-
-    var body: some View {
-        VStack(spacing: 0) {
-            ScanAvailabilityBanner(
-                availability: viewModel.tccAvailability,
-                domainName: String(localized: "Permissions")
-            )
-            .padding([.horizontal, .top], PPSpacing.lg)
-            .padding(.bottom, PPSpacing.sm)
-            Group {
-                if let error = viewModel.tccScanError, isSchemaIssue(error) {
-                    VStack(spacing: 0) {
-                        SchemaMismatchBanner(error: error, domain: .tcc)
-                            .padding(PPSpacing.lg)
-                        grantList
-                    }
-                } else if ScanState.showsScanningPlaceholder(
-                    isScanning: viewModel.scanInProgress,
-                    isEmpty: viewModel.grants.isEmpty,
-                    hasError: viewModel.tccScanError != nil,
-                    isSearching: !searchText.isEmpty
-                ) {
-                    ScanningStateView()
-                } else if viewModel.grants.isEmpty {
-                    PermissionsEmptyStateView(error: viewModel.tccScanError, domain: .tcc)
-                } else if groups.isEmpty {
-                    ContentUnavailableView.search(text: searchText)
-                } else {
-                    grantList
-                }
-            }
-        }
-        // A scan can land a schema error while the page is open; animate the
-        // banner in instead of shoving the list down by a full banner height.
-        .animation(reduceMotion ? nil : .default, value: viewModel.tccScanError == nil)
-        .navigationTitle(String(localized: "Permissions"))
-        .navigationSubtitle(subtitle)
-    }
-
-    private var grantList: some View {
-        List(selection: $selection) {
-            ForEach(groups) { group in
-                AppGrantRow(group: group)
-                    .tag(InspectorSelection.app(appKey: group.appKey))
-            }
-        }
-        .listStyle(.inset)
-    }
-
-    private struct AppGrantGroup: Identifiable {
-        let appKey: String
-        let app: AppIdentity
-        let grants: [PermissionGrant]
-        var id: String { appKey }
-    }
-
-    private var groups: [AppGrantGroup] {
-        let filtered: [PermissionGrant]
-        if searchText.isEmpty {
-            filtered = viewModel.grants
-        } else {
-            let q = searchText.lowercased()
-            filtered = viewModel.grants.filter { grant in
-                grant.app.displayName.lowercased().contains(q)
-                    || grant.app.bundleID.lowercased().contains(q)
-                    || grant.service.displayName.lowercased().contains(q)
-            }
-        }
-        return Dictionary(grouping: filtered, by: \.appKey)
-            .map { key, grants in AppGrantGroup(appKey: key, app: grants[0].app, grants: grants) }
-            .sorted { $0.app.displayName.localizedCaseInsensitiveCompare($1.app.displayName) == .orderedAscending }
-    }
-
-    private var subtitle: String {
-        guard !viewModel.grants.isEmpty else { return "" }
-        let appCount = Set(viewModel.grants.map(\.appKey)).count
-        let serviceCount = Set(viewModel.grants.map(\.service)).count
-        let apps = appCount == 1
-            ? String(localized: "1 app")
-            : String(localized: "\(appCount) apps")
-        let services = serviceCount == 1
-            ? String(localized: "1 service")
-            : String(localized: "\(serviceCount) services")
-        return String(localized: "\(apps) · \(services)")
-    }
-
-    private struct AppGrantRow: View {
-        let group: AppGrantGroup
-
-        var body: some View {
-            HStack(spacing: PPSpacing.md) {
-                AppIconResolver.iconView(for: group.app, size: 28)
-                VStack(alignment: .leading, spacing: PPSpacing.xxs) {
-                    Text(group.app.displayName).ppFont(.body)
-                    Text(serviceLine)
-                        .ppFont(.metadata)
-                        .foregroundStyle(.secondary)
-                        .lineLimit(1)
-                }
-                Spacer(minLength: PPSpacing.sm)
-                Text("\(distinctServices.count)")
-                    .ppFont(.metadata)
-                    .foregroundStyle(.secondary)
-                    .monospacedDigit()
-            }
-            .padding(.vertical, PPSpacing.xxs)
-            .accessibilityElement(children: .combine)
-        }
-
-        private var distinctServices: [String] {
-            Set(group.grants.map(\.service))
-                .map(\.displayName)
-                .sorted()
-        }
-
-        private var serviceLine: String {
-            distinctServices.joined(separator: " · ")
-        }
-    }
-}
-
 // MARK: - Launch Agents page
 
 private struct LaunchAgentsDetailPage: View {
@@ -399,7 +354,7 @@ private struct LaunchAgentsDetailPage: View {
     private var agentList: some View {
         List(selection: $selection) {
             ForEach(filteredItems) { item in
-                LaunchAgentRow(item: item)
+                LaunchAgentRow(item: item, programMissing: viewModel.missingProgramAgentIDs.contains(item.id))
                     .tag(InspectorSelection.launchAgent(id: item.id))
             }
         }
@@ -417,12 +372,7 @@ private struct LaunchAgentsDetailPage: View {
     }
 
     private var filteredItems: [LaunchAgentItem] {
-        if searchText.isEmpty { return viewModel.launchAgents }
-        let q = searchText.lowercased()
-        return viewModel.launchAgents.filter { item in
-            item.label.lowercased().contains(q)
-                || (item.programPath?.lowercased().contains(q) ?? false)
-        }
+        LaunchAgentDisplay.filtered(viewModel.launchAgents, searchText: searchText)
     }
 
     private var subtitle: String {
@@ -431,28 +381,6 @@ private struct LaunchAgentsDetailPage: View {
         return count == 1
             ? String(localized: "1 agent across user and system scopes")
             : String(localized: "\(count) agents across user and system scopes")
-    }
-}
-
-private struct LaunchAgentRow: View {
-    let item: LaunchAgentItem
-
-    var body: some View {
-        HStack(spacing: PPSpacing.md) {
-            Image(systemName: "gearshape.2")
-                .frame(width: 28, height: 28)
-                .foregroundStyle(.secondary)
-                .accessibilityHidden(true)
-            VStack(alignment: .leading, spacing: PPSpacing.xxs) {
-                Text(item.label).ppFont(.body).lineLimit(1)
-                Text(item.sourceDirectory.path)
-                    .ppFont(.metadata)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
-            }
-        }
-        .padding(.vertical, PPSpacing.xxs)
-        .accessibilityElement(children: .combine)
     }
 }
 
@@ -582,101 +510,10 @@ private struct BTMListRow: View {
     }
 }
 
-// MARK: - Recent Changes page
-
-private struct RecentChangesDetailPage: View {
-    @Environment(AppViewModel.self) private var viewModel
-    @State private var window: RecentWindow = .yesterday
-    let searchText: String
-
-    var body: some View {
-        // The diff content (a List or ContentUnavailableView) is the detail-pane
-        // root, matching every other section. A bare VStack root here let the
-        // pane size to its content instead of filling, which made
-        // NavigationSplitView mis-lay-out its sidebar column. The window picker
-        // rides in a top safe-area inset — pinned without distorting the pane,
-        // and it also keeps the picker steady across populated/empty windows.
-        diffContent
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .safeAreaInset(edge: .top, spacing: 0) {
-                Picker("", selection: $window) {
-                    Text(String(localized: "Yesterday")).tag(RecentWindow.yesterday)
-                    Text(String(localized: "Last 7 days")).tag(RecentWindow.week)
-                }
-                .pickerStyle(.segmented)
-                .labelsHidden()
-                .accessibilityLabel(String(localized: "Change window"))
-                .padding(PPSpacing.lg)
-                .background(.windowBackground)
-            }
-            .navigationTitle(String(localized: "Recent Changes"))
-    }
-
-    @ViewBuilder
-    private var diffContent: some View {
-        switch window {
-        case .yesterday:
-            DiffTabView(
-                diff: viewModel.latestDiffYesterday,
-                windowLabel: .yesterday,
-                searchText: searchText,
-                snapshotStoreUnavailable: viewModel.snapshotStoreUnavailable,
-                diffUnavailable: viewModel.diffUnavailable
-            )
-        case .week:
-            DiffTabView(
-                diff: viewModel.latestDiffWeek,
-                windowLabel: .lastWeek,
-                searchText: searchText,
-                snapshotStoreUnavailable: viewModel.snapshotStoreUnavailable,
-                diffUnavailable: viewModel.diffUnavailable
-            )
-        }
-    }
-}
-
-private enum RecentWindow: Hashable {
-    case yesterday
-    case week
-}
-
-// MARK: - Stale Apps page
-
-private struct StaleAppsDetailPage: View {
-    @Environment(AppViewModel.self) private var viewModel
-    let searchText: String
-
-    var body: some View {
-        Group {
-            if filteredApps.isEmpty && !searchText.isEmpty {
-                ContentUnavailableView.search(text: searchText)
-            } else {
-                StaleAppsTabView(staleApps: filteredApps, staleThresholdDays: viewModel.staleThresholdDays)
-            }
-        }
-        .navigationTitle(String(localized: "Stale Apps"))
-        .navigationSubtitle(subtitle)
-    }
-
-    private var filteredApps: [StaleApp] {
-        if searchText.isEmpty { return viewModel.staleApps }
-        let q = searchText.lowercased()
-        return viewModel.staleApps.filter { app in
-            app.app.displayName.lowercased().contains(q)
-                || app.app.bundleID.lowercased().contains(q)
-        }
-    }
-
-    private var subtitle: String {
-        if viewModel.staleApps.isEmpty { return "" }
-        return String(localized: "Apps with active grants you haven't used in \(viewModel.staleThresholdDays)+ days")
-    }
-}
-
 // MARK: - Helpers
 
 // Shared by the three inventory pages while the initial scan is running.
-private struct ScanningStateView: View {
+struct ScanningStateView: View {
     var body: some View {
         ContentUnavailableView {
             Label {
@@ -693,7 +530,7 @@ private struct ScanningStateView: View {
     }
 }
 
-private func isSchemaIssue(_ error: ScannerError) -> Bool {
+func isSchemaIssue(_ error: ScannerError) -> Bool {
     switch error {
     case .schemaMismatch, .unsupportedOnThisOS: true
     default: false

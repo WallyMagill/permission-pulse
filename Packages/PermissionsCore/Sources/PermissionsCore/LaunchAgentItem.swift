@@ -21,11 +21,19 @@ public struct LaunchAgentItem: Sendable, Hashable, Identifiable {
     public let programArguments: [String]
     public let runAtLoad: Bool
     public let keepAlive: Bool
-    // launchd `Disabled` key. A disabled agent is registered but NOT loaded by
+    // launchd's disabled-override database entry for this label, else the
+    // plist's `Disabled` key. A disabled agent is registered but NOT loaded by
     // launchd; persisted in schema-v5 snapshots and surfaced in the detail view
     // so it isn't mistaken for active. Legacy snapshots did not capture this
     // field, so store diffing compares it only between two v5 snapshots.
     public let isDisabled: Bool
+    // False when the plist exists but could not be read or parsed (e.g. a
+    // root-only 0700 daemon plist). The label is then the file name, and the
+    // program/argument/flag fields carry no evidence.
+    public let detailsReadable: Bool
+    // Name of the plist on disk. Not part of identity or diff equivalence:
+    // snapshots before schema v7 did not record it.
+    public let fileName: String?
 
     public init(
         label: String,
@@ -34,7 +42,9 @@ public struct LaunchAgentItem: Sendable, Hashable, Identifiable {
         programArguments: [String],
         runAtLoad: Bool,
         keepAlive: Bool,
-        isDisabled: Bool = false
+        isDisabled: Bool = false,
+        detailsReadable: Bool = true,
+        fileName: String? = nil
     ) {
         self.label = label
         self.sourceDirectory = sourceDirectory
@@ -43,6 +53,13 @@ public struct LaunchAgentItem: Sendable, Hashable, Identifiable {
         self.runAtLoad = runAtLoad
         self.keepAlive = keepAlive
         self.isDisabled = isDisabled
+        self.detailsReadable = detailsReadable
+        self.fileName = fileName
+    }
+
+    /// The executable launchd would start: `Program`, else `ProgramArguments[0]`.
+    public var effectiveProgram: String? {
+        programPath ?? programArguments.first
     }
 
     // Mirror of the diff identity key. Used by SwiftUI sheet(item:) bindings.

@@ -3,14 +3,21 @@ import SwiftUI
 
 public struct MenuBarContentView: View {
     @Environment(\.openWindow) private var openWindow
+    @Environment(\.openURL) private var openURL
     @Environment(AppViewModel.self) private var viewModel
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     private let onShowWelcome: (() -> Void)?
     private let onRescan: (() -> Void)?
+    private let onBecameVisible: (() -> Void)?
 
-    public init(onShowWelcome: (() -> Void)? = nil, onRescan: (() -> Void)? = nil) {
+    public init(
+        onShowWelcome: (() -> Void)? = nil,
+        onRescan: (() -> Void)? = nil,
+        onBecameVisible: (() -> Void)? = nil
+    ) {
         self.onShowWelcome = onShowWelcome
         self.onRescan = onRescan
+        self.onBecameVisible = onBecameVisible
     }
 
     public var body: some View {
@@ -34,6 +41,7 @@ public struct MenuBarContentView: View {
         }
         .frame(width: 320)
         .ppDropdownDynamicTypeClamp()
+        .onAppear { onBecameVisible?() }
     }
 
     private var header: some View {
@@ -52,6 +60,11 @@ public struct MenuBarContentView: View {
                         .ppFont(.metadata)
                         .foregroundStyle(.secondary)
                 }
+            } else if let updated = ScanTimestamp.updatedText(lastScan: viewModel.lastScanDate) {
+                Text(updated)
+                    .ppFont(.metadata)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
             }
         }
     }
@@ -60,8 +73,13 @@ public struct MenuBarContentView: View {
         VStack(alignment: .leading, spacing: 1) {
             ForEach(currentRows) { row in
                 StatusRowButton(row: row) {
-                    viewModel.pendingRoute = row.route
-                    activateAndOpen("detail")
+                    switch row.destination {
+                    case .app(let route):
+                        viewModel.pendingRoute = route
+                        activateAndOpen("detail")
+                    case .systemSettings(let service):
+                        SystemSettingsLink.open(for: service)
+                    }
                 }
             }
         }
@@ -73,13 +91,15 @@ public struct MenuBarContentView: View {
 
     private var currentRows: [DropdownStatusRow] {
         DropdownStatusBuilder.rows(
-            attention: viewModel.attentionState,
+            attention: viewModel.attentionItems,
             micInUse: viewModel.micInUse,
             cameraInUse: viewModel.cameraInUse,
-            changeCount: viewModel.recentChangeEventCount,
+            changeCount: viewModel.unreviewedChangeCount,
             hasUnreviewedChanges: viewModel.hasUnreviewedChanges,
             staleCount: viewModel.staleApps.count,
-            appCount: Set(viewModel.grants.map(\.appKey)).count
+            appCount: viewModel.hasPermissionData ? Set(viewModel.grants.map(\.appKey)).count : nil,
+            systemLevelOnly: viewModel.permissionScope.isReduced,
+            isTranslocated: viewModel.isTranslocated
         )
     }
 
@@ -106,10 +126,14 @@ public struct MenuBarContentView: View {
                 title: String(localized: "Settings…"),
                 shortcutKey: ",", shortcutDisplay: "⌘,"
             ) { activateAndOpen("preferences") }
+            MenuRowButton(
+                icon: "arrow.down.circle",
+                title: String(localized: "Check for Updates…")
+            ) { openURL(ProjectLinks.releases) }
             if let onShowWelcome {
                 MenuRowButton(
                     icon: "info.circle",
-                    title: String(localized: "Welcome & About")
+                    title: String(localized: "Welcome Tour")
                 ) { onShowWelcome() }
             }
             Divider().padding(.horizontal, PPSpacing.sm).padding(.vertical, 3)
@@ -181,7 +205,16 @@ private struct StatusRowButton: View {
     /// VoiceOver mirror of the deep link each row follows; sighted users get
     /// the same routing information from the row copy and chevron.
     private var destinationHint: String {
-        switch row.route {
+        switch row.destination {
+        case .systemSettings(let service):
+            String(localized: "Opens \(service.displayName) in System Settings")
+        case .app(let route):
+            Self.hint(for: route)
+        }
+    }
+
+    private static func hint(for route: AppRoute) -> String {
+        switch route {
         case .overview:
             String(localized: "Opens the Overview in Permission Pulse")
         case .permissions:
@@ -190,7 +223,7 @@ private struct StatusRowButton: View {
             String(localized: "Opens Launch Agents in Permission Pulse")
         case .backgroundItems:
             String(localized: "Opens Background Items in Permission Pulse")
-        case .recentChanges:
+        case .recentChanges, .recentChangesLastSevenDays:
             String(localized: "Opens Recent Changes in Permission Pulse")
         case .staleApps:
             String(localized: "Opens Stale Apps in Permission Pulse")
@@ -199,29 +232,30 @@ private struct StatusRowButton: View {
 
     private var isCountRow: Bool {
         switch row.kind {
-        case .changes, .stale, .allClear: true
-        case .attention, .media: false
+        case .changes, .stale, .summary: true
+        case .attention, .moveToApplications, .media: false
         }
     }
 
     private var symbolName: String {
         switch row.kind {
         case .attention: "exclamationmark.triangle.fill"
+        case .moveToApplications: "folder.badge.questionmark"
         case .media(_, true): "video.fill"
         case .media: "mic.fill"
         case .changes: "clock.arrow.circlepath"
         case .stale: "hourglass"
-        case .allClear: "checkmark.shield"
+        case .summary(_, _, let allClear): allClear ? "checkmark.shield" : "shield"
         }
     }
 
     private var iconColor: Color {
         switch row.kind {
-        case .attention: PPColor.warning
+        case .attention, .moveToApplications: PPColor.warning
         case .media: PPColor.danger
         case .changes: PPColor.recentChanges
         case .stale: PPColor.staleApps
-        case .allClear: PPColor.success
+        case .summary(_, _, let allClear): allClear ? PPColor.success : .secondary
         }
     }
 }
@@ -281,7 +315,7 @@ private struct MenuRowButton: View {
 }
 
 /// Applies `.keyboardShortcut` only when a key is present — `MenuRowButton`
-/// rows like Welcome & About have no shortcut.
+/// rows like Welcome Tour have no shortcut.
 private struct OptionalShortcut: ViewModifier {
     let key: KeyEquivalent?
 

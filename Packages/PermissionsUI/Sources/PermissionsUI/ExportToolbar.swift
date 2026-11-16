@@ -22,11 +22,9 @@ struct ExportToolbarMenu: View {
     private enum Format { case json, markdown }
 
     private func export(_ format: Format) {
-        let report = PermissionsExport.report(
-            grants: viewModel.grants,
-            launchAgents: viewModel.launchAgents,
-            btmItems: viewModel.btmItems,
-            staleApps: viewModel.staleApps,
+        let report = ExportReportBuilder.report(
+            from: viewModel,
+            environment: ExportReportBuilder.runningEnvironment(),
             generatedAt: Date()
         )
         do {
@@ -50,6 +48,7 @@ struct ExportToolbarMenu: View {
     }
 }
 
+@MainActor
 private enum ExportSaver {
     // AppKit: NSSavePanel + Data.write to the user-chosen URL. A cancel is not
     // an error (returns without writing); a real write failure propagates.
@@ -60,5 +59,93 @@ private enum ExportSaver {
         panel.canCreateDirectories = true
         guard panel.runModal() == .OK, let url = panel.url else { return }
         try data.write(to: url, options: .atomic)
+    }
+}
+
+/// Turns the view model's scan state into the export's coverage record.
+enum ExportReportBuilder {
+    @MainActor
+    static func report(from viewModel: AppViewModel, environment: ExportEnvironment, generatedAt: Date) -> ExportReport {
+        let scope = viewModel.permissionScope
+        let hidden = PermissionService.allCases.filter(scope.isHidden).map(\.rawValue)
+        return PermissionsExport.report(
+            grants: viewModel.grants,
+            launchAgents: viewModel.launchAgents,
+            btmItems: viewModel.btmItems,
+            staleApps: viewModel.staleApps,
+            generatedAt: generatedAt,
+            environment: environment,
+            coverage: ExportCoverage(
+                permissions: coverage(viewModel.tccAvailability, unavailableServices: hidden),
+                launchAgents: coverage(viewModel.launchAgentAvailability, needsFullDiskAccess: false),
+                backgroundItems: coverage(viewModel.btmAvailability)
+            ),
+            staleAppsStatus: staleAppsStatus(viewModel)
+        )
+    }
+
+    /// The same reasons the Stale Apps page gives for an empty list.
+    @MainActor
+    static func staleAppsStatus(_ viewModel: AppViewModel) -> ExportStaleAppsStatus {
+        let state = StaleAppsEmptyState.resolve(
+            hasPermissionData: viewModel.hasPermissionData,
+            historyAvailable: !viewModel.snapshotStoreUnavailable && viewModel.latestSnapshotID != nil,
+            systemLevelOnly: viewModel.permissionScope.isReduced
+        )
+        return switch state {
+        case .noPermissionData: .permissionsNotScanned
+        case .historyUnavailable: .historyUnavailable
+        case .noneStale: .checked
+        }
+    }
+
+    /// A Launch Agents "permission denied" is an unreadable folder, not Full
+    /// Disk Access, so only the FDA-gated domains report `fullDiskAccessOff`.
+    static func coverage(
+        _ availability: ScanAvailability,
+        unavailableServices: [String] = [],
+        needsFullDiskAccess: Bool = true
+    ) -> ExportDomainCoverage {
+        let level: ExportDomainCoverage.Level
+        var reason: ExportDomainCoverage.FailureReason?
+        switch availability {
+        case .never:
+            level = .failed
+            reason = .notScannedYet
+        case .complete:
+            level = unavailableServices.isEmpty ? .complete : .reduced
+        case .degraded:
+            level = .degraded
+        case .failed(_, let error):
+            level = .failed
+            reason = failureReason(error, needsFullDiskAccess: needsFullDiskAccess)
+        }
+        return ExportDomainCoverage(
+            coverage: level,
+            lastSuccessfulScan: availability.lastSuccessful,
+            unavailableServices: unavailableServices,
+            failureReason: reason
+        )
+    }
+
+    private static func failureReason(
+        _ error: ScannerError,
+        needsFullDiskAccess: Bool
+    ) -> ExportDomainCoverage.FailureReason {
+        switch error {
+        case .permissionDenied: needsFullDiskAccess ? .fullDiskAccessOff : .sourceUnavailable
+        case .schemaMismatch, .unsupportedOnThisOS: .unrecognizedFormat
+        case .temporarilyUnavailable: .sourceUnavailable
+        }
+    }
+
+    static func runningEnvironment() -> ExportEnvironment {
+        let app = AppVersion.running
+        let os = ProcessInfo.processInfo.operatingSystemVersion
+        return ExportEnvironment(
+            appVersion: app.shortVersion,
+            appBuild: app.build,
+            macOSVersion: "\(os.majorVersion).\(os.minorVersion).\(os.patchVersion)"
+        )
     }
 }

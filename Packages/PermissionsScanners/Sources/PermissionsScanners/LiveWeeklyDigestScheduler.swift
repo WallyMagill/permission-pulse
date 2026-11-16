@@ -4,15 +4,16 @@ import UserNotifications
 import PermissionsCore
 
 /// Production-side `WeeklyDigestScheduler` backed by
-/// `UNUserNotificationCenter.current()`. Foreground banner presentation is
-/// handled by `NotificationPresentationDelegate`; taps on the delivered
-/// notification simply activate the app (candidate to route into Recent
-/// Changes later).
+/// `UNUserNotificationCenter.current()`. Foreground banner presentation and
+/// clicks on a delivered notification are handled by
+/// `NotificationPresentationDelegate`.
 public struct LiveWeeklyDigestScheduler: WeeklyDigestScheduler {
     private static let logger = Logger(
         subsystem: "com.wallymagill.permissionpulse",
         category: "digest-scheduler"
     )
+
+    static let armedFireDateKey = "armedFireDate"
 
     public init() {}
 
@@ -45,15 +46,21 @@ public struct LiveWeeklyDigestScheduler: WeeklyDigestScheduler {
         components.hour = hour
         components.minute = minute
 
+        // Non-repeating: a repeating trigger would deliver the body composed
+        // at scheduling time every week, and keep firing while the app is not
+        // running. The coordinator re-arms the next occurrence after each scan.
         let trigger = UNCalendarNotificationTrigger(
             dateMatching: components,
-            repeats: true
+            repeats: false
         )
 
         let content = UNMutableNotificationContent()
         content.title = title
         content.body = body
         content.sound = .default
+        if let fireDate = trigger.nextTriggerDate() {
+            content.userInfo = [Self.armedFireDateKey: fireDate.timeIntervalSince1970]
+        }
 
         let request = UNNotificationRequest(
             identifier: identifier,
@@ -117,6 +124,16 @@ public struct LiveWeeklyDigestScheduler: WeeklyDigestScheduler {
             return intervalTrigger.nextTriggerDate()
         }
         return nil
+    }
+
+    public func armedFireDate(for identifier: String) async -> Date? {
+        let pending = await UNUserNotificationCenter.current()
+            .pendingNotificationRequests()
+        guard let request = pending.first(where: { $0.identifier == identifier }),
+              let seconds = request.content.userInfo[Self.armedFireDateKey] as? TimeInterval else {
+            return nil
+        }
+        return Date(timeIntervalSince1970: seconds)
     }
 
     // MARK: - Private

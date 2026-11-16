@@ -1,5 +1,7 @@
 # 13 — Fourth slice: BTM scanner
 
+> Historical slice spec; file names reflect that release and may have moved.
+
 **Status:** Implemented v0.4.0 — 2026-05-14.
 
 ## Why this slice

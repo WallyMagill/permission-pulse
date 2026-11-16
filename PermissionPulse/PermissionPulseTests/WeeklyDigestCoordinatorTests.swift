@@ -242,16 +242,79 @@ import PermissionsUI
         #expect(actualNextFire == pending.first?.nextFire)
     }
 
-    @Test func composeEmptyWeekReturnsHeartbeatString() {
+    @Test func composeWithoutWeekHistoryClaimsNoAllClear() {
         let env = makeEnv(digestEnabled: true, status: .authorized)
         let composed = env.coordinator.composeDigestBody(diff: nil)
-        #expect(composed.body == String(localized: "No changes in the last week."))
+        #expect(composed.body == "History is less than a week old, so there's nothing to compare yet.")
+    }
+
+    @Test func composeEmptyWeekReturnsHeartbeatString() {
+        let env = makeEnv(digestEnabled: true, status: .authorized)
+        let diff = SnapshotDiffs(
+            toID: SnapshotID(rawValue: 2),
+            tcc: TCCGrantsDiff(added: [], removed: []),
+            btm: BTMItemsDiff(added: [], removed: []),
+            launchAgents: LaunchAgentsDiff(added: [], removed: [])
+        )
+        #expect(env.coordinator.composeDigestBody(diff: diff).body == "No changes in the last week.")
+    }
+
+    @Test func composeWithEveryDomainUncomparedSaysSo() {
+        let env = makeEnv(digestEnabled: true, status: .authorized)
+        let diff = SnapshotDiffs(
+            toID: SnapshotID(rawValue: 2),
+            tcc: TCCGrantsDiff(added: [], removed: []),
+            btm: BTMItemsDiff(added: [], removed: []),
+            launchAgents: LaunchAgentsDiff(added: [], removed: []),
+            uncompared: [.tcc: .latestScanFailed, .btm: .latestScanFailed, .launchAgents: .itemsUnreadable]
+        )
+        #expect(env.coordinator.composeDigestBody(diff: diff).body == "This week's history couldn't be compared.")
+    }
+
+    @Test func composeCountsOnlyChangesTheUserHasNotDismissed() throws {
+        let env = makeEnv(digestEnabled: true, status: .authorized)
+        let store = DismissedDiffEntryStore(defaults: try #require(UserDefaults(suiteName: "digest-dismiss-\(UUID().uuidString)")))
+        env.viewModel.dismissedDiffEntries = store
+        let diff = SnapshotDiffs(
+            toID: SnapshotID(rawValue: 2),
+            tcc: TCCGrantsDiff(added: [demoGrant(), demoGrant(bundleID: "com.b")], removed: []),
+            btm: BTMItemsDiff(added: [], removed: []),
+            launchAgents: LaunchAgentsDiff(added: [], removed: [demoLaunchAgent()])
+        )
+        store.dismissForever(key: diff.entries[2].id)
+
+        #expect(env.coordinator.composeDigestBody(diff: diff).body == "2 added in the last week.")
+    }
+
+    @Test func composeEmptyWeekWithUncomparedDomainSaysSo() {
+        let env = makeEnv(digestEnabled: true, status: .authorized)
+        let diff = SnapshotDiffs(
+            toID: SnapshotID(rawValue: 2),
+            tcc: TCCGrantsDiff(added: [], removed: []),
+            btm: BTMItemsDiff(added: [], removed: []),
+            launchAgents: LaunchAgentsDiff(added: [], removed: []),
+            uncompared: [.launchAgents: .itemsUnreadable]
+        )
+        let composed = env.coordinator.composeDigestBody(diff: diff)
+        #expect(composed.body == "No changes found in compared data; Launch Agents couldn't be compared this week.")
+    }
+
+    @Test func composeChangesWithUncomparedDomainAppendsClause() {
+        let env = makeEnv(digestEnabled: true, status: .authorized)
+        let diff = SnapshotDiffs(
+            toID: SnapshotID(rawValue: 2),
+            tcc: TCCGrantsDiff(added: [demoGrant()], removed: []),
+            btm: BTMItemsDiff(added: [], removed: []),
+            launchAgents: LaunchAgentsDiff(added: [], removed: []),
+            uncompared: [.btm: .latestScanFailed, .launchAgents: .itemsUnreadable]
+        )
+        let composed = env.coordinator.composeDigestBody(diff: diff)
+        #expect(composed.body == "1 added in the last week. Background Items and Launch Agents couldn't be compared.")
     }
 
     @Test func composeMixedDiffMentionsAddedAndRemoved() {
         let env = makeEnv(digestEnabled: true, status: .authorized)
         let diff = SnapshotDiffs(
-            fromID: SnapshotID(rawValue: 1),
             toID: SnapshotID(rawValue: 2),
             tcc: TCCGrantsDiff(added: [demoGrant()], removed: []),
             btm: BTMItemsDiff(added: [], removed: []),
@@ -265,7 +328,6 @@ import PermissionsUI
     @Test func composeAddedOnlyOmitsRemovedAndChanged() {
         let env = makeEnv(digestEnabled: true, status: .authorized)
         let diff = SnapshotDiffs(
-            fromID: SnapshotID(rawValue: 1),
             toID: SnapshotID(rawValue: 2),
             tcc: TCCGrantsDiff(added: [demoGrant(), demoGrant(bundleID: "com.b")], removed: []),
             btm: BTMItemsDiff(added: [], removed: []),
@@ -280,7 +342,6 @@ import PermissionsUI
     @Test func composeRemovedOnlyOmitsAddedAndChanged() {
         let env = makeEnv(digestEnabled: true, status: .authorized)
         let diff = SnapshotDiffs(
-            fromID: SnapshotID(rawValue: 1),
             toID: SnapshotID(rawValue: 2),
             tcc: TCCGrantsDiff(added: [], removed: [demoGrant()]),
             btm: BTMItemsDiff(added: [], removed: []),
@@ -297,7 +358,6 @@ import PermissionsUI
         let before = demoGrant(authValue: 2)
         let after = demoGrant(authValue: 3)
         let diff = SnapshotDiffs(
-            fromID: SnapshotID(rawValue: 1),
             toID: SnapshotID(rawValue: 2),
             tcc: TCCGrantsDiff(
                 added: [],
@@ -321,7 +381,6 @@ import PermissionsUI
         let secondBefore = demoGrant(bundleID: "com.example.second", authValue: 3)
         let secondAfter = demoGrant(bundleID: "com.example.second", authValue: 2)
         let diff = SnapshotDiffs(
-            fromID: SnapshotID(rawValue: 1),
             toID: SnapshotID(rawValue: 2),
             tcc: TCCGrantsDiff(
                 added: [],
@@ -388,6 +447,50 @@ import PermissionsUI
         #expect(date == nil)
     }
 
+    @Test func aDigestThatCameDueWhileAsleepIsDeliveredBeforeReArming() async throws {
+        let env = makeEnv(digestEnabled: true, status: .authorized)
+        _ = await env.coordinator.reconcileSchedule()
+        #expect(await env.scheduler.oneShots(withPrefix: WeeklyDigestCoordinator.overdueIdentifier).isEmpty)
+        let armed = try #require(await env.scheduler.armedFireDate(for: WeeklyDigestCoordinator.weeklyIdentifier))
+        // The Mac slept through the armed date; the pending request still
+        // reports a future next trigger date, as the real one does.
+        env.clock.date = armed.addingTimeInterval(3_600)
+        #expect(try #require(await env.scheduler.nextFireDate(for: WeeklyDigestCoordinator.weeklyIdentifier)) > env.clock.date)
+
+        let result = await env.coordinator.reconcileSchedule()
+
+        let overdue = await env.scheduler.oneShots(withPrefix: WeeklyDigestCoordinator.overdueIdentifier)
+        #expect(overdue.map(\.title) == ["Permission Pulse · Weekly digest"])
+        #expect(overdue.first?.body == "History is less than a week old, so there's nothing to compare yet.")
+        guard case .scheduled = result else {
+            Issue.record("Expected the next occurrence to be armed, got \(result)")
+            return
+        }
+        let pending = await env.scheduler.pendingIdentifiers()
+        #expect(pending.contains(WeeklyDigestCoordinator.weeklyIdentifier))
+        #expect(pending.contains(WeeklyDigestCoordinator.overdueIdentifier))
+    }
+
+    @Test func aDigestNotYetDueIsOnlyReArmed() async throws {
+        let env = makeEnv(digestEnabled: true, status: .authorized)
+        _ = await env.coordinator.reconcileSchedule()
+        _ = await env.coordinator.reconcileSchedule()
+        #expect(await env.scheduler.oneShots(withPrefix: WeeklyDigestCoordinator.overdueIdentifier).isEmpty)
+    }
+
+    @Test func turningTheDigestOffCancelsAnOverdueDelivery() async throws {
+        let env = makeEnv(digestEnabled: true, status: .authorized)
+        _ = await env.coordinator.reconcileSchedule()
+        let armed = try #require(await env.scheduler.armedFireDate(for: WeeklyDigestCoordinator.weeklyIdentifier))
+        env.clock.date = armed.addingTimeInterval(60)
+        _ = await env.coordinator.reconcileSchedule()
+        #expect(await env.scheduler.pendingIdentifiers().contains(WeeklyDigestCoordinator.overdueIdentifier))
+
+        _ = await env.coordinator.handleAuthorizationToggle(turnOn: false)
+
+        #expect(await env.scheduler.pendingIdentifiers().isEmpty)
+    }
+
     // MARK: - Env
 
     @MainActor
@@ -396,18 +499,21 @@ import PermissionsUI
         let preferencesStore: PreferencesStore
         let scheduler: MockWeeklyDigestScheduler
         let coordinator: WeeklyDigestCoordinator
+        let clock: TestClock
 
         init(digestEnabled: Bool, status: DigestAuthorizationStatus) {
             self.viewModel = AppViewModel()
             let defaults = UserDefaults(suiteName: "digest-test-\(UUID().uuidString)")!
             self.preferencesStore = PreferencesStore(defaults: defaults)
             self.preferencesStore.digestEnabled = digestEnabled
-            self.scheduler = MockWeeklyDigestScheduler(initialStatus: status)
+            let clock = TestClock(Date(timeIntervalSince1970: 1_700_000_000))
+            self.clock = clock
+            self.scheduler = MockWeeklyDigestScheduler(initialStatus: status, now: { clock.date })
             self.coordinator = WeeklyDigestCoordinator(
                 viewModel: viewModel,
                 preferencesStore: preferencesStore,
                 scheduler: scheduler,
-                now: { Date(timeIntervalSince1970: 1_700_000_000) }
+                now: { clock.date }
             )
         }
     }
@@ -441,6 +547,18 @@ private func demoLaunchAgent() -> LaunchAgentItem {
         runAtLoad: true,
         keepAlive: false
     )
+}
+
+final class TestClock: @unchecked Sendable {
+    private let lock = NSLock()
+    private var current: Date
+
+    init(_ date: Date) { current = date }
+
+    var date: Date {
+        get { lock.withLock { current } }
+        set { lock.withLock { current = newValue } }
+    }
 }
 
 private struct InjectedSchedulingError: LocalizedError, Sendable {
@@ -487,6 +605,10 @@ private actor SuspendingWeeklyDigestScheduler: WeeklyDigestScheduler {
     func pendingIdentifiers() async -> [String] { pending }
 
     func nextFireDate(for identifier: String) async -> Date? {
+        pending.contains(identifier) ? fireDate : nil
+    }
+
+    func armedFireDate(for identifier: String) async -> Date? {
         pending.contains(identifier) ? fireDate : nil
     }
 
@@ -593,6 +715,8 @@ private actor TwoReconciliationScheduler: WeeklyDigestScheduler {
     func pendingIdentifiers() async -> [String] { Array(pending.keys) }
 
     func nextFireDate(for identifier: String) async -> Date? { pending[identifier]?.nextFire }
+
+    func armedFireDate(for identifier: String) async -> Date? { pending[identifier]?.nextFire }
 
     func pendingRequests() -> [PendingRequest] { Array(pending.values) }
 

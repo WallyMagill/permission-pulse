@@ -18,6 +18,8 @@ public enum DigestAuthorizationStatus: Sendable, Equatable {
 public protocol WeeklyDigestScheduler: Sendable {
     func currentAuthorizationStatus() async -> DigestAuthorizationStatus
     func requestAuthorization() async throws -> DigestAuthorizationStatus
+    /// Schedules only the next occurrence of the weekday and time, without
+    /// repeating; callers re-arm it so each delivery carries a fresh body.
     func scheduleWeekly(
         identifier: String,
         weekday: Int,
@@ -44,4 +46,9 @@ public protocol WeeklyDigestScheduler: Sendable {
     /// fire, or `nil` if no such request is pending. Used by the
     /// Preferences hint card to surface a concrete next-fire timestamp.
     func nextFireDate(for identifier: String) async -> Date?
+    /// The fire date a pending `scheduleWeekly` request was armed for, or nil
+    /// when none is pending or it carries none. Unlike `nextFireDate`, which
+    /// for weekday/hour/minute components always lies in the future, this
+    /// can be in the past: the request came due while the Mac slept.
+    func armedFireDate(for identifier: String) async -> Date?
 }

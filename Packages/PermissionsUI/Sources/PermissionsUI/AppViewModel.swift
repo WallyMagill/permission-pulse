@@ -22,6 +22,10 @@ public final class AppViewModel {
     public var launchAgentsDataSource: DataSource
     public var btmDataSource: DataSource
     public var tccAvailability: ScanAvailability
+    /// Permission sources this macOS version does not expose (see
+    /// `ScannerOutput.unavailableSources`). Non-empty narrows what a complete
+    /// Permissions scan covers.
+    public var tccUnavailableSources: [ScannerSource] = []
     public var btmAvailability: ScanAvailability
     public var launchAgentAvailability: ScanAvailability
     public var micInUse: Bool
@@ -29,15 +33,29 @@ public final class AppViewModel {
     public var mediaDataSource: DataSource
 
     // v0.5.0 snapshot/diff/stale state.
-    public var latestSnapshotID: SnapshotID?
+    public var latestSnapshotID: SnapshotID? {
+        didSet { reviewTracker.latestSnapshotChanged(to: latestSnapshotID) }
+    }
     public var lastReviewedSnapshotID: SnapshotID?
-    public var latestDiffYesterday: SnapshotDiffs?
+    @ObservationIgnored private var reviewTracker = RecentChangesReviewTracker()
+    public var latestDiffSinceReview: SnapshotDiffs?
+    /// When the latest stored snapshot was taken; nil until history exists.
+    public var latestSnapshotDate: Date?
     public var latestDiffWeek: SnapshotDiffs?
     public var staleApps: [StaleApp]
 
     // Set by glance surfaces (dropdown rows) before opening the detail
     // window. The window consumes it on appear / onChange, then clears it.
     public var pendingRoute: AppRoute?
+    /// A window scene id for the hidden trampoline window to open, set by
+    /// code that has no SwiftUI `openWindow` (the app delegate).
+    public var windowToOpen: String?
+    /// True while the detail window is on screen, so a reopen can bring it
+    /// forward without moving it off the page the user is on.
+    public var isDetailWindowOpen: Bool = false
+
+    /// This copy runs from a temporary App Translocation path; set at launch.
+    public var isTranslocated: Bool = false
 
     // Stamped by AppDelegate after each completed scan; Overview displays it.
     public var lastScanDate: Date?
@@ -52,11 +70,31 @@ public final class AppViewModel {
     // scan, matching when the stale filter itself changes. (C7)
     public var staleThresholdDays: Int = 90
 
-    // True when the snapshot store could not be opened — diff/stale history is
-    // unavailable, which is NOT the same as "no changes yet." (C2)
-    public var snapshotStoreUnavailable: Bool = false
+    /// Why the snapshot store could not be opened; nil when it is open.
+    /// History is unavailable, which is NOT the same as "no changes yet." (C2)
+    public var snapshotStoreProblem: SnapshotStoreProblem?
+    public var snapshotStoreUnavailable: Bool {
+        get { snapshotStoreProblem != nil }
+        set { snapshotStoreProblem = newValue ? (snapshotStoreProblem ?? .unavailable) : nil }
+    }
     // True when a diff query errored (vs. genuinely having no prior snapshot). (C2)
     public var diffUnavailable: Bool = false
+    /// True when the latest scan's snapshot could not be saved, so the diffs
+    /// shown stop at the previous snapshot.
+    public var snapshotWriteFailed: Bool = false
+
+    /// App keys whose app is gone from this Mac, and launch agent ids whose
+    /// program is gone. Checking touches Launch Services and the disk, so it
+    /// runs once per completed scan and views read these sets.
+    public private(set) var missingAppKeys: Set<String> = []
+    public private(set) var missingProgramAgentIDs: Set<String> = []
+
+    /// Applies Recent Changes dismissals and snoozes to every count.
+    public var dismissedDiffEntries: DismissedDiffEntryStore?
+    /// True while the detail window shows Recent Changes.
+    public var isViewingRecentChanges: Bool = false
+    /// The Recent Changes window picker's selection.
+    public var recentChangesWindow: RecentChangesWindow = .sinceLastReview
 
     public init(
         grants: [PermissionGrant] = [],
@@ -76,7 +114,7 @@ public final class AppViewModel {
         mediaDataSource: DataSource = .mock,
         latestSnapshotID: SnapshotID? = nil,
         lastReviewedSnapshotID: SnapshotID? = nil,
-        latestDiffYesterday: SnapshotDiffs? = nil,
+        latestDiffSinceReview: SnapshotDiffs? = nil,
         latestDiffWeek: SnapshotDiffs? = nil,
         staleApps: [StaleApp] = [],
         staleThresholdDays: Int = 90
@@ -98,42 +136,103 @@ public final class AppViewModel {
         self.mediaDataSource = mediaDataSource
         self.latestSnapshotID = latestSnapshotID
         self.lastReviewedSnapshotID = lastReviewedSnapshotID
-        self.latestDiffYesterday = latestDiffYesterday
+        self.latestDiffSinceReview = latestDiffSinceReview
         self.latestDiffWeek = latestDiffWeek
         self.staleApps = staleApps
         self.staleThresholdDays = staleThresholdDays
     }
 
+    /// Call once a scan has applied its results.
+    public func refreshInstallState() {
+        refreshInstallState(
+            isAppMissing: { AppPresence.isMissing($0) },
+            isProgramMissing: { MissingProgramCheck.live.isProgramMissing($0) }
+        )
+    }
+
+    /// Only a live permissions scan names real apps, so mock grants are
+    /// never checked. Each app is checked once however many grants it holds.
+    func refreshInstallState(
+        isAppMissing: (AppIdentity) -> Bool,
+        isProgramMissing: (LaunchAgentItem) -> Bool
+    ) {
+        var checked: Set<String> = []
+        var missingApps: Set<String> = []
+        for grant in grants where tccDataSource == .live && checked.insert(grant.appKey).inserted {
+            if isAppMissing(grant.app) { missingApps.insert(grant.appKey) }
+        }
+        missingAppKeys = missingApps
+        missingProgramAgentIDs = Set(launchAgents.filter(isProgramMissing).map(\.id))
+    }
+
+    /// The changes in `diff` the user has not dismissed or snoozed — what
+    /// Recent Changes lists, the badge counts, and the digest reports.
+    public func visibleEntries(of diff: SnapshotDiffs?, asOf date: Date = Date()) -> [DiffEntry] {
+        guard let diff else { return [] }
+        return dismissedDiffEntries?.visibleEntries(in: diff, asOf: date) ?? diff.entries
+    }
+
+    /// Visible changes since the last review. Zero while the user is on
+    /// Recent Changes: nothing there is unreviewed until they leave.
+    public var unreviewedChangeCount: Int {
+        guard !isViewingRecentChanges,
+              let latest = latestSnapshotID,
+              lastReviewedSnapshotID != latest else { return 0 }
+        return visibleEntries(of: latestDiffSinceReview).count
+    }
+
     public var hasUnreviewedChanges: Bool {
-        guard let latest = latestSnapshotID else { return false }
-        let unreviewed = lastReviewedSnapshotID != latest
-        let anyContent = (latestDiffYesterday?.hasContent ?? false)
-            || (latestDiffWeek?.hasContent ?? false)
-        return unreviewed && anyContent
+        unreviewedChangeCount > 0
     }
 
-    /// The diff window glance surfaces summarize: yesterday when it has
-    /// content, otherwise the 7-day fallback. (Single source of truth — the
-    /// dropdown and sidebar previously each re-derived this.)
-    public var activeDiff: SnapshotDiffs? {
-        if let primary = latestDiffYesterday, primary.hasContent { return primary }
-        return latestDiffWeek
+    /// Call whenever Recent Changes' visibility or its rendered diff changes;
+    /// see `RecentChangesReviewTracker`.
+    public func observeRecentChanges(showing: Bool, inFront: Bool) {
+        reviewTracker.observe(
+            showingRecentChanges: showing,
+            inFront: inFront,
+            window: recentChangesWindow,
+            displayedSnapshotID: latestDiffSinceReview?.toID
+        )
     }
 
-    // Counts the same event categories rendered by DiffTabView so a changes-only
-    // diff never produces a zero badge beside a populated Recent Changes page.
-    public var recentChangeEventCount: Int {
-        guard let diff = activeDiff else { return 0 }
-        return diff.tcc.added.count + diff.tcc.removed.count + diff.tcc.changed.count
-            + diff.btm.added.count + diff.btm.removed.count + diff.btm.changed.count
-            + diff.launchAgents.added.count + diff.launchAgents.removed.count + diff.launchAgents.changed.count
+    /// The newest snapshot whose since-last-review changes the user saw, to
+    /// mark reviewed on leaving Recent Changes or quitting; tracking starts
+    /// over.
+    public func takeSeenRecentChanges() -> SnapshotID? {
+        reviewTracker.leave()
     }
 
+    /// Records a "Skip forever" and drops the app from the current list, so
+    /// the sidebar and dropdown counts fall without waiting for a rescan.
+    public func skipStaleAppForever(stableKey: String, in store: DismissedStaleAppStore) {
+        store.skipForever(stableKey: stableKey)
+        staleApps.removeAll { $0.app.stableKey == stableKey }
+    }
+
+    /// The history database is unavailable or the latest snapshot could
+    /// not be saved: Recent Changes has stopped moving.
+    public var historyNotRecorded: Bool {
+        snapshotStoreProblem != nil || snapshotWriteFailed
+    }
+
+    /// The most severe problem overall, for the menu-bar icon and its label.
     public var attentionState: AttentionState {
         AttentionState.evaluate(
             tccAvailability: tccAvailability,
             btmAvailability: btmAvailability,
-            launchAgentAvailability: launchAgentAvailability
+            launchAgentAvailability: launchAgentAvailability,
+            historyNotRecorded: historyNotRecorded
+        )
+    }
+
+    /// One entry per section that needs attention, most severe first.
+    public var attentionItems: [AttentionItem] {
+        AttentionState.items(
+            tccAvailability: tccAvailability,
+            btmAvailability: btmAvailability,
+            launchAgentAvailability: launchAgentAvailability,
+            historyNotRecorded: historyNotRecorded
         )
     }
 
@@ -154,44 +253,55 @@ public final class AppViewModel {
         set { launchAgentAvailability = Self.updating(launchAgentAvailability, error: newValue) }
     }
 
+    /// Live microphone or camera use wins: it is happening now, while a
+    /// warning or unreviewed change can wait for the dropdown.
     public var menuBarSymbolName: String {
+        if micInUse && cameraInUse { return "video.badge.waveform" }
+        if cameraInUse { return "video.fill" }
+        if micInUse { return "mic.fill" }
         if attentionState != .clean {
             return "exclamationmark.shield.fill"
         }
         if hasUnreviewedChanges {
             return Self.unreviewedSymbolName
         }
-        if micInUse && cameraInUse { return "video.badge.waveform" }
-        if cameraInUse { return "video.fill" }
-        if micInUse { return "mic.fill" }
         return "shield.lefthalf.filled"
     }
 
     // VoiceOver-readable mirror of `menuBarSymbolName` — the icon's state is
     // otherwise conveyed only by SF Symbol swap, which a VoiceOver user can't
-    // perceive. Same precedence as the symbol. (A1)
+    // perceive. Names live media use, any warning, and unreviewed changes
+    // together, since the symbol can show only one of them. (A1)
     public var menuBarAccessibilityLabel: String {
+        let parts = [mediaAccessibilityPart, attentionAccessibilityPart, unreviewedAccessibilityPart]
+            .compactMap { $0 }
+        guard !parts.isEmpty else { return String(localized: "Permission Pulse") }
+        let details = parts.joined(separator: String(localized: "; "))
+        return String(localized: "Permission Pulse — \(details)")
+    }
+
+    private var mediaAccessibilityPart: String? {
+        if micInUse && cameraInUse { return String(localized: "microphone and camera in use") }
+        if cameraInUse { return String(localized: "camera in use") }
+        if micInUse { return String(localized: "microphone in use") }
+        return nil
+    }
+
+    private var attentionAccessibilityPart: String? {
         switch attentionState {
-        case .degradedData:
-            return String(localized: "Permission Pulse — degraded scan data, action needed")
-        case .staleData:
-            return String(localized: "Permission Pulse — stale scan data, action needed")
-        case .scanFailed:
-            return String(localized: "Permission Pulse — scan failed, no results available, action needed")
-        case .fdaDenied, .btmOnlyFDADenied, .schemaMismatch, .launchAgentError:
-            return String(localized: "Permission Pulse — scan error, action needed")
-        case .clean:
-            break
+        case .degradedData: String(localized: "degraded scan data, action needed")
+        case .staleData: String(localized: "stale scan data, action needed")
+        case .scanFailed: String(localized: "scan failed, no results available, action needed")
+        case .fdaDenied: String(localized: "Full Disk Access is off")
+        case .btmOnlyFDADenied: String(localized: "Full Disk Access is off for background items")
+        case .schemaMismatch, .launchAgentError: String(localized: "scan error, action needed")
+        case .historyNotRecorded: String(localized: "history isn't being recorded")
+        case .clean: nil
         }
-        if hasUnreviewedChanges {
-            return String(localized: "Permission Pulse — unreviewed changes")
-        }
-        if micInUse && cameraInUse {
-            return String(localized: "Permission Pulse — microphone and camera in use")
-        }
-        if cameraInUse { return String(localized: "Permission Pulse — camera in use") }
-        if micInUse { return String(localized: "Permission Pulse — microphone in use") }
-        return String(localized: "Permission Pulse")
+    }
+
+    private var unreviewedAccessibilityPart: String? {
+        hasUnreviewedChanges ? String(localized: "unreviewed changes") : nil
     }
 
     private static func initialAvailability(

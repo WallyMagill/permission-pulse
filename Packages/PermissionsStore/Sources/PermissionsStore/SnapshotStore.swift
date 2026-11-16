@@ -1,13 +1,30 @@
 import Foundation
 import GRDB
+import OSLog
 import PermissionsCore
 
 public struct SnapshotStore: Sendable {
-    private let dbQueue: DatabaseQueue
+    static let logger = Logger(
+        subsystem: "com.wallymagill.permissionpulse",
+        category: "snapshot-store"
+    )
 
+    let dbQueue: DatabaseQueue
+
+    /// Throws `SnapshotStoreOpenError` when the file was migrated by a newer
+    /// build or is not a usable SQLite database.
     public init(path: String) throws {
-        self.dbQueue = try DatabaseQueue(path: path)
-        try Self.migrate(dbQueue)
+        var configuration = Configuration()
+        // A guess sized well above the ~50 ms scan, so a second process
+        // holding the write lock briefly does not fail this one's write.
+        configuration.busyMode = .timeout(5)
+        do {
+            self.dbQueue = try DatabaseQueue(path: path, configuration: configuration)
+            try Self.migrate(dbQueue)
+        } catch let error as DatabaseError
+            where error.resultCode == .SQLITE_CORRUPT || error.resultCode == .SQLITE_NOTADB {
+            throw SnapshotStoreOpenError.corrupt(error.message ?? error.description)
+        }
     }
 
     public static func inMemory() throws -> SnapshotStore {
@@ -22,6 +39,16 @@ public struct SnapshotStore: Sendable {
     // all REALs before all TEXT and silently corrupt ordering/pruning. Pinned by
     // SnapshotDateEncodingTests. (D5)
     private static func migrate(_ queue: DatabaseQueue) throws {
+        let migrator = makeMigrator()
+        // GRDB's migrate() silently accepts unknown applied migrations, so a
+        // downgrade would read a schema this build does not understand.
+        if try queue.read({ try migrator.hasBeenSuperseded($0) }) {
+            throw SnapshotStoreOpenError.createdByNewerVersion
+        }
+        try migrator.migrate(queue)
+    }
+
+    private static func makeMigrator() -> DatabaseMigrator {
         var migrator = DatabaseMigrator()
 
         migrator.registerMigration("v1") { db in
@@ -102,7 +129,34 @@ public struct SnapshotStore: Sendable {
             try db.execute(sql: "UPDATE schema_version SET version = 5")
         }
 
-        try migrator.migrate(queue)
+        // Before v6 only fully complete scans were written, so existing rows
+        // are truthfully `complete`.
+        migrator.registerMigration("v6") { db in
+            try db.alter(table: "snapshots") { table in
+                for column in ["tcc_coverage", "btm_coverage", "launch_agent_coverage"] {
+                    table.add(column: column, .text)
+                        .notNull()
+                        .defaults(to: SnapshotCoverage.complete.rawValue)
+                }
+            }
+            try db.execute(sql: "UPDATE schema_version SET version = 6")
+        }
+
+        // Every pre-v7 row was decoded from a readable plist, so the default
+        // is truthful. The file name was never recorded, so it stays NULL.
+        // Every pre-v7 snapshot was written under capture generation 1.
+        migrator.registerMigration("v7") { db in
+            try db.alter(table: "launch_agents") { table in
+                table.add(column: "details_readable", .integer).notNull().defaults(to: true)
+                table.add(column: "file_name", .text)
+            }
+            try db.alter(table: "snapshots") { table in
+                table.add(column: "capture_generation", .integer).notNull().defaults(to: 1)
+            }
+            try db.execute(sql: "UPDATE schema_version SET version = 7")
+        }
+
+        return migrator
     }
 
     public func schemaVersion() throws -> Int {
@@ -113,21 +167,43 @@ public struct SnapshotStore: Sendable {
 
     // MARK: - Writes
 
-    // Production entry point. Writes one snapshots row plus all three child
-    // tables in a single transaction.
+    // Production entry point. Writes one snapshots row plus the child rows of
+    // every domain that did not fail, in a single transaction.
+    public func writeSnapshot(
+        grants: [PermissionGrant],
+        launchAgents: [LaunchAgentItem],
+        btmItems: [BTMItem],
+        coverage: SnapshotDomainCoverage,
+        at date: Date = Date()
+    ) async throws -> SnapshotID {
+        try await dbQueue.write { db in
+            let snapshotRowID = try Self.insertSnapshot(db: db, date: date, coverage: coverage)
+            if coverage.launchAgents != .failed {
+                try Self.insertLaunchAgents(db: db, snapshotID: snapshotRowID, items: launchAgents)
+            }
+            if coverage.tcc != .failed {
+                try Self.insertTCCGrants(db: db, snapshotID: snapshotRowID, grants: grants)
+            }
+            if coverage.btm != .failed {
+                try Self.insertBTMItems(db: db, snapshotID: snapshotRowID, items: btmItems)
+            }
+            return SnapshotID(rawValue: snapshotRowID)
+        }
+    }
+
     public func writeFullSnapshot(
         grants: [PermissionGrant],
         launchAgents: [LaunchAgentItem],
         btmItems: [BTMItem],
         at date: Date = Date()
     ) async throws -> SnapshotID {
-        try await dbQueue.write { db in
-            let snapshotRowID = try Self.insertSnapshot(db: db, date: date)
-            try Self.insertLaunchAgents(db: db, snapshotID: snapshotRowID, items: launchAgents)
-            try Self.insertTCCGrants(db: db, snapshotID: snapshotRowID, grants: grants)
-            try Self.insertBTMItems(db: db, snapshotID: snapshotRowID, items: btmItems)
-            return SnapshotID(rawValue: snapshotRowID)
-        }
+        try await writeSnapshot(
+            grants: grants,
+            launchAgents: launchAgents,
+            btmItems: btmItems,
+            coverage: .allComplete,
+            at: date
+        )
     }
 
     // Test helper — production path is writeFullSnapshot.
@@ -172,7 +248,8 @@ public struct SnapshotStore: Sendable {
         try await dbQueue.read { db in
             let rows = try Row.fetchAll(db, sql: """
                 SELECT label, source_directory, program_path,
-                       program_arguments_json, run_at_load, keep_alive, is_disabled
+                       program_arguments_json, run_at_load, keep_alive, is_disabled,
+                       details_readable, file_name
                 FROM launch_agents
                 WHERE snapshot_id = ?
                 ORDER BY source_directory, label
@@ -209,6 +286,42 @@ public struct SnapshotStore: Sendable {
         }
     }
 
+    // MARK: - Snapshot metadata
+
+    public func coverage(snapshotID: SnapshotID) async throws -> SnapshotDomainCoverage {
+        try await dbQueue.read { db in
+            guard let row = try Row.fetchOne(db, sql: """
+                SELECT tcc_coverage, btm_coverage, launch_agent_coverage
+                FROM snapshots WHERE id = ?
+                """, arguments: [snapshotID.rawValue]) else {
+                throw StoreError.snapshotNotFound(snapshotID.rawValue)
+            }
+            return SnapshotDomainCoverage(
+                tcc: Self.decodeCoverage(row["tcc_coverage"]),
+                btm: Self.decodeCoverage(row["btm_coverage"]),
+                launchAgents: Self.decodeCoverage(row["launch_agent_coverage"])
+            )
+        }
+    }
+
+    public func snapshotDate(snapshotID: SnapshotID) async throws -> Date? {
+        try await dbQueue.read { db in
+            try Date.fetchOne(
+                db,
+                sql: "SELECT created_at FROM snapshots WHERE id = ?",
+                arguments: [snapshotID.rawValue]
+            )
+        }
+    }
+
+    // An unrecognized value (e.g. written by a newer build) must never let a
+    // diff compare uncertain evidence, so it reads as `.failed`.
+    static func decodeCoverage(_ raw: String) -> SnapshotCoverage {
+        if let coverage = SnapshotCoverage(rawValue: raw) { return coverage }
+        logger.error("Unknown snapshot coverage value \(raw, privacy: .public); treating as failed")
+        return .failed
+    }
+
     // MARK: - Discovery + retention
 
     public func latestSnapshotID() async throws -> SnapshotID? {
@@ -239,17 +352,6 @@ public struct SnapshotStore: Sendable {
         }
     }
 
-    @discardableResult
-    public func pruneSnapshots(olderThan cutoff: Date) async throws -> Int {
-        try await dbQueue.write { db in
-            try db.execute(
-                sql: "DELETE FROM snapshots WHERE created_at < ?",
-                arguments: [cutoff]
-            )
-            return db.changesCount
-        }
-    }
-
     // Test-only helper: count rows in each child table directly. Lets retention
     // tests verify FK CASCADE behavior without trusting the public read methods.
     internal func unsafeChildRowCounts() async throws -> (tcc: Int, btm: Int, la: Int) {
@@ -261,65 +363,27 @@ public struct SnapshotStore: Sendable {
         }
     }
 
-    // MARK: - Diffs
-
-    public func diffLaunchAgents(
-        from: SnapshotID,
-        to: SnapshotID
-    ) async throws -> LaunchAgentsDiff {
-        let before = try await readLaunchAgents(snapshotID: from)
-        let after = try await readLaunchAgents(snapshotID: to)
-        let compareDisabled = try await launchAgentDisabledCaptured(from: from, to: to)
-        return Self.computeDiff(
-            before: before,
-            after: after,
-            identity: Self.launchAgentIdentityKey,
-            equivalent: {
-                Self.launchAgentsEquivalent($0, $1, compareDisabled: compareDisabled)
-            },
-            wrap: { LaunchAgentsDiff(added: $0, removed: $1, changed: $2) }
-        )
-    }
-
-    public func diffTCCGrants(
-        from: SnapshotID,
-        to: SnapshotID
-    ) async throws -> TCCGrantsDiff {
-        let before = try await readTCCGrants(snapshotID: from)
-        let after = try await readTCCGrants(snapshotID: to)
-        return Self.computeDiff(
-            before: before,
-            after: after,
-            identity: Self.tccGrantIdentityKey,
-            equivalent: { $0 == $1 },
-            wrap: { TCCGrantsDiff(added: $0, removed: $1, changed: $2) }
-        )
-    }
-
-    public func diffBTMItems(
-        from: SnapshotID,
-        to: SnapshotID
-    ) async throws -> BTMItemsDiff {
-        let before = try await readBTMItems(snapshotID: from)
-        let after = try await readBTMItems(snapshotID: to)
-        return Self.computeDiff(
-            before: before,
-            after: after,
-            identity: Self.btmItemIdentityKey,
-            equivalent: { $0 == $1 },
-            wrap: { BTMItemsDiff(added: $0, removed: $1, changed: $2) }
-        )
-    }
-
     // MARK: - Private write helpers
 
-    private static func insertSnapshot(db: Database, date: Date) throws -> Int64 {
+    private static func insertSnapshot(
+        db: Database,
+        date: Date,
+        coverage: SnapshotDomainCoverage = .allComplete
+    ) throws -> Int64 {
         try db.execute(
             sql: """
-                INSERT INTO snapshots (created_at, launch_agent_disabled_captured)
-                VALUES (?, 1)
+                INSERT INTO snapshots
+                (created_at, launch_agent_disabled_captured,
+                 tcc_coverage, btm_coverage, launch_agent_coverage, capture_generation)
+                VALUES (?, 1, ?, ?, ?, ?)
                 """,
-            arguments: [date]
+            arguments: [
+                date,
+                coverage.tcc.rawValue,
+                coverage.btm.rawValue,
+                coverage.launchAgents.rawValue,
+                CaptureGeneration.current,
+            ]
         )
         return db.lastInsertedRowID
     }
@@ -334,8 +398,9 @@ public struct SnapshotStore: Sendable {
             try db.execute(sql: """
                 INSERT INTO launch_agents
                 (snapshot_id, label, source_directory, program_path,
-                 program_arguments_json, run_at_load, keep_alive, is_disabled)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                 program_arguments_json, run_at_load, keep_alive, is_disabled,
+                 details_readable, file_name)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """, arguments: [
                     snapshotID,
                     item.label,
@@ -345,6 +410,8 @@ public struct SnapshotStore: Sendable {
                     item.runAtLoad,
                     item.keepAlive,
                     item.isDisabled,
+                    item.detailsReadable,
+                    item.fileName,
                 ])
         }
     }
@@ -424,7 +491,9 @@ public struct SnapshotStore: Sendable {
             programArguments: arguments,
             runAtLoad: row["run_at_load"],
             keepAlive: row["keep_alive"],
-            isDisabled: row["is_disabled"]
+            isDisabled: row["is_disabled"],
+            detailsReadable: row["details_readable"],
+            fileName: row["file_name"]
         )
     }
 
@@ -475,95 +544,6 @@ public struct SnapshotStore: Sendable {
         )
     }
 
-    // MARK: - Diff engine
-
-    private static func computeDiff<Item, Diff>(
-        before: [Item],
-        after: [Item],
-        identity: (Item) -> String,
-        equivalent: (Item, Item) -> Bool,
-        wrap: ([Item], [Item], [DomainChange<Item>]) -> Diff
-    ) -> Diff where Item: Sendable & Hashable {
-        // Collapse on duplicate identity keys instead of trapping. Two TCC
-        // grants legitimately share an identity key when the client is
-        // path-based and carries no bundle ID — both map to e.g.
-        // "filesAndFolders||". `Dictionary(uniqueKeysWithValues:)` fatal-
-        // errors on that; `uniquingKeysWith` keeps the first, which is all
-        // a presence-based diff needs.
-        let beforeByKey = Dictionary(
-            before.map { (identity($0), $0) },
-            uniquingKeysWith: { first, _ in first }
-        )
-        let afterByKey = Dictionary(
-            after.map { (identity($0), $0) },
-            uniquingKeysWith: { first, _ in first }
-        )
-        let beforeKeys = Set(beforeByKey.keys)
-        let afterKeys = Set(afterByKey.keys)
-
-        // Derive added/removed from the deduped maps so the result stays
-        // consistent with beforeByKey/afterByKey (no phantom duplicate rows).
-        let added = afterKeys.subtracting(beforeKeys).sorted().map { afterByKey[$0]! }
-        let removed = beforeKeys.subtracting(afterKeys).sorted().map { beforeByKey[$0]! }
-
-        let shared = beforeKeys.intersection(afterKeys).sorted()
-        let changed: [DomainChange<Item>] = shared.compactMap { key in
-            let b = beforeByKey[key]!
-            let a = afterByKey[key]!
-            return equivalent(b, a) ? nil : DomainChange(before: b, after: a)
-        }
-        return wrap(added, removed, changed)
-    }
-
-    // MARK: - Identity keys
-
-    private static func launchAgentIdentityKey(_ item: LaunchAgentItem) -> String {
-        "\(item.sourceDirectory.rawValue)|\(item.label)"
-    }
-
-    private func launchAgentDisabledCaptured(
-        from beforeSnapshotID: SnapshotID,
-        to afterSnapshotID: SnapshotID
-    ) async throws -> Bool {
-        try await dbQueue.read { db in
-            for snapshotID in [beforeSnapshotID, afterSnapshotID] {
-                let marker = try Int.fetchOne(
-                    db,
-                    sql: """
-                        SELECT launch_agent_disabled_captured
-                        FROM snapshots
-                        WHERE id = ?
-                        """,
-                    arguments: [snapshotID.rawValue]
-                ) ?? 0
-                guard marker == 1 else { return false }
-            }
-            return true
-        }
-    }
-
-    private static func launchAgentsEquivalent(
-        _ lhs: LaunchAgentItem,
-        _ rhs: LaunchAgentItem,
-        compareDisabled: Bool
-    ) -> Bool {
-        lhs.label == rhs.label
-            && lhs.sourceDirectory == rhs.sourceDirectory
-            && lhs.programPath == rhs.programPath
-            && lhs.programArguments == rhs.programArguments
-            && lhs.runAtLoad == rhs.runAtLoad
-            && lhs.keepAlive == rhs.keepAlive
-            && (!compareDisabled || lhs.isDisabled == rhs.isDisabled)
-    }
-
-    private static func tccGrantIdentityKey(_ grant: PermissionGrant) -> String {
-        grant.identityKey
-    }
-
-    private static func btmItemIdentityKey(_ item: BTMItem) -> String {
-        item.identifier
-    }
-
     // MARK: - JSON helpers (LaunchAgent programArguments)
 
     private static func encodeArguments(_ args: [String]) throws -> String {
@@ -579,25 +559,22 @@ public struct SnapshotStore: Sendable {
     // MARK: - BTM enum encoding
 
     private static func encodeItemType(_ type: BTMItem.ItemType) -> (kind: String, raw: Int?) {
-        switch type {
-        case .app:            ("app", nil)
-        case .legacyDaemon:   ("legacyDaemon", nil)
-        case .developerGroup: ("developerGroup", nil)
-        case .unknown(let r): ("unknown", r)
-        }
+        (type.kindName, type.rawValue)
     }
 
     // internal (not private): the unknown-kind throw is a data-integrity guarantee
     // (a corrupt/foreign snapshot row surfaces as an error state, not silent
     // default). Exposed for BTMDecodeErrorTests. (R3)
+    //
+    // An `unknown` row is re-mapped from its raw value: builds before v0.7.2
+    // stored types they could not name that way, and they must compare equal
+    // to the same item scanned by a build that can.
     static func decodeItemType(kind: String, raw: Int?) throws -> BTMItem.ItemType {
-        switch kind {
-        case "app":            return .app
-        case "legacyDaemon":   return .legacyDaemon
-        case "developerGroup": return .developerGroup
-        case "unknown":        return .unknown(rawValue: raw ?? 0)
-        default:               throw StoreError.unknownBTMItemTypeKind(kind)
+        if kind == "unknown" { return BTMItem.ItemType(rawValue: raw ?? 0) }
+        guard let type = BTMItem.ItemType(kindName: kind) else {
+            throw StoreError.unknownBTMItemTypeKind(kind)
         }
+        return type
     }
 
     private static func encodeDisposition(_ d: BTMItem.Disposition) -> (kind: String, raw: Int?) {
@@ -644,4 +621,13 @@ public enum StoreError: Error, Sendable {
     case unknownBTMDispositionKind(String)
     case unknownBTMScopeKind(String)
     case missingPerUserScopeUUID
+    case snapshotNotFound(Int64)
+}
+
+public enum SnapshotStoreOpenError: Error, Sendable, Equatable {
+    /// The database records migrations this build does not know: it was
+    /// written by a newer Permission Pulse.
+    case createdByNewerVersion
+    /// SQLite reports the file as damaged or not a database.
+    case corrupt(String)
 }

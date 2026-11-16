@@ -24,7 +24,7 @@ import PermissionsCore
         guard case .temporarilyUnavailable(let reason) = mapped else {
             Issue.record("Expected .temporarilyUnavailable, got \(mapped)"); return
         }
-        #expect(reason.contains("Refresh"))
+        #expect(reason.contains("Rescan"))
     }
 
     @Test func ioErrorMapsToTemporarilyUnavailable() {
@@ -42,7 +42,7 @@ import PermissionsCore
         guard case .temporarilyUnavailable(let reason) = mapped else {
             Issue.record("Expected .temporarilyUnavailable, got \(mapped)"); return
         }
-        #expect(reason.contains("Refresh"))
+        #expect(reason.contains("Rescan"))
     }
 
     @Test func nonDatabaseReadErrorMapsToTemporarilyUnavailable() {
@@ -50,7 +50,7 @@ import PermissionsCore
         guard case .temporarilyUnavailable(let reason) = mapped else {
             Issue.record("Expected .temporarilyUnavailable, got \(mapped)"); return
         }
-        #expect(reason.contains("Refresh"))
+        #expect(reason.contains("Rescan"))
     }
 }
 

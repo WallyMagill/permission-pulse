@@ -3,8 +3,15 @@ import Foundation
 public struct BTMItem: Sendable, Equatable, Hashable, Identifiable {
     public enum ItemType: Sendable, Hashable {
         case app
-        case legacyDaemon
+        case loginItem
+        case agent
         case developerGroup
+        case spotlightImporter
+        case dockTilePlugin
+        case quickLookExtension
+        case backgroundTasks
+        case legacyAgent
+        case legacyDaemon
         case unknown(rawValue: Int)
     }
 
@@ -109,6 +116,55 @@ public struct BTMItem: Sendable, Equatable, Hashable, Identifiable {
         hasher.combine(parentIdentifier)
     }
 
-    // BTM's natural primary key. Used by SwiftUI sheet(item:) bindings.
-    public var id: String { identifier }
+    // The same identifier is registered once per scope (system, root user,
+    // each login user), so identity needs both.
+    public var identityKey: String { "\(scope.key)|\(identifier)" }
+
+    public var id: String { identityKey }
+}
+
+extension BTMItem.Scope {
+    public var key: String {
+        switch self {
+        case .system: "system"
+        case .user: "user"
+        case .perUser(let uuid): "perUser:\(uuid)"
+        }
+    }
+}
+
+extension BTMItem.ItemType {
+    // Raw `type` values from the BTM store, identified on macOS 26/27 by the
+    // item paths each one registers.
+    private static let known: [(raw: Int, type: Self, kind: String)] = [
+        (0x2, .app, "app"),
+        (0x4, .loginItem, "loginItem"),
+        (0x8, .agent, "agent"),
+        (0x20, .developerGroup, "developerGroup"),
+        (0x40, .spotlightImporter, "spotlightImporter"),
+        (0x80, .dockTilePlugin, "dockTilePlugin"),
+        (0x800, .quickLookExtension, "quickLookExtension"),
+        (0x2000, .backgroundTasks, "backgroundTasks"),
+        (0x10008, .legacyAgent, "legacyAgent"),
+        (0x10010, .legacyDaemon, "legacyDaemon"),
+    ]
+
+    public init(rawValue: Int) {
+        self = Self.known.first { $0.raw == rawValue }?.type ?? .unknown(rawValue: rawValue)
+    }
+
+    public var rawValue: Int {
+        if case .unknown(let raw) = self { return raw }
+        return Self.known.first { $0.type == self }?.raw ?? 0
+    }
+
+    /// Stable, non-localized name used by the snapshot store and exports.
+    public var kindName: String {
+        Self.known.first { $0.type == self }?.kind ?? "unknown"
+    }
+
+    public init?(kindName: String) {
+        guard let match = Self.known.first(where: { $0.kind == kindName }) else { return nil }
+        self = match.type
+    }
 }

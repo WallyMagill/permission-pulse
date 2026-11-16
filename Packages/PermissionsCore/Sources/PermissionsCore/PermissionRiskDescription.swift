@@ -54,6 +54,12 @@ extension PermissionService {
 
         case .developerTool:
             return String(localized: "Developer Tools lets the app run code-signed or notarized binaries that would otherwise be blocked by macOS Gatekeeper and SIP. Typically granted only to IDEs and build tools. Grant only to apps from developer-tool vendors you trust.")
+
+        case .remoteDesktop:
+            return String(localized: "Remote Desktop lets the app show this Mac's screen to someone connecting over the network and pass their keyboard and mouse input through as you. Whoever the app lets in can see and operate the Mac. Common legitimate uses: remote-support tools and remote-access apps.")
+
+        case .endpointSecurity:
+            return String(localized: "Endpoint Security lets the app watch every process launch, file access, and login on this Mac as it happens, and block some of them. It sees activity from every app and user. Common legitimate uses: antivirus, firewall, and device-management tools.")
         }
     }
 }
@@ -65,7 +71,9 @@ extension PermissionService {
     public var riskSeverity: Int {
         switch self {
         case .fullDiskAccess:  100
+        case .endpointSecurity: 95
         case .accessibility:    90
+        case .remoteDesktop:    85
         case .inputMonitoring:  80
         case .screenRecording:  70
         case .camera:           60
@@ -87,9 +95,10 @@ extension PermissionService {
 /// One-line menu-bar hygiene signal counting distinct apps that hold each
 /// surfaced high-risk service. (F4)
 public enum PermissionRiskSummary {
-    /// High-risk services worth surfacing, in display order.
+    /// High-risk services worth surfacing, by `riskSeverity`, highest first.
     private static let surfaced: [PermissionService] = [
-        .fullDiskAccess, .accessibility, .inputMonitoring, .screenRecording,
+        .fullDiskAccess, .endpointSecurity, .accessibility, .remoteDesktop,
+        .inputMonitoring, .screenRecording,
     ]
 
     /// e.g. "3 Full Disk Access · 1 Accessibility". `nil` when none are held.

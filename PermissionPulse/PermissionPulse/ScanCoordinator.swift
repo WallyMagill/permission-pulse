@@ -43,6 +43,10 @@ final class ScanCoordinator {
     func runScan() async {
         // One timestamp describes the evidence boundary across every domain.
         let scanDate = now()
+        let started = ContinuousClock.now
+        defer {
+            Self.logger.info("Scan finished in \(String(describing: ContinuousClock.now - started), privacy: .public)")
+        }
 
         // DataSource reflects which scanner is wired up, not whether the last
         // scan succeeded.
@@ -61,6 +65,7 @@ final class ScanCoordinator {
         applyTCC(tccResult, at: scanDate)
         applyLaunchAgents(launchAgentResult, at: scanDate)
         applyBTM(btmResult, at: scanDate)
+        viewModel.refreshInstallState()
     }
 
     func rescan() async {
@@ -112,6 +117,7 @@ final class ScanCoordinator {
         switch result {
         case .output(let output):
             viewModel.grants = output.items
+            viewModel.tccUnavailableSources = output.unavailableSources
             viewModel.tccAvailability = availability(for: output.warnings, at: scanDate)
         case .failure(let error):
             viewModel.tccAvailability = .failed(

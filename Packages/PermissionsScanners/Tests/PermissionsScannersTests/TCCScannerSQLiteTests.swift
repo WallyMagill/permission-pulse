@@ -186,6 +186,56 @@ import PermissionsCore
         ])
     }
 
+    @Test func scanReportsADatabaseWhoseDirectoryIsGoneAsUnexposedNotDegraded() async throws {
+        // macOS 27 removed ~/Library/Application Support/com.apple.TCC/
+        // entirely, so the per-user database is not a failed read there.
+        let dir = try TempDir()
+        let unexposedURL = dir.dbURL("no-such-directory/TCC.db")
+        let validURL = dir.dbURL("valid.db")
+        try await TCCFixtures.makeValidFixture(url: validURL)
+
+        let scanner = TCCScannerSQLite(databaseURLs: [unexposedURL, validURL])
+        let output = try await scanner.scan()
+
+        #expect(output.items.count == 3)
+        #expect(output.warnings.isEmpty)
+        #expect(output.unavailableSources == [.userTCCDatabase])
+    }
+
+    @Test(arguments: [(26, false), (27, true)])
+    func missingPerUserFileInAnExistingDirectoryIsUnexposedFromMacOS27(
+        osMajorVersion: Int,
+        unexposed: Bool
+    ) async throws {
+        let dir = try TempDir()
+        let recreatedDirectoryURL = dir.dbURL("TCC.db")
+        let validURL = dir.dbURL("valid.db")
+        try await TCCFixtures.makeValidFixture(url: validURL)
+
+        let output = try await TCCScannerSQLite(
+            databaseURLs: [recreatedDirectoryURL, validURL],
+            osMajorVersion: osMajorVersion
+        ).scan()
+
+        #expect(output.items.count == 3)
+        #expect(output.unavailableSources == (unexposed ? [.userTCCDatabase] : []))
+        #expect(output.warnings.map(\.source) == (unexposed ? [] : [.userTCCDatabase]))
+    }
+
+    @Test func missingSystemFileOnMacOS27IsStillAFailedRead() async throws {
+        let dir = try TempDir()
+        let validURL = dir.dbURL("valid.db")
+        try await TCCFixtures.makeValidFixture(url: validURL)
+
+        let output = try await TCCScannerSQLite(
+            databaseURLs: [validURL, dir.dbURL("system.db")],
+            osMajorVersion: 27
+        ).scan()
+
+        #expect(output.unavailableSources.isEmpty)
+        #expect(output.warnings.map(\.source) == [.systemTCCDatabase])
+    }
+
     @Test func scanThrowsFirstMappedErrorWhenAllDatabasesFail() async throws {
         let dir = try TempDir()
         let malformed = dir.dbURL("malformed.db")
@@ -212,7 +262,8 @@ import PermissionsCore
         try await TCCFixtures.makeValidFixture(url: valid)
 
         let userOutput = try await TCCScannerSQLite(
-            databaseURLs: [userMissing, valid]
+            databaseURLs: [userMissing, valid],
+            osMajorVersion: 26
         ).scan()
         let systemOutput = try await TCCScannerSQLite(
             databaseURLs: [valid, systemMissing]

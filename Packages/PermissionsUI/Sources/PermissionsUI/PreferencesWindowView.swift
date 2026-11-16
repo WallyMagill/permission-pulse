@@ -1,18 +1,25 @@
+import AppKit // AppKit: NSPasteboard for Copy Diagnostics; SwiftUI has no clipboard writer.
 import SwiftUI
 
 /// Preferences window — native macOS TabView with four tabs:
-/// General / Scanning / Digest / Data.
+/// General / Scanning / Notifications / Data.
 public struct PreferencesWindowView: View {
     @Environment(PreferencesViewModel.self) private var viewModel
     private let onResetAllData: (() -> Void)?
     private let scanInProgress: () -> Bool
+    private let makeDiagnostics: (() async -> String)?
+    private let onRestoreSkippedStaleApps: (() -> Void)?
 
     public init(
         onResetAllData: (() -> Void)? = nil,
-        scanInProgress: @escaping () -> Bool = { false }
+        scanInProgress: @escaping () -> Bool = { false },
+        makeDiagnostics: (() async -> String)? = nil,
+        onRestoreSkippedStaleApps: (() -> Void)? = nil
     ) {
         self.onResetAllData = onResetAllData
         self.scanInProgress = scanInProgress
+        self.makeDiagnostics = makeDiagnostics
+        self.onRestoreSkippedStaleApps = onRestoreSkippedStaleApps
     }
 
     public var body: some View {
@@ -21,34 +28,17 @@ public struct PreferencesWindowView: View {
                 .tabItem { Label(String(localized: "General"), systemImage: "gearshape") }
             ScanningSettingsTab()
                 .tabItem { Label(String(localized: "Scanning"), systemImage: "clock.arrow.circlepath") }
-            DigestSettingsTab()
-                .tabItem { Label(String(localized: "Digest"), systemImage: "bell.badge") }
-            DataSettingsTab(onResetAllData: onResetAllData, scanInProgress: scanInProgress)
+            NotificationsSettingsTab()
+                .tabItem { Label(String(localized: "Notifications"), systemImage: "bell.badge") }
+            DataSettingsTab(
+                onResetAllData: onResetAllData,
+                scanInProgress: scanInProgress,
+                makeDiagnostics: makeDiagnostics,
+                onRestoreSkippedStaleApps: onRestoreSkippedStaleApps
+            )
                 .tabItem { Label(String(localized: "Data"), systemImage: "externaldrive") }
         }
         .frame(width: 560, height: 440)
-    }
-}
-
-// MARK: - General tab
-
-private struct GeneralSettingsTab: View {
-    @Environment(PreferencesViewModel.self) private var viewModel
-
-    var body: some View {
-        Form {
-            Toggle(
-                String(localized: "Launch at login"),
-                isOn: Binding(
-                    get: { viewModel.launchAtLoginEnabled },
-                    set: { newValue in Task { await viewModel.setLaunchAtLogin(newValue) } }
-                )
-            )
-            Text(String(localized: "Permission Pulse starts in the menu bar when you log in."))
-                .ppFont(.metadata)
-                .foregroundStyle(.secondary)
-        }
-        .formStyle(.grouped)
     }
 }
 
@@ -129,242 +119,13 @@ private struct DaysSliderRow: View {
     }
 }
 
-// MARK: - Digest tab
-
-private struct DigestSettingsTab: View {
-    @Environment(PreferencesViewModel.self) private var viewModel
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @State private var clearResultTask: Task<Void, Never>?
-
-    private static let testResultDisplayDuration: Duration = .seconds(8)
-
-    private static let weekdayLabels: [(value: Int, label: String)] = [
-        (1, String(localized: "Sunday")),
-        (2, String(localized: "Monday")),
-        (3, String(localized: "Tuesday")),
-        (4, String(localized: "Wednesday")),
-        (5, String(localized: "Thursday")),
-        (6, String(localized: "Friday")),
-        (7, String(localized: "Saturday")),
-    ]
-
-    var body: some View {
-        @Bindable var vm = viewModel
-
-        Form {
-            scheduleSection(vm: vm)
-            if vm.digestEnabled {
-                testNotificationSection(vm: vm)
-            }
-            hintSection(vm: viewModel)
-        }
-        .formStyle(.grouped)
-        // Sections appear/disappear from three state sources (the toggle, the
-        // async authorization hint, the timed test-result clear) — track the
-        // reflow so rows don't pop and snap the form around.
-        .animation(reduceMotion ? nil : .default, value: vm.digestEnabled)
-        .animation(reduceMotion ? nil : .default, value: vm.authorizationHint)
-        .animation(reduceMotion ? nil : .default, value: vm.testNotificationResult)
-        .task {
-            await vm.refreshAuthorizationHint()
-        }
-        .onDisappear { clearResultTask?.cancel() }
-    }
-
-    private func scheduleSection(vm: PreferencesViewModel) -> some View {
-        Section {
-            Toggle(isOn: Binding(
-                get: { vm.digestEnabled },
-                set: { newValue in
-                    // Write the store before the async hop so the switch
-                    // flips on this frame instead of snapping back first.
-                    vm.digestEnabled = newValue
-                    Task { await vm.handleDigestToggle(to: newValue) }
-                }
-            )) {
-                VStack(alignment: .leading, spacing: PPSpacing.xxs) {
-                    Text(String(localized: "Send weekly digest"))
-                        .ppFont(.body)
-                    Text(String(localized: "A local notification summarizing this week's changes. macOS will ask for permission the first time you turn this on."))
-                        .ppFont(.metadata)
-                        .foregroundStyle(.secondary)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-            }
-            .toggleStyle(.switch)
-            .tint(.accentColor)
-
-            Picker(
-                String(localized: "Day"),
-                selection: Binding(
-                    get: { vm.store.digestWeekday },
-                    set: { newValue in
-                        vm.store.digestWeekday = newValue
-                        vm.scheduleDidChange()
-                    }
-                )
-            ) {
-                ForEach(Self.weekdayLabels, id: \.value) { entry in
-                    Text(entry.label).tag(entry.value)
-                }
-            }
-            .pickerStyle(.menu)
-            .disabled(!vm.digestEnabled)
-
-            DatePicker(
-                String(localized: "Time"),
-                selection: Binding(
-                    get: { vm.store.digestTime() },
-                    set: { newValue in
-                        vm.store.setDigestTime(newValue)
-                        vm.scheduleDidChange()
-                    }
-                ),
-                displayedComponents: .hourAndMinute
-            )
-            .datePickerStyle(.compact)
-            .disabled(!vm.digestEnabled)
-        } header: {
-            Text(String(localized: "Weekly Digest"))
-        }
-    }
-
-    private func testNotificationSection(vm: PreferencesViewModel) -> some View {
-        Section {
-            HStack(alignment: .firstTextBaseline) {
-                VStack(alignment: .leading, spacing: PPSpacing.xxs) {
-                    Text(String(localized: "Send test notification"))
-                        .ppFont(.body)
-                        .fontWeight(.medium)
-                    Text(String(localized: "Fires a one-off banner in 5 seconds. Useful for verifying delivery without waiting for the scheduled day."))
-                        .ppFont(.metadata)
-                        .foregroundStyle(.secondary)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-                Spacer(minLength: PPSpacing.md)
-                Button {
-                    // Cancel any in-flight auto-clear so a re-tap's
-                    // result isn't wiped early by the previous timer.
-                    clearResultTask?.cancel()
-                    clearResultTask = Task {
-                        await vm.sendTestNotification()
-                        try? await Task.sleep(for: Self.testResultDisplayDuration)
-                        guard !Task.isCancelled else { return }
-                        vm.clearTestNotificationResult()
-                    }
-                } label: {
-                    Text(String(localized: "Send"))
-                        .frame(minWidth: 60)
-                }
-                .buttonStyle(.borderedProminent)
-                .controlSize(.regular)
-                .disabled(vm.testNotificationResult == .scheduling)
-            }
-
-            if let resultText = testResultText(vm.testNotificationResult) {
-                Text(resultText)
-                    .ppFont(.metadata)
-                    .foregroundStyle(testResultColor(vm.testNotificationResult))
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-        }
-    }
-
-    @ViewBuilder
-    private func hintSection(vm: PreferencesViewModel) -> some View {
-        switch vm.authorizationHint {
-        case .notYetRequested, .disabled:
-            EmptyView()
-        case .scheduled:
-            Section {
-                statusRow(
-                    icon: "checkmark.circle.fill",
-                    tint: .green,
-                    primary: String(localized: "Weekly digest is on."),
-                    secondary: nextFireSecondary(vm: vm)
-                )
-            }
-        case .failed(let message):
-            Section {
-                statusRow(
-                    icon: "exclamationmark.triangle.fill",
-                    tint: .orange,
-                    primary: String(localized: "Weekly digest couldn't be scheduled."),
-                    secondary: String(localized: "\(message) Your selected day and time were saved.")
-                )
-                Button(String(localized: "Retry")) {
-                    vm.scheduleDidChange()
-                }
-            }
-        case .denied:
-            Section {
-                statusRow(
-                    icon: "exclamationmark.triangle.fill",
-                    tint: .orange,
-                    primary: String(localized: "Notifications are off in System Settings."),
-                    secondary: String(localized: "Re-enable them to receive the weekly digest.")
-                )
-                Button(String(localized: "Open Notifications…")) {
-                    SystemSettingsLink.openNotifications()
-                }
-            }
-        }
-    }
-
-    private func nextFireSecondary(vm: PreferencesViewModel) -> String? {
-        guard let date = vm.nextWeeklyFireDate else { return nil }
-        let formatted = DateFormatter.localizedString(from: date, dateStyle: .full, timeStyle: .short)
-        return String(localized: "Next: \(formatted)")
-    }
-
-    private func statusRow(icon: String, tint: Color, primary: String, secondary: String?) -> some View {
-        HStack(alignment: .top, spacing: 10) {
-            Image(systemName: icon)
-                .ppFont(.secondary)
-                .foregroundStyle(tint)
-                .padding(.top, 1)
-                .accessibilityHidden(true)
-            VStack(alignment: .leading, spacing: PPSpacing.xs) {
-                Text(primary)
-                    .ppFont(.metadata)
-                    .fontWeight(.medium)
-                if let secondary {
-                    Text(secondary)
-                        .ppFont(.metadata)
-                        .foregroundStyle(.secondary)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-            }
-            Spacer(minLength: 0)
-        }
-    }
-
-    private func testResultText(_ result: PreferencesViewModel.TestNotificationResult) -> String? {
-        switch result {
-        case .idle: return nil
-        case .scheduling: return String(localized: "Scheduling…")
-        case .scheduled(let seconds):
-            return String(localized: "Test notification scheduled. The banner will appear in \(Int(seconds)) seconds.")
-        case .notAuthorized:
-            return String(localized: "Notifications are not authorized. Open Notifications in System Settings to re-enable.")
-        case .failed(let message):
-            return String(localized: "Test send failed: \(message)")
-        }
-    }
-
-    private func testResultColor(_ result: PreferencesViewModel.TestNotificationResult) -> Color {
-        switch result {
-        case .idle, .scheduling, .scheduled: return .secondary
-        case .notAuthorized, .failed: return .orange
-        }
-    }
-}
-
 // MARK: - Data tab
 
 private struct DataSettingsTab: View {
     let onResetAllData: (() -> Void)?
     let scanInProgress: () -> Bool
+    let makeDiagnostics: (() async -> String)?
+    let onRestoreSkippedStaleApps: (() -> Void)?
     @State private var isConfirmingReset = false
 
     var body: some View {
@@ -373,6 +134,10 @@ private struct DataSettingsTab: View {
                 LabeledContent(String(localized: "Export current state")) {
                     ExportToolbarMenu()
                 }
+            }
+            HiddenItemsSection(onRestoreSkippedStaleApps: onRestoreSkippedStaleApps)
+            if let makeDiagnostics {
+                CopyDiagnosticsSection(makeDiagnostics: makeDiagnostics)
             }
             Section {
                 Button(String(localized: "Reset All Data…"), role: .destructive) {
@@ -395,6 +160,68 @@ private struct DataSettingsTab: View {
             Button(String(localized: "Reset"), role: .destructive) { onResetAllData?() }
         } message: {
             Text(String(localized: "All snapshots, dismissed items, snoozes, and settings will be deleted. Permission Pulse will rescan immediately. This cannot be undone."))
+        }
+    }
+}
+
+/// Brings back Recent Changes rows the user dismissed or snoozed and apps
+/// they skipped in Stale Apps, without resetting everything else.
+private struct HiddenItemsSection: View {
+    let onRestoreSkippedStaleApps: (() -> Void)?
+    @Environment(DismissedDiffEntryStore.self) private var dismissedChanges
+    @Environment(DismissedStaleAppStore.self) private var skippedApps
+
+    var body: some View {
+        let changeCount = dismissedChanges.activeCount(asOf: Date())
+        let skippedCount = skippedApps.allStableKeys().count
+        Section {
+            LabeledContent(String(localized: "Dismissed changes (\(changeCount))")) {
+                Button(String(localized: "Restore All")) { dismissedChanges.removeAll() }
+                    .disabled(changeCount == 0)
+            }
+            LabeledContent(String(localized: "Skipped stale apps (\(skippedCount))")) {
+                Button(String(localized: "Restore All")) {
+                    if let onRestoreSkippedStaleApps {
+                        onRestoreSkippedStaleApps()
+                    } else {
+                        skippedApps.removeAll()
+                    }
+                }
+                .disabled(skippedCount == 0)
+            }
+            Text(String(localized: "Dismissed and snoozed changes return to Recent Changes; skipped apps return to Stale Apps if they are still unused."))
+                .ppFont(.metadata)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+    }
+}
+
+private struct CopyDiagnosticsSection: View {
+    let makeDiagnostics: () async -> String
+    @State private var copied = false
+
+    var body: some View {
+        Section {
+            HStack {
+                Button(String(localized: "Copy Diagnostics")) {
+                    Task {
+                        let text = await makeDiagnostics()
+                        NSPasteboard.general.clearContents()
+                        NSPasteboard.general.setString(text, forType: .string)
+                        copied = true
+                    }
+                }
+                if copied {
+                    Text(String(localized: "Copied to the clipboard."))
+                        .ppFont(.metadata)
+                        .foregroundStyle(.secondary)
+                }
+            }
+            Text(String(localized: "Copies the app's version, scan status and settings as plain text for a bug report. It includes no app names, identifiers or file paths other than Permission Pulse's own."))
+                .ppFont(.metadata)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
         }
     }
 }

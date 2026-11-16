@@ -11,7 +11,7 @@ struct SchemaMismatchBanner: View {
     }
 
     private static let reportURL = URL(
-        string: "https://github.com/WallyMagill/permission-pulse/issues/new?labels=schema-mismatch"
+        string: "https://github.com/WallyMagill/permission-pulse/issues/new?template=schema-mismatch.yml"
     )!
 
     var body: some View {

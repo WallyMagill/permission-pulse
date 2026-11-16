@@ -150,6 +150,12 @@ import PermissionsUI
             body: "Test"
         )
         try await env.scheduler.scheduleOneShot(
+            identifier: ChangeAlertCoordinator.changesIdentifier,
+            after: 1,
+            title: "Changes",
+            body: "Changes"
+        )
+        try await env.scheduler.scheduleOneShot(
             identifier: "com.example.unrelated",
             after: 5,
             title: "Other",
@@ -222,6 +228,7 @@ import PermissionsUI
         #expect(trace.values == [
             "cancel:\(WeeklyDigestCoordinator.identifierPrefix)",
             "cancel:\(WeeklyDigestCoordinator.testIdentifierPrefix)",
+            "cancel:\(ChangeAlertCoordinator.identifierPrefix)",
             "release",
             "delete:snapshots.db",
             "delete:snapshots.db-wal",
@@ -613,6 +620,7 @@ private actor TracingWeeklyDigestScheduler: WeeklyDigestScheduler {
     }
     func pendingIdentifiers() async -> [String] { [] }
     func nextFireDate(for identifier: String) async -> Date? { nil }
+    func armedFireDate(for identifier: String) async -> Date? { nil }
 }
 
 private actor SuspendingWeeklyDigestScheduler: WeeklyDigestScheduler {
@@ -652,6 +660,7 @@ private actor SuspendingWeeklyDigestScheduler: WeeklyDigestScheduler {
     }
     func pendingIdentifiers() async -> [String] { [] }
     func nextFireDate(for identifier: String) async -> Date? { nil }
+    func armedFireDate(for identifier: String) async -> Date? { nil }
 
     func waitUntilFirstCancellationSuspends() async {
         guard !firstCancellationIsSuspended else { return }
@@ -680,13 +689,12 @@ private func seedPresentationState(_ viewModel: AppViewModel) async throws {
     viewModel.latestSnapshotID = SnapshotID(rawValue: 2)
     viewModel.lastReviewedSnapshotID = SnapshotID(rawValue: 1)
     let diff = SnapshotDiffs(
-        fromID: SnapshotID(rawValue: 1),
         toID: SnapshotID(rawValue: 2),
         tcc: TCCGrantsDiff(added: grants, removed: []),
         btm: BTMItemsDiff(added: btmItems, removed: []),
         launchAgents: LaunchAgentsDiff(added: launchAgents, removed: [])
     )
-    viewModel.latestDiffYesterday = diff
+    viewModel.latestDiffSinceReview = diff
     viewModel.latestDiffWeek = diff
     viewModel.staleApps = [StaleApp(
         app: grants[0].app,
@@ -712,7 +720,7 @@ private func expectPresentationStateCleared(_ viewModel: AppViewModel) {
     #expect(viewModel.launchAgentScanError == nil)
     #expect(viewModel.latestSnapshotID == nil)
     #expect(viewModel.lastReviewedSnapshotID == nil)
-    #expect(viewModel.latestDiffYesterday == nil)
+    #expect(viewModel.latestDiffSinceReview == nil)
     #expect(viewModel.latestDiffWeek == nil)
     #expect(viewModel.staleApps.isEmpty)
     #expect(viewModel.pendingRoute == nil)

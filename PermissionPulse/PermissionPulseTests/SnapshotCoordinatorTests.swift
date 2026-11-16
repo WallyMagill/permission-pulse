@@ -8,26 +8,35 @@ import PermissionsUI
 @testable import PermissionPulse
 
 @Suite @MainActor struct SnapshotCoordinatorTests {
-    @Test func skipsWriteWhenSentinelMatchesToday() async throws {
+    @Test func unchangedEvidenceWritesNothing() async throws {
         let env = try await Environment(now: fixedNow)
-        // Mark today as already written.
-        env.defaults.set(
-            ISO8601DateFormatter().string(from: fixedNow()),
-            forKey: SnapshotCoordinator.lastSnapshotDateKey
-        )
-
-        // Also write one snapshot directly so latestSnapshotID returns non-nil
-        // for the refresh path.
-        _ = try await env.store.writeFullSnapshot(
-            grants: [], launchAgents: [], btmItems: [], at: fixedNow()
-        )
+        env.viewModel.grants = [demoGrant()]
+        env.viewModel.launchAgents = [demoLaunchAgent()]
+        await env.coordinator.onScanCompleted()
         let beforeCount = try await env.snapshotsCount()
 
-        env.viewModel.grants = [demoGrant()]
         await env.coordinator.onScanCompleted()
 
-        let afterCount = try await env.snapshotsCount()
-        #expect(afterCount == beforeCount, "Should not have written another snapshot")
+        #expect(try await env.snapshotsCount() == beforeCount, "Identical scan must not write")
+    }
+
+    @Test func changedEvidenceWritesAgainTheSameDay() async throws {
+        let env = try await Environment(now: fixedNow)
+        _ = try await env.store.writeFullSnapshot(
+            grants: [demoGrant(bundleID: "com.example.a")],
+            launchAgents: [], btmItems: [],
+            at: fixedNow().addingTimeInterval(-36 * 60 * 60)
+        )
+        env.viewModel.grants = [demoGrant(bundleID: "com.example.a"), demoGrant(bundleID: "com.example.b")]
+        await env.coordinator.onScanCompleted()
+
+        env.viewModel.grants.append(demoGrant(bundleID: "com.example.c"))
+        await env.coordinator.onScanCompleted()
+
+        #expect(try await env.snapshotsCount() == 3)
+        let added = env.viewModel.latestDiffSinceReview?.tcc.added.map(\.app.bundleID)
+        #expect(added == ["com.example.b", "com.example.c"])
+        #expect(env.viewModel.latestSnapshotDate != nil)
     }
 
     @Test func writesAfterSuccessfulScanWhenSentinelStale() async throws {
@@ -43,71 +52,114 @@ import PermissionsUI
         #expect(env.viewModel.latestSnapshotID != nil)
     }
 
-    @Test func skipsWriteWhenAnyScannerErrored() async throws {
+    // A quiet day leaves the pre-today baseline equal to the latest snapshot;
+    // that is "no changes", not "no history yet".
+    @Test func quietHistoryYieldsEmptyDiffNotMissingHistory() async throws {
+        let env = try await Environment(now: fixedNow)
+        _ = try await env.store.writeFullSnapshot(
+            grants: [demoGrant()], launchAgents: [], btmItems: [],
+            at: fixedNow().addingTimeInterval(-36 * 60 * 60)
+        )
+        env.viewModel.grants = [demoGrant()]
+
+        await env.coordinator.onScanCompleted()
+
+        #expect(try await env.snapshotsCount() == 1)
+        let diff = try #require(env.viewModel.latestDiffSinceReview)
+        #expect(!diff.hasContent)
+    }
+
+    @Test func quietHistoryStillReportsIncompleteDomains() async throws {
+        let env = try await Environment(now: fixedNow)
+        let degraded = SnapshotDomainCoverage(tcc: .complete, btm: .complete, launchAgents: .degraded)
+        let warning = ScannerWarning(source: .entries, omittedCount: 1)
+        _ = try await env.store.writeSnapshot(
+            grants: [demoGrant()], launchAgents: [demoLaunchAgent()], btmItems: [],
+            coverage: degraded, at: fixedNow().addingTimeInterval(-36 * 60 * 60)
+        )
+        env.viewModel.grants = [demoGrant()]
+        env.viewModel.launchAgents = [demoLaunchAgent()]
+        env.viewModel.launchAgentAvailability = .degraded(lastUpdated: fixedNow(), warnings: [warning])
+
+        await env.coordinator.onScanCompleted()
+
+        #expect(try await env.snapshotsCount() == 1)
+        #expect(env.viewModel.latestDiffSinceReview?.uncomparedDomains == [.launchAgents])
+    }
+
+    // Retention and the week window must share a day boundary: at 7-day
+    // retention a wall-clock cutoff pruned the true week baseline.
+    @Test func minimumRetentionKeepsTheWeekBaseline() async throws {
+        var cal = Calendar(identifier: .gregorian)
+        cal.timeZone = TimeZone(identifier: "UTC")!
+        let startOfToday = cal.startOfDay(for: fixedNow())
+        let evening = startOfToday.addingTimeInterval(18 * 3600)
+        let env = try await Environment(now: { evening }, calendar: cal, snapshotRetentionDays: 7)
+        for offset in [-8.0 * 86_400, -7.0 * 86_400 + 6 * 3600] {
+            _ = try await env.store.writeFullSnapshot(
+                grants: [demoGrant(bundleID: "com.example.old")], launchAgents: [], btmItems: [],
+                at: startOfToday.addingTimeInterval(offset)
+            )
+        }
+        env.viewModel.grants = [demoGrant(bundleID: "com.example.new")]
+
+        await env.coordinator.onScanCompleted()
+
+        #expect(env.viewModel.latestDiffWeek?.hasContent == true)
+    }
+
+    @Test func failedDomainStillWritesTheOthers() async throws {
         let env = try await Environment(now: fixedNow)
         env.preferences.snapshotRetentionDays = 10
         env.preferences.staleThresholdDays = 30
         env.viewModel.tccScanError = .permissionDenied(reason: "FDA needed")
         env.viewModel.grants = [demoGrant()]
+        env.viewModel.launchAgents = [demoLaunchAgent()]
 
-        let beforeCount = try await env.snapshotsCount()
         await env.coordinator.onScanCompleted()
-        let afterCount = try await env.snapshotsCount()
 
-        #expect(afterCount == beforeCount)
-        #expect(env.viewModel.latestSnapshotID == nil)
+        let id = try #require(env.viewModel.latestSnapshotID)
+        #expect(try await env.store.coverage(snapshotID: id).tcc == .failed)
+        #expect(try await env.store.readTCCGrants(snapshotID: id).isEmpty)
+        #expect(try await env.store.readLaunchAgents(snapshotID: id).count == 1)
         #expect(env.providers.snapshotRetentionReadCount == 1)
         #expect(env.providers.staleThresholdReadCount == 1)
         #expect(env.viewModel.staleThresholdDays == 30)
     }
 
-    @Test func degradedAvailabilityInAnyDomainSkipsSnapshotWrite() async throws {
+    @Test func incompleteAvailabilityIsRecordedAsCoverage() async throws {
         let warning = ScannerWarning(source: .entries, omittedCount: 1)
-        for domain in PersistedDomain.allCases {
-            let env = try await Environment(now: fixedNow)
-            env.viewModel.grants = [demoGrant()]
-            env.viewModel.launchAgents = [demoLaunchAgent()]
-            setAvailability(
-                .degraded(lastUpdated: fixedNow(), warnings: [warning]),
-                for: domain,
-                on: env.viewModel
-            )
-
-            await env.coordinator.onScanCompleted()
-
-            #expect(try await env.snapshotsCount() == 0, "Degraded \(domain) must not write")
-        }
-    }
-
-    @Test func failedAvailabilityInAnyDomainSkipsSnapshotWrite() async throws {
         let error = ScannerError.temporarilyUnavailable(reason: "busy")
-        for domain in PersistedDomain.allCases {
-            let env = try await Environment(now: fixedNow)
-            env.viewModel.grants = [demoGrant()]
-            env.viewModel.launchAgents = [demoLaunchAgent()]
-            setAvailability(
-                .failed(lastSuccessful: fixedNow(), error: error),
-                for: domain,
-                on: env.viewModel
-            )
+        let cases: [(ScanAvailability, SnapshotCoverage)] = [
+            (.degraded(lastUpdated: fixedNow(), warnings: [warning]), .degraded),
+            (.failed(lastSuccessful: fixedNow(), error: error), .failed),
+            (.never, .failed),
+        ]
+        for (availability, expected) in cases {
+            for domain in PersistedDomain.allCases {
+                let env = try await Environment(now: fixedNow)
+                env.viewModel.grants = [demoGrant()]
+                env.viewModel.launchAgents = [demoLaunchAgent()]
+                setAvailability(availability, for: domain, on: env.viewModel)
 
-            await env.coordinator.onScanCompleted()
+                await env.coordinator.onScanCompleted()
 
-            #expect(try await env.snapshotsCount() == 0, "Failed \(domain) must not write")
+                let id = try #require(env.viewModel.latestSnapshotID, "\(domain) \(expected) must still write")
+                let coverage = try await env.store.coverage(snapshotID: id)
+                #expect(coverage[keyPath: domain.coverageKeyPath] == expected)
+            }
         }
     }
 
-    @Test func neverAvailabilityInAnyDomainSkipsSnapshotWrite() async throws {
+    @Test func everyDomainFailedWritesNothing() async throws {
+        let env = try await Environment(now: fixedNow)
         for domain in PersistedDomain.allCases {
-            let env = try await Environment(now: fixedNow)
-            env.viewModel.grants = [demoGrant()]
-            env.viewModel.launchAgents = [demoLaunchAgent()]
             setAvailability(.never, for: domain, on: env.viewModel)
-
-            await env.coordinator.onScanCompleted()
-
-            #expect(try await env.snapshotsCount() == 0, "Never-scanned \(domain) must not write")
         }
+
+        await env.coordinator.onScanCompleted()
+
+        #expect(try await env.snapshotsCount() == 0)
     }
 
     @Test func degradedLaunchAgentDataCannotCreateFalseRemoval() async throws {
@@ -118,7 +170,6 @@ import PermissionsUI
             btmItems: [],
             at: fixedNow().addingTimeInterval(-86_400)
         )
-        let countBefore = try await env.snapshotsCount()
         env.viewModel.launchAgents = []
         env.viewModel.launchAgentAvailability = .degraded(
             lastUpdated: fixedNow(),
@@ -127,8 +178,47 @@ import PermissionsUI
 
         await env.coordinator.onScanCompleted()
 
-        #expect(try await env.snapshotsCount() == countBefore)
-        #expect(env.viewModel.latestDiffYesterday == nil)
+        let diff = try #require(env.viewModel.latestDiffSinceReview)
+        #expect(diff.launchAgents.removed.isEmpty)
+        #expect(diff.uncomparedDomains == [.launchAgents])
+        #expect(!diff.hasContent)
+    }
+
+    @Test func hiddenPerUserPermissionsNeverReadAsRemovals() async throws {
+        // Before the macOS upgrade: a complete snapshot holding a per-user grant.
+        let env = try await Environment(now: fixedNow)
+        _ = try await env.store.writeFullSnapshot(
+            grants: [demoGrant(bundleID: "com.example.camera-app")],
+            launchAgents: [],
+            btmItems: [],
+            at: fixedNow().addingTimeInterval(-2 * 86_400)
+        )
+
+        // After it: the per-user database is no longer exposed, so that grant
+        // is simply invisible.
+        env.viewModel.grants = []
+        env.viewModel.tccUnavailableSources = [.userTCCDatabase]
+        await env.coordinator.onScanCompleted()
+
+        let boundaryID = try #require(env.viewModel.latestSnapshotID)
+        #expect(try await env.store.coverage(snapshotID: boundaryID).tcc == .reduced)
+        let boundary = try #require(env.viewModel.latestDiffSinceReview)
+        #expect(boundary.tcc.removed.isEmpty)
+        #expect(boundary.systemLevelPermissionsOnly)
+
+        // Two reduced snapshots cover the same scope and diff normally.
+        _ = try await env.store.writeSnapshot(
+            grants: [demoGrant(bundleID: "com.example.new-grant")],
+            launchAgents: [],
+            btmItems: [],
+            coverage: SnapshotDomainCoverage(tcc: .reduced, btm: .complete, launchAgents: .complete),
+            at: fixedNow().addingTimeInterval(86_400)
+        )
+        let reducedDiff = try await env.store.diffTCCGrants(
+            from: boundaryID,
+            to: try #require(try await env.store.latestSnapshotID())
+        )
+        #expect(reducedDiff.added.map(\.app.bundleID) == ["com.example.new-grant"])
     }
 
     @Test func pushesDiffsAndStaleAppsToViewModelAfterWrite() async throws {
@@ -154,11 +244,25 @@ import PermissionsUI
 
         // Yesterday diff should be non-nil with content (oldOnly was removed,
         // staleApp was added).
-        let yd = env.viewModel.latestDiffYesterday
+        let yd = env.viewModel.latestDiffSinceReview
         #expect(yd != nil)
         #expect(yd?.hasContent == true)
         // Stale apps should include the one app whose probe date is 200d old.
         #expect(env.viewModel.staleApps.contains { $0.app.bundleID == "com.example.staleApp" })
+    }
+
+    @Test func staleAppListsEachServiceOnce() async throws {
+        let path = URL(fileURLWithPath: "/Applications/Scripter.app")
+        let old = fixedNow().addingTimeInterval(-200 * 86_400)
+        let env = try await Environment(now: fixedNow, probe: MockLastUsedProbe(fixed: [path: (old, .spotlight)]))
+        let app = AppIdentity(bundleID: "com.example.scripter", displayName: "Scripter", bundlePath: path)
+        env.viewModel.grants = ["com.apple.finder", "com.apple.mail"].map {
+            PermissionGrant(service: .automation, app: app, lastModified: old, automationTarget: $0)
+        } + [demoGrant(bundleID: "com.example.scripter", bundlePath: path)]
+
+        await env.coordinator.onScanCompleted()
+
+        #expect(env.viewModel.staleApps.map(\.grantedServices) == [[.automation, .microphone]])
     }
 
     @Test func customStaleThresholdHonored() async throws {
@@ -223,6 +327,28 @@ import PermissionsUI
         let stale = env.viewModel.staleApps
         #expect(stale.contains { $0.app.bundleID == "com.example.kept" })
         #expect(!stale.contains { $0.app.bundleID == "com.example.skipped" })
+    }
+
+    @Test func restoredSkippedAppReturnsWithoutARescan() async throws {
+        let path = URL(fileURLWithPath: "/Applications/Skipped.app")
+        let old = Date(timeIntervalSince1970: fixedNow().timeIntervalSince1970 - 200 * 86_400)
+        let dismissed = DismissedStaleAppStore(
+            defaults: UserDefaults(suiteName: "restore-stale-\(UUID().uuidString)")!
+        )
+        dismissed.skipForever(stableKey: "bundle:com.example.skipped")
+        let env = try await Environment(
+            now: fixedNow,
+            probe: MockLastUsedProbe(fixed: [path: (old, .spotlight)]),
+            dismissedStaleApps: dismissed
+        )
+        env.viewModel.grants = [demoGrant(bundleID: "com.example.skipped", bundlePath: path)]
+        await env.coordinator.onScanCompleted()
+        #expect(env.viewModel.staleApps.isEmpty)
+
+        dismissed.removeAll()
+        await env.coordinator.refreshStaleApps()
+
+        #expect(env.viewModel.staleApps.map(\.app.bundleID) == ["com.example.skipped"])
     }
 
     @Test func scannerResolvedBundlePathFlowsIntoStaleComputation() async throws {
@@ -293,11 +419,14 @@ import PermissionsUI
         // pruned after the next write. We verify by asking the store for the
         // latest snapshot at-or-before a date 15 days ago — after prune the
         // seeded row is gone, so the query returns nil.
+        // The -12d snapshot is the retained baseline at the 10-day cutoff.
         let env = try await Environment(now: fixedNow, snapshotRetentionDays: 10)
-        let oldDate = fixedNow().addingTimeInterval(-20 * 86_400)
-        _ = try await env.store.writeFullSnapshot(
-            grants: [], launchAgents: [], btmItems: [], at: oldDate
-        )
+        for days in [20.0, 12] {
+            _ = try await env.store.writeFullSnapshot(
+                grants: [], launchAgents: [], btmItems: [],
+                at: fixedNow().addingTimeInterval(-days * 86_400)
+            )
+        }
         let beforePrune = try await env.store.latestSnapshotID(
             atOrBefore: fixedNow().addingTimeInterval(-15 * 86_400)
         )
@@ -314,12 +443,12 @@ import PermissionsUI
 
     @Test func changedRetentionAppliesOnNextScan() async throws {
         let env = try await Environment(now: fixedNow)
-        _ = try await env.store.writeFullSnapshot(
-            grants: [],
-            launchAgents: [],
-            btmItems: [],
-            at: fixedNow().addingTimeInterval(-20 * 86_400)
-        )
+        for days in [20.0, 12] {
+            _ = try await env.store.writeFullSnapshot(
+                grants: [], launchAgents: [], btmItems: [],
+                at: fixedNow().addingTimeInterval(-days * 86_400)
+            )
+        }
         env.preferences.snapshotRetentionDays = 10
         env.viewModel.grants = [demoGrant()]
 
@@ -389,8 +518,7 @@ import PermissionsUI
         // Force a state where hasUnreviewedChanges == true.
         env.viewModel.latestSnapshotID = SnapshotID(rawValue: 1)
         env.viewModel.lastReviewedSnapshotID = nil
-        env.viewModel.latestDiffYesterday = SnapshotDiffs(
-            fromID: SnapshotID(rawValue: 0),
+        env.viewModel.latestDiffSinceReview = SnapshotDiffs(
             toID: SnapshotID(rawValue: 1),
             tcc: TCCGrantsDiff(added: [], removed: []),
             btm: BTMItemsDiff(added: [], removed: []),
@@ -398,13 +526,26 @@ import PermissionsUI
         )
         #expect(env.viewModel.hasUnreviewedChanges)
 
-        env.coordinator.markCurrentSnapshotReviewed()
+        await env.coordinator.markCurrentSnapshotReviewed()?.value
 
         #expect(env.viewModel.lastReviewedSnapshotID == SnapshotID(rawValue: 1))
         #expect(!env.viewModel.hasUnreviewedChanges)
         // Persisted to defaults.
         let stored = env.defaults.object(forKey: SnapshotCoordinator.lastReviewedSnapshotIDKey) as? Int64
         #expect(stored == 1)
+    }
+
+    @Test func markingASeenSnapshotNeverMovesTheReviewBackOrPastTheLatest() async throws {
+        let env = try await Environment(now: fixedNow)
+        env.viewModel.latestSnapshotID = SnapshotID(rawValue: 5)
+        env.viewModel.lastReviewedSnapshotID = SnapshotID(rawValue: 4)
+
+        #expect(env.coordinator.markSnapshotReviewed(SnapshotID(rawValue: 3)) == nil)
+        #expect(env.coordinator.markSnapshotReviewed(SnapshotID(rawValue: 6)) == nil)
+        #expect(env.viewModel.lastReviewedSnapshotID == SnapshotID(rawValue: 4))
+
+        await env.coordinator.markSnapshotReviewed(SnapshotID(rawValue: 5))?.value
+        #expect(env.defaults.object(forKey: SnapshotCoordinator.lastReviewedSnapshotIDKey) as? Int64 == 5)
     }
 
     @Test func yesterdayDiffUsesCalendarDayBoundaryNotRollingWindow() async throws {
@@ -428,8 +569,8 @@ import PermissionsUI
         env.viewModel.grants = [demoGrant(bundleID: "com.example.new")]
         await env.coordinator.onScanCompleted()
 
-        #expect(env.viewModel.latestDiffYesterday != nil)
-        #expect(env.viewModel.latestDiffYesterday?.hasContent == true)
+        #expect(env.viewModel.latestDiffSinceReview != nil)
+        #expect(env.viewModel.latestDiffSinceReview?.hasContent == true)
     }
 
     @Test func constructingCoordinatorClearsSnapshotStoreUnavailable() async throws {
@@ -501,6 +642,14 @@ import PermissionsUI
         case tcc
         case btm
         case launchAgent
+
+        var coverageKeyPath: KeyPath<SnapshotDomainCoverage, SnapshotCoverage> {
+            switch self {
+            case .tcc: \.tcc
+            case .btm: \.btm
+            case .launchAgent: \.launchAgents
+            }
+        }
     }
 
     private func setAvailability(

@@ -5,7 +5,9 @@ import PermissionsCore
 struct StaleAppsTabView: View {
     let staleApps: [StaleApp]
     var staleThresholdDays: Int = 90
+    var emptyState: StaleAppsEmptyState = .noneStale(systemLevelOnly: false, skippedCount: 0)
     @Environment(DismissedStaleAppStore.self) private var dismissedStore
+    @Environment(AppViewModel.self) private var viewModel
 
     @State private var pendingSkipCandidate: StableStaleApp?
 
@@ -17,9 +19,9 @@ struct StaleAppsTabView: View {
 
         if visible.isEmpty {
             ContentUnavailableView(
-                String(localized: "No Stale Apps"),
-                systemImage: "checkmark.circle",
-                description: Text(String(localized: "Every app with an active grant has been used recently."))
+                emptyState.title,
+                systemImage: emptyState.systemImage,
+                description: Text(emptyState.description)
             )
         } else {
             List {
@@ -59,14 +61,14 @@ struct StaleAppsTabView: View {
                 presenting: pendingSkipCandidate
             ) { candidate in
                 Button(String(localized: "Skip"), role: .destructive) {
-                    dismissedStore.skipForever(stableKey: candidate.stableKey)
+                    viewModel.skipStaleAppForever(stableKey: candidate.stableKey, in: dismissedStore)
                     pendingSkipCandidate = nil
                 }
                 Button(String(localized: "Cancel"), role: .cancel) {
                     pendingSkipCandidate = nil
                 }
             } message: { candidate in
-                Text(String(localized: "Permission Pulse will stop flagging \(candidate.staleApp.app.displayName) in Stale Apps. Use Reset All Data in Settings → Data to un-skip."))
+                Text(String(localized: "Permission Pulse will stop flagging \(candidate.staleApp.app.displayName) in Stale Apps. You can bring it back in Settings → Data."))
             }
         }
     }
@@ -106,7 +108,7 @@ private struct StaleAppRow: View {
                 Text(app.app.displayName).ppFont(.body).fontWeight(.medium)
                 Text(app.app.bundleID).ppFont(.metadata).foregroundStyle(.secondary)
                 Text(servicesLine).ppFont(.metadata).foregroundStyle(.tertiary)
-                Text(lastUsedLine).ppFont(.metadata).foregroundStyle(.secondary)
+                Text(StaleAppsTabView.dateLine(for: app)).ppFont(.metadata).foregroundStyle(.secondary)
             }
         }
         .padding(.vertical, PPSpacing.xxs)
@@ -118,15 +120,22 @@ private struct StaleAppRow: View {
         return String(localized: "Granted: \(names)")
     }
 
-    private var lastUsedLine: String {
+}
+
+extension StaleAppsTabView {
+    /// A modification date is not a use date, so a row whose date came from
+    /// the file-system fallback says so.
+    static func dateLine(for app: StaleApp) -> String {
         let dateString = DateFormatter.localizedString(
             from: app.lastUsedDate,
             dateStyle: .medium,
             timeStyle: .none
         )
-        let source = app.dateSource == .spotlight
-            ? String(localized: "via Spotlight")
-            : String(localized: "via file modified")
-        return String(localized: "Last used \(dateString) · \(source) · \(app.daysSinceUsed) days ago")
+        switch app.dateSource {
+        case .spotlight:
+            return String(localized: "Last used \(dateString) · via Spotlight · \(app.daysSinceUsed) days ago")
+        case .fileSystem:
+            return String(localized: "Last modified \(dateString) · \(app.daysSinceUsed) days ago")
+        }
     }
 }

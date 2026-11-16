@@ -20,7 +20,7 @@ final class SnapshotCoordinator {
     static let maxStaleProbesInFlight = 8
 
     private let viewModel: AppViewModel
-    private let store: SnapshotStore
+    private let store: any SnapshotHistoryStore
     private let lastUsedProbe: any LastUsedProbe
     private let defaults: UserDefaults
     private let calendar: Calendar
@@ -29,13 +29,20 @@ final class SnapshotCoordinator {
 
     private let snapshotRetentionDays: @MainActor () -> Int
     private let staleThresholdDays: @MainActor () -> Int
+    /// Counts diff refreshes started; a refresh applies its result only if
+    /// no later one started while it was reading the store.
+    private var refreshesStarted = 0
+
+    /// Called after a scan wrote a snapshot and the diffs were refreshed:
+    /// the latest snapshot before the write (nil on first run), then the new one.
+    var onSnapshotWritten: (@MainActor (_ previous: SnapshotID?, _ written: SnapshotID) -> Void)?
 
     init(
         viewModel: AppViewModel,
-        store: SnapshotStore,
+        store: any SnapshotHistoryStore,
         lastUsedProbe: any LastUsedProbe = LastUsedProbeHybrid(),
         defaults: UserDefaults = .standard,
-        calendar: Calendar = .current,
+        calendar: Calendar = .autoupdatingCurrent,
         now: @Sendable @escaping () -> Date = Date.init,
         snapshotRetentionDays: @MainActor @escaping () -> Int = {
             SnapshotCoordinator.defaultSnapshotRetentionDays
@@ -64,69 +71,186 @@ final class SnapshotCoordinator {
         let thresholdDays = staleThresholdDays()
         viewModel.staleThresholdDays = thresholdDays
 
-        guard scanFullySucceeded() else {
-            Self.logger.debug("Skipping snapshot — at least one scanner is not complete")
-            return
-        }
-
-        let today = now()
-        if let lastDate = lastSnapshotDate(), calendar.isDate(lastDate, inSameDayAs: today) {
-            // Same calendar day — don't write, but still refresh diffs in case
-            // the user has not seen this snapshot since launch.
-            Self.logger.debug("Snapshot already written today; refreshing diffs only")
-            await refreshDiffsAndStale(
-                latestID: try? await store.latestSnapshotID(),
-                thresholdDays: thresholdDays
-            )
-            return
-        }
-
+        let previousID: SnapshotID?
         do {
-            let snapshotID = try await store.writeFullSnapshot(
+            previousID = try await store.latestSnapshotID()
+        } catch {
+            // Without knowing the latest snapshot, a write would skip the
+            // change check and duplicate history; try again next scan.
+            Self.logger.error("Latest snapshot lookup failed: \(error.localizedDescription, privacy: .public)")
+            viewModel.diffUnavailable = true
+            return
+        }
+        let written = await writeSnapshotIfChanged(since: previousID)
+        if previousID == nil, let written {
+            // The first snapshot ever (also the first after Reset All Data)
+            // is the baseline: later changes show as changes since it,
+            // rather than "nothing to compare" until tomorrow.
+            recordReviewed(written)
+        }
+        let latestID = written ?? previousID
+        viewModel.dismissedDiffEntries?.pruneExpired(asOf: now())
+        let baselines = await refreshDiffs(latestID: latestID)
+        if written != nil, let baselines {
+            await prune(retentionDays: retentionDays, keeping: baselines)
+        }
+        guard latestID != nil else { return }
+        viewModel.staleApps = await computeStaleApps(nowDate: now(), thresholdDays: thresholdDays)
+        if let written { onSnapshotWritten?(previousID, written) }
+    }
+
+    /// Writes when there is no history yet or the evidence differs from the
+    /// latest snapshot. Returns the new snapshot's ID, or nil when nothing
+    /// was written.
+    private func writeSnapshotIfChanged(since latestID: SnapshotID?) async -> SnapshotID? {
+        let coverage = currentCoverage()
+        guard coverage != Self.nothingCaptured else {
+            Self.logger.info("Snapshot skipped — every domain failed")
+            return nil
+        }
+        do {
+            if let latestID, try await !store.evidenceChanged(
+                since: latestID,
                 grants: viewModel.grants,
                 launchAgents: viewModel.launchAgents,
                 btmItems: viewModel.btmItems,
+                coverage: coverage
+            ) {
+                Self.logger.info("Snapshot skipped — evidence unchanged")
+                viewModel.snapshotWriteFailed = false
+                return nil
+            }
+            let today = now()
+            let snapshotID = try await store.writeSnapshot(
+                grants: viewModel.grants,
+                launchAgents: viewModel.launchAgents,
+                btmItems: viewModel.btmItems,
+                coverage: coverage,
                 at: today
             )
+            Self.logger.info("Snapshot \(snapshotID.rawValue) written")
+            viewModel.snapshotWriteFailed = false
             persistLastSnapshotDate(today)
-            let retentionCutoff = calendar.date(
-                byAdding: .day,
-                value: -retentionDays,
-                to: today
-            ) ?? today.addingTimeInterval(-Double(retentionDays) * 86_400)
-            // A prune failure must NOT abort the diff refresh below, so it gets
-            // its own do/catch (not the outer one) and is logged rather than
-            // swallowed — otherwise the DB grows unbounded with no signal. (R1)
-            do {
-                _ = try await store.pruneSnapshots(olderThan: retentionCutoff)
-            } catch {
-                Self.logger.error("Snapshot prune failed: \(error.localizedDescription, privacy: .public)")
-            }
-            await refreshDiffsAndStale(latestID: snapshotID, thresholdDays: thresholdDays)
+            return snapshotID
         } catch {
-            Self.logger.error(
-                "Snapshot write failed: \(error.localizedDescription, privacy: .public)"
-            )
+            Self.logger.error("Snapshot write failed: \(error.localizedDescription, privacy: .public)")
+            viewModel.snapshotWriteFailed = true
+            return nil
         }
     }
 
-    func markCurrentSnapshotReviewed() {
-        guard let id = viewModel.latestSnapshotID else { return }
-        viewModel.lastReviewedSnapshotID = id
-        defaults.set(id.rawValue, forKey: Self.lastReviewedSnapshotIDKey)
+    /// `protected` holds every snapshot a current diff compares against,
+    /// plus the last-reviewed one; the store keeps those past retention.
+    private func prune(retentionDays: Int, keeping protected: Set<SnapshotID>) async {
+        // Day-aligned like the diff windows: a wall-clock cutoff at 7-day
+        // retention would prune the "Last 7 days" baseline.
+        let startOfToday = calendar.startOfDay(for: now())
+        let retentionCutoff = calendar.date(
+            byAdding: .day,
+            value: -retentionDays,
+            to: startOfToday
+        ) ?? startOfToday.addingTimeInterval(-Double(retentionDays) * 86_400)
+        // A prune failure must not abort the diff refresh, so it is logged
+        // here rather than propagated — otherwise the DB grows unbounded with
+        // no signal. (R1)
+        do {
+            _ = try await store.pruneSnapshots(olderThan: retentionCutoff, keeping: protected)
+        } catch {
+            Self.logger.error("Snapshot prune failed: \(error.localizedDescription, privacy: .public)")
+        }
+    }
+
+    /// True when any stored snapshot captured Permissions or Background
+    /// Items, both of which need Full Disk Access. Pruning keeps the newest
+    /// captured snapshot of each domain, so a past capture is never lost.
+    /// Nil when the lookup failed.
+    func hasCapturedProtectedData() async -> Bool? {
+        do {
+            return try await store.snapshotSummaries(atOrBefore: .distantFuture).contains {
+                $0.coverage.tcc != .failed || $0.coverage.btm != .failed
+            }
+        } catch {
+            Self.logger.error("Capture lookup failed: \(error.localizedDescription, privacy: .public)")
+            return nil
+        }
+    }
+
+    /// Marks the latest snapshot reviewed, then recomputes the
+    /// since-last-review window from it. The returned task finishes when the
+    /// diffs are current.
+    @discardableResult
+    func markCurrentSnapshotReviewed() -> Task<Void, Never>? {
+        guard let id = viewModel.latestSnapshotID else { return nil }
+        return markReviewed(id)
+    }
+
+    /// Marks `id`, the newest snapshot whose changes the user saw, reviewed.
+    /// One no newer than the current review, or past the latest snapshot,
+    /// changes nothing.
+    @discardableResult
+    func markSnapshotReviewed(_ id: SnapshotID) -> Task<Void, Never>? {
+        guard let latest = viewModel.latestSnapshotID, id.rawValue <= latest.rawValue else { return nil }
+        if let reviewed = viewModel.lastReviewedSnapshotID, reviewed.rawValue >= id.rawValue { return nil }
+        return markReviewed(id)
+    }
+
+    private func markReviewed(_ id: SnapshotID) -> Task<Void, Never> {
+        recordReviewed(id)
+        return Task { [weak self] in
+            guard let self else { return }
+            await self.refreshDiffs(latestID: self.viewModel.latestSnapshotID)
+        }
+    }
+
+    /// Recomputes Stale Apps from the current grants without a scan, e.g.
+    /// after skipped apps are restored. Nothing to do before history exists.
+    func refreshStaleApps() async {
+        guard viewModel.latestSnapshotID != nil else { return }
+        viewModel.staleApps = await computeStaleApps(nowDate: now(), thresholdDays: staleThresholdDays())
     }
 
     // MARK: - Private
 
-    private func scanFullySucceeded() -> Bool {
-        viewModel.tccAvailability.isComplete
-            && viewModel.btmAvailability.isComplete
-            && viewModel.launchAgentAvailability.isComplete
+    private func recordReviewed(_ id: SnapshotID) {
+        viewModel.lastReviewedSnapshotID = id
+        defaults.set(id.rawValue, forKey: Self.lastReviewedSnapshotIDKey)
     }
 
-    private func lastSnapshotDate() -> Date? {
-        guard let iso = defaults.string(forKey: Self.lastSnapshotDateKey) else { return nil }
-        return ISO8601DateFormatter().date(from: iso)
+    private static let nothingCaptured = SnapshotDomainCoverage(
+        tcc: .failed,
+        btm: .failed,
+        launchAgents: .failed
+    )
+
+    private func currentCoverage() -> SnapshotDomainCoverage {
+        SnapshotDomainCoverage(
+            tcc: Self.tccCoverage(
+                of: viewModel.tccAvailability,
+                unavailableSources: viewModel.tccUnavailableSources
+            ),
+            btm: Self.coverage(of: viewModel.btmAvailability),
+            launchAgents: Self.coverage(of: viewModel.launchAgentAvailability)
+        )
+    }
+
+    /// `.reduced` names exactly one scope — the per-user database hidden, as
+    /// on macOS 27 — so two reduced snapshots always cover the same data. Any
+    /// other hidden source is not a scope history can compare.
+    private static func tccCoverage(
+        of availability: ScanAvailability,
+        unavailableSources: [ScannerSource]
+    ) -> SnapshotCoverage {
+        let coverage = coverage(of: availability)
+        guard coverage == .complete, !unavailableSources.isEmpty else { return coverage }
+        return unavailableSources == [.userTCCDatabase] ? .reduced : .degraded
+    }
+
+    private static func coverage(of availability: ScanAvailability) -> SnapshotCoverage {
+        switch availability {
+        case .complete: .complete
+        case .degraded: .degraded
+        case .failed, .never: .failed
+        }
     }
 
     private func persistLastSnapshotDate(_ date: Date) {
@@ -134,72 +258,171 @@ final class SnapshotCoordinator {
         defaults.set(iso, forKey: Self.lastSnapshotDateKey)
     }
 
-    private func refreshDiffsAndStale(latestID: SnapshotID?, thresholdDays: Int) async {
-        viewModel.diffUnavailable = false
-        guard let latestID else { return }
-        viewModel.latestSnapshotID = latestID
-
-        // Defensive: if a stored lastReviewedSnapshotID points past the current
-        // latest (could happen if snapshots.db was deleted while UserDefaults
-        // survived), clear it. Restore otherwise.
-        let storedReviewedRaw = defaults.object(forKey: Self.lastReviewedSnapshotIDKey) as? Int64
-        if let raw = storedReviewedRaw {
-            if raw > latestID.rawValue {
-                defaults.removeObject(forKey: Self.lastReviewedSnapshotIDKey)
-                viewModel.lastReviewedSnapshotID = nil
-            } else {
-                viewModel.lastReviewedSnapshotID = SnapshotID(rawValue: raw)
-            }
-        } else {
+    // Defensive: if a stored lastReviewedSnapshotID points past the current
+    // latest (could happen if snapshots.db was deleted while UserDefaults
+    // survived), clear it. Restore otherwise.
+    private func restoreReviewedID(latestID: SnapshotID) {
+        guard let raw = defaults.object(forKey: Self.lastReviewedSnapshotIDKey) as? Int64 else {
             viewModel.lastReviewedSnapshotID = nil
+            return
         }
-
-        let nowDate = now()
-        // Anchor diff baselines to calendar-day boundaries, not a rolling
-        // window, because snapshots are written at most once per calendar day.
-        // `latestSnapshotID(atOrBefore:)` is inclusive (<=): today's snapshot
-        // has a timestamp after startOfToday and is excluded; the most recent
-        // prior-day snapshot is <= startOfToday and is selected. (C1)
-        let startOfToday = calendar.startOfDay(for: nowDate)
-        let weekCutoff = calendar.date(byAdding: .day, value: -7, to: startOfToday)
-            ?? startOfToday.addingTimeInterval(-Self.weekWindowSeconds)
-
-        viewModel.latestDiffYesterday = await computeDiffs(cutoff: startOfToday, latestID: latestID)
-        viewModel.latestDiffWeek = await computeDiffs(cutoff: weekCutoff, latestID: latestID)
-        viewModel.staleApps = await computeStaleApps(
-            nowDate: nowDate,
-            thresholdDays: thresholdDays
-        )
+        if raw > latestID.rawValue {
+            defaults.removeObject(forKey: Self.lastReviewedSnapshotIDKey)
+            viewModel.lastReviewedSnapshotID = nil
+        } else {
+            viewModel.lastReviewedSnapshotID = SnapshotID(rawValue: raw)
+        }
     }
+    // MARK: - Diffs
 
-    private func computeDiffs(cutoff: Date, latestID: SnapshotID) async -> SnapshotDiffs? {
+    /// Recomputes both Recent Changes windows. Returns the snapshots they
+    /// compare against plus the last-reviewed one (what pruning must keep),
+    /// or nil when there is no history, a query failed, or a later refresh
+    /// (a scan, or Mark as Reviewed) started meanwhile and owns the result.
+    @discardableResult
+    private func refreshDiffs(latestID: SnapshotID?) async -> Set<SnapshotID>? {
+        refreshesStarted += 1
+        let refresh = refreshesStarted
+        viewModel.diffUnavailable = false
+        guard let latestID else { return nil }
+        viewModel.latestSnapshotID = latestID
+        restoreReviewedID(latestID: latestID)
         do {
-            guard let fromID = try await store.latestSnapshotID(atOrBefore: cutoff),
-                  fromID != latestID else {
-                return nil
-            }
-            async let tccTask = store.diffTCCGrants(from: fromID, to: latestID)
-            async let btmTask = store.diffBTMItems(from: fromID, to: latestID)
-            async let laTask  = store.diffLaunchAgents(from: fromID, to: latestID)
-            let (tcc, btm, la) = try await (tccTask, btmTask, laTask)
-            return SnapshotDiffs(
-                fromID: fromID,
-                toID: latestID,
-                tcc: tcc,
-                btm: btm,
-                launchAgents: la
-            )
+            guard let latest = try await store.snapshotSummary(id: latestID) else { return nil }
+            let startOfToday = calendar.startOfDay(for: now())
+            let weekCutoff = calendar.date(byAdding: .day, value: -7, to: startOfToday)
+                ?? startOfToday.addingTimeInterval(-Self.weekWindowSeconds)
+            let sinceReview = try await sinceReviewDiffs(latest: latest, fallbackCutoff: startOfToday)
+            let week = try await diffs(cutoff: weekCutoff, latest: latest, reviewedID: nil)
+            guard isCurrent(refresh) else { return nil }
+            viewModel.latestSnapshotDate = latest.date
+            viewModel.latestDiffSinceReview = sinceReview
+            viewModel.latestDiffWeek = week
+            let compared = [sinceReview, week].compactMap { $0?.baselines.values.map(\.id) }.joined()
+            return Set(compared).union([viewModel.lastReviewedSnapshotID].compactMap { $0 })
         } catch {
             Self.logger.error("Diff query failed: \(error.localizedDescription, privacy: .public)")
+            guard isCurrent(refresh) else { return nil }
+            viewModel.latestDiffSinceReview = nil
+            viewModel.latestDiffWeek = nil
             viewModel.diffUnavailable = true   // (C2) error, not "no data yet"
             return nil
         }
     }
 
-    private func computeStaleApps(nowDate: Date, thresholdDays: Int) async -> [StaleApp] {
-        // Dedupe grants by stable app identity, keep only those with a bundlePath.
-        // Drop anything the user has chosen to skip in Preferences so the
-        // sidebar badge count stays honest end-to-end.
+    private func isCurrent(_ refresh: Int) -> Bool {
+        guard refresh == refreshesStarted else {
+            Self.logger.info("Diff refresh superseded by a later one; result dropped")
+            return false
+        }
+        return true
+    }
+
+    /// Compared with the snapshot the user last reviewed; with none (first
+    /// run, after Reset All Data, or pruned) the state at the start of today.
+    private func sinceReviewDiffs(latest: SnapshotSummary, fallbackCutoff: Date) async throws -> SnapshotDiffs? {
+        if let reviewedID = viewModel.lastReviewedSnapshotID,
+           let reviewed = try await store.snapshotSummary(id: reviewedID) {
+            return try await diffs(cutoff: reviewed.date, latest: latest, reviewedID: reviewedID)
+        }
+        return try await diffs(cutoff: fallbackCutoff, latest: latest, reviewedID: nil)
+    }
+
+    /// Each domain compares against its own baseline: the newest snapshot at
+    /// or before `cutoff` whose coverage is comparable with the latest's. A
+    /// partial or narrower endpoint would turn omitted items into false
+    /// removals, so such a domain is reported as uncompared instead.
+    private func diffs(cutoff: Date, latest: SnapshotSummary, reviewedID: SnapshotID?) async throws -> SnapshotDiffs? {
+        var candidates = try await store.snapshotSummaries(atOrBefore: cutoff)
+        if let reviewedID {
+            // Newest first by (date, id), so this also drops any snapshot
+            // sharing the reviewed one's timestamp but written after it.
+            candidates = Array(candidates.drop { $0.id != reviewedID })
+        }
+        return try await diffs(latest: latest, candidates: candidates, reviewedID: reviewedID)
+    }
+
+    /// The changes from `previous` to `written` alone: a domain `previous`
+    /// did not capture comparably is uncompared rather than diffed against
+    /// an older snapshot. Nil when either snapshot is gone or a query fails.
+    func changes(from previous: SnapshotID, to written: SnapshotID) async -> SnapshotDiffs? {
+        do {
+            guard let before = try await store.snapshotSummary(id: previous),
+                  let after = try await store.snapshotSummary(id: written) else { return nil }
+            return try await diffs(latest: after, candidates: [before], reviewedID: nil)
+        } catch {
+            Self.logger.error("Change query failed: \(error.localizedDescription, privacy: .public)")
+            return nil
+        }
+    }
+
+    private func diffs(
+        latest: SnapshotSummary,
+        candidates: [SnapshotSummary],
+        reviewedID: SnapshotID?
+    ) async throws -> SnapshotDiffs? {
+        guard !candidates.isEmpty else { return nil }
+        var choices: [HistoryDomain: BaselineChoice] = [:]
+        for domain in HistoryDomain.allCases {
+            choices[domain] = BaselineSelector.choose(
+                latest: latest.coverage[keyPath: domain.coverage],
+                candidates: candidates,
+                domain: domain.coverage
+            )
+        }
+        var narrowed = false
+        if case .compared(_, systemLevelOnly: true)? = choices[.tcc] { narrowed = true }
+        // Either endpoint seeing only system-level permissions (every
+        // comparison on macOS 27) limits what the comparison could show.
+        let reducedScope = narrowed || latest.coverage.tcc == .reduced
+            || Self.baseline(choices[.tcc])?.coverage.tcc == .reduced
+        return SnapshotDiffs(
+            toID: latest.id,
+            tcc: try await diff(choices[.tcc], to: latest.id, empty: TCCGrantsDiff(added: [], removed: [])) {
+                try await self.store.diffTCCGrants(
+                    from: $0, to: latest.id,
+                    limitedTo: narrowed ? PermissionService.systemLevel : nil
+                )
+            },
+            btm: try await diff(choices[.btm], to: latest.id, empty: BTMItemsDiff(added: [], removed: [])) {
+                try await self.store.diffBTMItems(from: $0, to: latest.id)
+            },
+            launchAgents: try await diff(choices[.launchAgents], to: latest.id, empty: LaunchAgentsDiff(added: [], removed: [])) {
+                try await self.store.diffLaunchAgents(from: $0, to: latest.id)
+            },
+            baselines: choices.compactMapValues { Self.baseline($0).map { DiffBaseline(id: $0.id, date: $0.date) } },
+            uncompared: choices.compactMapValues(Self.reason),
+            systemLevelPermissionsOnly: reducedScope,
+            reviewedSnapshotID: reviewedID
+        )
+    }
+
+    /// Snapshots are written only on change, so a baseline equal to the
+    /// latest means nothing changed in the window.
+    private func diff<Diff>(
+        _ choice: BaselineChoice?,
+        to latestID: SnapshotID,
+        empty: Diff,
+        compute: (SnapshotID) async throws -> Diff
+    ) async throws -> Diff {
+        guard let baseline = Self.baseline(choice), baseline.id != latestID else { return empty }
+        return try await compute(baseline.id)
+    }
+
+    private static func baseline(_ choice: BaselineChoice?) -> SnapshotSummary? {
+        if case .compared(let summary, _)? = choice { return summary }
+        return nil
+    }
+
+    private static func reason(_ choice: BaselineChoice) -> UncomparedReason? {
+        if case .notCompared(let reason) = choice { return reason }
+        return nil
+    }
+
+    /// One candidate per stable app identity that has a bundle path, each
+    /// service listed once. Apps the user chose to skip in Preferences are
+    /// dropped so the sidebar badge count stays honest end-to-end.
+    private func staleCandidates() -> [StaleCandidate] {
         let skipped = dismissedStaleApps?.allStableKeys() ?? []
         var grouped: [String: [PermissionGrant]] = [:]
         for grant in viewModel.grants {
@@ -207,13 +430,17 @@ final class SnapshotCoordinator {
                   !skipped.contains(stableKey) else { continue }
             grouped[stableKey, default: []].append(grant)
         }
-        let candidates: [StaleCandidate] = grouped.compactMap { _, grants in
+        return grouped.compactMap { _, grants in
             guard let representative = grants.first(where: { $0.app.bundlePath != nil }),
                   let path = representative.app.bundlePath else { return nil }
-            let services = grants.map(\.service)
+            var seen = Set<PermissionService>()
+            let services = grants.map(\.service).filter { seen.insert($0).inserted }
             return StaleCandidate(app: representative.app, path: path, services: services)
         }
+    }
 
+    private func computeStaleApps(nowDate: Date, thresholdDays: Int) async -> [StaleApp] {
+        let candidates = staleCandidates()
         let probe = lastUsedProbe
         let cal = calendar
         let limit = Self.maxStaleProbesInFlight

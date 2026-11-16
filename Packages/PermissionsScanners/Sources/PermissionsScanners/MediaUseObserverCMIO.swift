@@ -1,9 +1,10 @@
-import CoreAudio
-import CoreMediaIO
 import Foundation
 import OSLog
 import PermissionsCore
 
+/// Mic and camera in-use state from CoreAudio and CoreMediaIO
+/// `…DeviceIsRunningSomewhere` listeners. Devices plugged in or removed after
+/// launch are picked up through the hardware device-list properties.
 public final class MediaUseObserverCMIO: MediaUseObserver, @unchecked Sendable {
     private static let logger = Logger(
         subsystem: "com.wallymagill.permissionpulse",
@@ -12,15 +13,12 @@ public final class MediaUseObserverCMIO: MediaUseObserver, @unchecked Sendable {
 
     private let lock = NSLock()
     private var continuation: AsyncStream<MediaUseEvent>.Continuation?
+    private var video: MediaDeviceTracker<CoreMediaIOVideoDevices>?
+    private var audio: MediaDeviceTracker<CoreAudioInputDevices>?
     private let queue = DispatchQueue(
         label: "com.wallymagill.permissionpulse.mediause",
         qos: .utility
     )
-
-    private var videoListeners: [(id: CMIOObjectID, block: CMIOObjectPropertyListenerBlock)] = []
-    private var audioListeners: [(id: AudioObjectID, block: AudioObjectPropertyListenerBlock)] = []
-    private var allVideoDeviceIDs: [CMIOObjectID] = []
-    private var allAudioDeviceIDs: [AudioObjectID] = []
 
     public init() {}
 
@@ -30,24 +28,26 @@ public final class MediaUseObserverCMIO: MediaUseObserver, @unchecked Sendable {
 
     public func events() -> AsyncStream<MediaUseEvent> {
         AsyncStream { continuation in
-            self.lock.withLock {
+            let video = MediaDeviceTracker(source: CoreMediaIOVideoDevices(queue: queue)) { [weak self] inUse in
+                self?.emit(MediaUseEvent(device: .camera, inUse: inUse, timestamp: Date()))
+            }
+            let audio = MediaDeviceTracker(source: CoreAudioInputDevices(queue: queue)) { [weak self] inUse in
+                self?.emit(MediaUseEvent(device: .microphone, inUse: inUse, timestamp: Date()))
+            }
+            lock.withLock {
                 self.continuation = continuation
+                self.video = video
+                self.audio = audio
             }
 
-            self.startObservingVideo()
-            self.startObservingAudio()
-            self.emitInitialState()
+            video.start()
+            audio.start()
 
-            let (vAll, vReg, aAll, aReg) = self.lock.withLock {
-                (self.allVideoDeviceIDs.count, self.videoListeners.count,
-                 self.allAudioDeviceIDs.count, self.audioListeners.count)
-            }
-            // NOTE: devices without a registered listener are polled on initial
-            // state and whenever another device fires a callback. A device that
-            // becomes active in isolation after startup won't surface a live
-            // update in this degraded path — hence the log for diagnosis.
-            if vReg < vAll || aReg < aAll {
-                Self.logger.error("Media monitoring degraded — live updates may be missed (video \(vReg)/\(vAll), audio \(aReg)/\(aAll))")
+            let (v, a) = (video.coverage, audio.coverage)
+            // A device without a listener is re-read only when another device of
+            // its kind fires, so it can miss live updates on its own.
+            if v.listening < v.present || a.listening < a.present {
+                Self.logger.error("Media monitoring degraded — live updates may be missed (video \(v.listening)/\(v.present), audio \(a.listening)/\(a.present))")
             }
 
             continuation.onTermination = { [weak self] _ in
@@ -65,191 +65,19 @@ public final class MediaUseObserverCMIO: MediaUseObserver, @unchecked Sendable {
         cont?.finish()
     }
 
-    private func startObservingVideo() {
-        let ids = enumerateVideoDevices()
-        lock.withLock { allVideoDeviceIDs = ids }
-        for id in ids {
-            var address = CMIOObjectPropertyAddress(
-                mSelector: CMIOObjectPropertySelector(kCMIODevicePropertyDeviceIsRunningSomewhere),
-                mScope: CMIOObjectPropertyScope(kCMIOObjectPropertyScopeGlobal),
-                mElement: CMIOObjectPropertyElement(kCMIOObjectPropertyElementMain)
-            )
-            let block: CMIOObjectPropertyListenerBlock = { [weak self] _, _ in
-                self?.handleDeviceChange(.camera, isRunning: self?.queryVideoIsRunning(id) ?? false)
-            }
-            let status = CMIOObjectAddPropertyListenerBlock(id, &address, queue, block)
-            guard status == 0 else {
-                Self.logger.error("CMIO listener register failed for device \(id, privacy: .public): status=\(status, privacy: .public)")
-                continue
-            }
-            lock.withLock {
-                videoListeners.append((id: id, block: block))
-            }
-        }
-    }
-
-    private func startObservingAudio() {
-        let ids = enumerateAudioInputDevices()
-        lock.withLock { allAudioDeviceIDs = ids }
-        for id in ids {
-            var address = AudioObjectPropertyAddress(
-                mSelector: kAudioDevicePropertyDeviceIsRunningSomewhere,
-                mScope: kAudioObjectPropertyScopeGlobal,
-                mElement: kAudioObjectPropertyElementMain
-            )
-            let block: AudioObjectPropertyListenerBlock = { [weak self] _, _ in
-                self?.handleDeviceChange(.microphone, isRunning: self?.queryAudioIsRunning(id) ?? false)
-            }
-            let status = AudioObjectAddPropertyListenerBlock(id, &address, queue, block)
-            guard status == 0 else {
-                Self.logger.error("CoreAudio listener register failed for device \(id, privacy: .public): status=\(status, privacy: .public)")
-                continue
-            }
-            lock.withLock {
-                audioListeners.append((id: id, block: block))
-            }
-        }
-    }
-
-    private func emitInitialState() {
-        let (videoIDs, audioIDs) = lock.withLock { (allVideoDeviceIDs, allAudioDeviceIDs) }
-
-        let cameraInUse = videoIDs.contains { queryVideoIsRunning($0) }
-        let micInUse = audioIDs.contains { queryAudioIsRunning($0) }
-
-        emit(MediaUseEvent(device: .camera, inUse: cameraInUse, timestamp: Date()))
-        emit(MediaUseEvent(device: .microphone, inUse: micInUse, timestamp: Date()))
-    }
-
-    private func handleDeviceChange(_ device: MediaUseEvent.Device, isRunning: Bool) {
-        let aggregate: Bool
-        switch device {
-        case .camera:
-            let ids = lock.withLock { allVideoDeviceIDs }
-            aggregate = isRunning || ids.contains { queryVideoIsRunning($0) }
-        case .microphone:
-            let ids = lock.withLock { allAudioDeviceIDs }
-            aggregate = isRunning || ids.contains { queryAudioIsRunning($0) }
-        }
-        emit(MediaUseEvent(device: device, inUse: aggregate, timestamp: Date()))
-    }
-
     private func emit(_ event: MediaUseEvent) {
         let cont = lock.withLock { continuation }
         cont?.yield(event)
     }
 
     private func tearDownListeners() {
-        let (videos, audios) = lock.withLock { () -> ([(id: CMIOObjectID, block: CMIOObjectPropertyListenerBlock)], [(id: AudioObjectID, block: AudioObjectPropertyListenerBlock)]) in
-            let v = videoListeners
-            let a = audioListeners
-            videoListeners.removeAll()
-            audioListeners.removeAll()
-            allVideoDeviceIDs.removeAll()
-            allAudioDeviceIDs.removeAll()
-            return (v, a)
+        let (video, audio) = lock.withLock { () -> (MediaDeviceTracker<CoreMediaIOVideoDevices>?, MediaDeviceTracker<CoreAudioInputDevices>?) in
+            let trackers = (self.video, self.audio)
+            self.video = nil
+            self.audio = nil
+            return trackers
         }
-
-        for entry in videos {
-            var address = CMIOObjectPropertyAddress(
-                mSelector: CMIOObjectPropertySelector(kCMIODevicePropertyDeviceIsRunningSomewhere),
-                mScope: CMIOObjectPropertyScope(kCMIOObjectPropertyScopeGlobal),
-                mElement: CMIOObjectPropertyElement(kCMIOObjectPropertyElementMain)
-            )
-            CMIOObjectRemovePropertyListenerBlock(entry.id, &address, queue, entry.block)
-        }
-        for entry in audios {
-            var address = AudioObjectPropertyAddress(
-                mSelector: kAudioDevicePropertyDeviceIsRunningSomewhere,
-                mScope: kAudioObjectPropertyScopeGlobal,
-                mElement: kAudioObjectPropertyElementMain
-            )
-            AudioObjectRemovePropertyListenerBlock(entry.id, &address, queue, entry.block)
-        }
-    }
-
-    private func enumerateVideoDevices() -> [CMIOObjectID] {
-        var address = CMIOObjectPropertyAddress(
-            mSelector: CMIOObjectPropertySelector(kCMIOHardwarePropertyDevices),
-            mScope: CMIOObjectPropertyScope(kCMIOObjectPropertyScopeGlobal),
-            mElement: CMIOObjectPropertyElement(kCMIOObjectPropertyElementMain)
-        )
-        var size: UInt32 = 0
-        guard CMIOObjectGetPropertyDataSize(CMIOObjectID(kCMIOObjectSystemObject), &address, 0, nil, &size) == 0 else {
-            return []
-        }
-        let count = Int(size) / MemoryLayout<CMIOObjectID>.size
-        guard count > 0 else { return [] }
-        var ids = [CMIOObjectID](repeating: 0, count: count)
-        guard CMIOObjectGetPropertyData(CMIOObjectID(kCMIOObjectSystemObject), &address, 0, nil, size, &size, &ids) == 0 else {
-            return []
-        }
-        return ids
-    }
-
-    private func enumerateAudioInputDevices() -> [AudioObjectID] {
-        var address = AudioObjectPropertyAddress(
-            mSelector: kAudioHardwarePropertyDevices,
-            mScope: kAudioObjectPropertyScopeGlobal,
-            mElement: kAudioObjectPropertyElementMain
-        )
-        var size: UInt32 = 0
-        guard AudioObjectGetPropertyDataSize(AudioObjectID(kAudioObjectSystemObject), &address, 0, nil, &size) == 0 else {
-            return []
-        }
-        let count = Int(size) / MemoryLayout<AudioObjectID>.size
-        guard count > 0 else { return [] }
-        var ids = [AudioObjectID](repeating: 0, count: count)
-        guard AudioObjectGetPropertyData(AudioObjectID(kAudioObjectSystemObject), &address, 0, nil, &size, &ids) == 0 else {
-            return []
-        }
-        return ids.filter { hasInputStream($0) }
-    }
-
-    private func hasInputStream(_ id: AudioObjectID) -> Bool {
-        var address = AudioObjectPropertyAddress(
-            mSelector: kAudioDevicePropertyStreamConfiguration,
-            mScope: kAudioDevicePropertyScopeInput,
-            mElement: kAudioObjectPropertyElementMain
-        )
-        var size: UInt32 = 0
-        guard AudioObjectGetPropertyDataSize(id, &address, 0, nil, &size) == 0, size > 0 else {
-            return false
-        }
-        let bufferList = UnsafeMutablePointer<AudioBufferList>.allocate(capacity: Int(size))
-        defer { bufferList.deallocate() }
-        guard AudioObjectGetPropertyData(id, &address, 0, nil, &size, bufferList) == 0 else {
-            return false
-        }
-        let abl = UnsafeMutableAudioBufferListPointer(bufferList)
-        return abl.contains { $0.mNumberChannels > 0 }
-    }
-
-    private func queryVideoIsRunning(_ id: CMIOObjectID) -> Bool {
-        var address = CMIOObjectPropertyAddress(
-            mSelector: CMIOObjectPropertySelector(kCMIODevicePropertyDeviceIsRunningSomewhere),
-            mScope: CMIOObjectPropertyScope(kCMIOObjectPropertyScopeGlobal),
-            mElement: CMIOObjectPropertyElement(kCMIOObjectPropertyElementMain)
-        )
-        var running: UInt32 = 0
-        var size = UInt32(MemoryLayout<UInt32>.size)
-        guard CMIOObjectGetPropertyData(id, &address, 0, nil, size, &size, &running) == 0 else {
-            return false
-        }
-        return running != 0
-    }
-
-    private func queryAudioIsRunning(_ id: AudioObjectID) -> Bool {
-        var address = AudioObjectPropertyAddress(
-            mSelector: kAudioDevicePropertyDeviceIsRunningSomewhere,
-            mScope: kAudioObjectPropertyScopeGlobal,
-            mElement: kAudioObjectPropertyElementMain
-        )
-        var running: UInt32 = 0
-        var size = UInt32(MemoryLayout<UInt32>.size)
-        guard AudioObjectGetPropertyData(id, &address, 0, nil, &size, &running) == 0 else {
-            return false
-        }
-        return running != 0
+        video?.stop()
+        audio?.stop()
     }
 }

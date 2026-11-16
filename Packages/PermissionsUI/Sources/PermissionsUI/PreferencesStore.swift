@@ -1,7 +1,8 @@
 import Foundation
 import Observation
 
-/// `@Observable` store for the six v0.7.0 preference keys.
+/// `@Observable` store for the six v0.7.0 preference keys plus the v0.7.2
+/// change-alerts toggle.
 ///
 /// Values are held as stored properties (not computed wrappers around
 /// `UserDefaults`). The `@Observable` macro can only instrument stored
@@ -28,6 +29,8 @@ public final class PreferencesStore {
         "com.wallymagill.permissionpulse.digestHour"
     public static let digestMinuteKey =
         "com.wallymagill.permissionpulse.digestMinute"
+    public static let changeAlertsEnabledKey =
+        "com.wallymagill.permissionpulse.changeAlertsEnabled"
 
     public static let defaultSnapshotRetentionDays = 90
     public static let defaultStaleThresholdDays = 90
@@ -35,6 +38,7 @@ public final class PreferencesStore {
     public static let defaultDigestWeekday = 2 // Monday (Calendar uses 1=Sunday...7=Saturday)
     public static let defaultDigestHour = 9
     public static let defaultDigestMinute = 0
+    public static let defaultChangeAlertsEnabled = false
 
     public static let snapshotRetentionDaysRange = 7...365
     public static let staleThresholdDaysRange = 30...365
@@ -69,6 +73,12 @@ public final class PreferencesStore {
     public var digestEnabled: Bool {
         didSet {
             defaults.set(digestEnabled, forKey: Self.digestEnabledKey)
+        }
+    }
+
+    public var changeAlertsEnabled: Bool {
+        didSet {
+            defaults.set(changeAlertsEnabled, forKey: Self.changeAlertsEnabledKey)
         }
     }
 
@@ -124,6 +134,11 @@ public final class PreferencesStore {
         } else {
             self.digestEnabled = Self.defaultDigestEnabled
         }
+        if defaults.object(forKey: Self.changeAlertsEnabledKey) != nil {
+            self.changeAlertsEnabled = defaults.bool(forKey: Self.changeAlertsEnabledKey)
+        } else {
+            self.changeAlertsEnabled = Self.defaultChangeAlertsEnabled
+        }
         self.digestWeekday = Self.readClampedInt(
             defaults: defaults,
             key: Self.digestWeekdayKey,
@@ -148,6 +163,7 @@ public final class PreferencesStore {
         snapshotRetentionDays = Self.defaultSnapshotRetentionDays
         staleThresholdDays = Self.defaultStaleThresholdDays
         digestEnabled = Self.defaultDigestEnabled
+        changeAlertsEnabled = Self.defaultChangeAlertsEnabled
         digestWeekday = Self.defaultDigestWeekday
         digestHour = Self.defaultDigestHour
         digestMinute = Self.defaultDigestMinute

@@ -4,20 +4,43 @@ on:
   pull_request:
     branches: [main]
   push:
-    branches: [main]
+    branches: [main, 'release/**']
+  workflow_dispatch:
 
 concurrency:
-  group: ci-${{ github.ref }}
+  group: ci-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
+# Two toolchain legs. `macos-26` is the supported floor toolchain; `xcode-27`
+# matches the release Mac (macOS 27, Xcode 27.2). The `xcode-27` runner image
+# was marked "Preview" in actions/runner-images on 2026-11-13.
 jobs:
   packages:
-    name: Test SwiftPM packages
-    runs-on: macos-26
+    name: Test SwiftPM packages (${{ matrix.leg }})
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - leg: macOS 26 / Xcode 26.5
+            runner: macos-26
+            xcode: /Applications/Xcode_26.5.app
+          - leg: macOS 27 / Xcode 27.2
+            runner: xcode-27
+            xcode: /Applications/Xcode_27.2.app
     env:
-      DEVELOPER_DIR: /Applications/Xcode_26.5.app/Contents/Developer
+      DEVELOPER_DIR: ${{ matrix.xcode }}/Contents/Developer
     steps:
       - uses: actions/checkout@v4
+
+      - name: Check Xcode is installed
+        run: |
+          if [[ ! -d "$DEVELOPER_DIR" ]]; then
+            echo "FAIL: expected Xcode at $DEVELOPER_DIR, which does not exist on this runner."
+            echo "Installed Xcode apps:"
+            ls -d /Applications/Xcode_*.app || echo "(none)"
+            exit 1
+          fi
 
       - name: Show toolchain
         run: |
@@ -38,18 +61,60 @@ jobs:
         run: swift test --package-path Packages/PermissionsUI
 
   app:
-    name: Build and test app target
-    runs-on: macos-26
+    name: Build and test app target (${{ matrix.leg }})
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - leg: macOS 26 / Xcode 26.5
+            runner: macos-26
+            xcode: /Applications/Xcode_26.5.app
+          - leg: macOS 27 / Xcode 27.2
+            runner: xcode-27
+            xcode: /Applications/Xcode_27.2.app
     env:
-      DEVELOPER_DIR: /Applications/Xcode_26.5.app/Contents/Developer
+      DEVELOPER_DIR: ${{ matrix.xcode }}/Contents/Developer
     steps:
       - uses: actions/checkout@v4
+
+      - name: Check Xcode is installed
+        run: |
+          if [[ ! -d "$DEVELOPER_DIR" ]]; then
+            echo "FAIL: expected Xcode at $DEVELOPER_DIR, which does not exist on this runner."
+            echo "Installed Xcode apps:"
+            ls -d /Applications/Xcode_*.app || echo "(none)"
+            exit 1
+          fi
 
       - name: Show toolchain
         run: |
           sw_vers
           xcodebuild -version
           swift --version
+
+      - name: Read version from Config/Version.xcconfig
+        id: version
+        run: |
+          read_key() {
+            awk -F= -v key="$1" '
+              $1 ~ "^[[:space:]]*" key "[[:space:]]*$" {
+                value = $2
+                sub(/^[[:space:]]*/, "", value)
+                sub(/[[:space:]]*$/, "", value)
+                print value
+              }
+            ' Config/Version.xcconfig
+          }
+          version=$(read_key MARKETING_VERSION)
+          build=$(read_key CURRENT_PROJECT_VERSION)
+          if [[ -z "$version" || -z "$build" ]]; then
+            echo "FAIL: Config/Version.xcconfig must set MARKETING_VERSION and CURRENT_PROJECT_VERSION (got version='$version', build='$build')."
+            exit 1
+          fi
+          echo "Version $version, build $build"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "build=$build" >> "$GITHUB_OUTPUT"
 
       - name: Test app target
         env:
@@ -72,8 +137,11 @@ jobs:
         run: scripts/tests/smoke-test-safety-test.sh
 
       - name: Build and verify release artifact
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+          BUILD: ${{ steps.version.outputs.build }}
         run: |
-          scripts/package-release.sh 0.7.2 "$RUNNER_TEMP/permission-pulse-release"
+          scripts/package-release.sh "$VERSION" "$RUNNER_TEMP/permission-pulse-release"
           scripts/verify-release.sh \
-            "$RUNNER_TEMP/permission-pulse-release/PermissionPulse-v0.7.2.app.zip" \
-            0.7.2 12
+            "$RUNNER_TEMP/permission-pulse-release/PermissionPulse-v$VERSION.app.zip" \
+            "$VERSION" "$BUILD"

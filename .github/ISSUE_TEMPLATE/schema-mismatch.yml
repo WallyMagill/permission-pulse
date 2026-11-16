@@ -1,0 +1,45 @@
+name: Schema mismatch
+description: The app shows "Unrecognized TCC schema" or "Unrecognized BTM schema".
+labels: [schema-mismatch]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        This banner means macOS changed the format of a file Permission Pulse reads (the TCC permission database or the Background Task Management store). Permission Pulse only reads these files; the banner does not mean anything on your Mac was changed.
+  - type: input
+    id: macos
+    attributes:
+      label: macOS version
+      description: Paste the output of `sw_vers` (ProductVersion and BuildVersion). Beta builds matter here.
+      placeholder: "macOS 27.2 (26B123)"
+    validations:
+      required: true
+  - type: input
+    id: app-version
+    attributes:
+      label: Permission Pulse version
+      placeholder: "0.7.2"
+    validations:
+      required: true
+  - type: dropdown
+    id: domain
+    attributes:
+      label: Which banner?
+      options:
+        - Unrecognized TCC schema
+        - Unrecognized BTM schema
+        - Both
+    validations:
+      required: true
+  - type: textarea
+    id: banner
+    attributes:
+      label: Banner text
+      description: Copy the full banner text word for word, including any missing column names or file names it lists.
+    validations:
+      required: true
+  - type: textarea
+    id: details
+    attributes:
+      label: Anything else
+      description: Optional. Do not attach a copy of your TCC database or .btm file; they list the apps on your Mac.
