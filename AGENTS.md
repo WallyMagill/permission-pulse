@@ -6,7 +6,7 @@ Future agent sessions: read this file before touching the code. It encodes decis
 
 **Permission Pulse** — a free, MIT-licensed, open-source macOS menu-bar app for permission hygiene. Read-only inspection of TCC permissions, LaunchAgents, BTM background items, and mic/cam usage, plus a change history ("Since Last Review" and "Last 7 days"). Distributed via GitHub Releases as a verified, ad-hoc-signed `.app` archive (`PermissionPulse-vX.Y.Z.app.zip`) that a maintainer publishes manually; no paid Apple Developer ID.
 
-**v0.7.2** is the configured release candidate; do not publish it until all required workstream gates pass. v0.7.1 remains the latest published, immutable historical release until v0.7.2 is actually published. All v1-scope features are implemented. `docs/09-roadmap.md` is the source of truth for milestone status; `docs/03-architecture.md` and `docs/04-data-sources.md` describe the implemented system.
+**v0.7.2** is the latest published release (2026-11-16, tag `v0.7.2`). Published release assets are immutable; never replace or delete one. All v1-scope features are implemented. `docs/09-roadmap.md` is the source of truth for milestone status; `docs/03-architecture.md` and `docs/04-data-sources.md` describe the implemented system.
 
 ## Hard rules — never violate
 
