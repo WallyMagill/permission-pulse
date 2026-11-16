@@ -102,9 +102,9 @@ A small post-v0.7.0 code-review follow-up — no new features:
 
 (The store/window fixes also visible in recent history — `computeDiff` no longer traps on duplicate identity keys, `latestSnapshotID` orders by `created_at`, singleton detail/preferences windows + Preferences toolbar entry — landed within the v0.7.0 tag range, not v0.7.1.)
 
-## Unreleased since v0.7.1 (on `main`, plus `release/v0.7.2` until it merges)
+## v0.7.2 — macOS 27 support and self-recording history (✅ released 2026-11-16)
 
-Landed after the v0.7.1 tag; ships in the next release:
+Tagged `v0.7.2` on merge commit `34a2a97`. Shipped:
 
 - Thread A app-quality workstreams W1–W4 (correctness, dead-code sweep, resilience, accessibility). ✅
 - Thread B visual overhaul + Thread C native redesign: `OverviewPage`, non-modal inspectors replacing the detail sheets, native Settings-style Preferences tabs, singleton `Window(id:)` scenes. ✅
@@ -127,7 +127,7 @@ Landed after the v0.7.1 tag; ships in the next release:
 - Full Disk Access: loss after an update or a revocation opens a recovery window once per build (`lastLaunchedVersion`, `fdaPromptShownForVersion`) that waits for the user to come back, checks again, and offers Reopen; the Welcome window runs the same loop. ✅
 - App behavior: double-clicking the running app in Finder opens the detail window; only one copy runs at a time; launch-at-login shows its real status, including requires-approval; Check for Updates… (dropdown and Preferences → General → About, which shows the version) opens the Releases page in the browser; the dropdown footer's welcome item is "Welcome Tour"; the dropdown header shows "Updated <time>"; a copy running from App Translocation is told to move to Applications; live mic/camera use wins the menu-bar icon; mic and camera devices added or removed after launch are followed. ✅
 - macOS 27 scope stated everywhere: hidden-service searches, the dropdown summary, Overview's "Permission coverage" row, the app inspector, and Stale Apps (banner and separate empty states for no data and no history). ✅
-- Data: export records app and macOS versions, per-section scan coverage, and export `schemaVersion` 2; Preferences → Data can restore dismissed changes and skipped stale apps and has Copy Diagnostics; attention rows open the section they are about. ✅
+- Data: export records app and macOS versions, per-section scan coverage, and export `schemaVersion` 3; Preferences → Data can restore dismissed changes and skipped stale apps and has Copy Diagnostics; attention rows open the section they are about. ✅
 - Stale Apps probes only `.app` bundles and says "Last modified" when the date came from the file. ✅
 
 ## v0.8.x — Remaining model fidelity (planned, deferred from v0.7.0)
